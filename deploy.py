@@ -15,10 +15,10 @@ def run_cmd(cmd, check=True):
 
 def setup_github_pages(repo_url):
     # Extract username and repo name from the url
-    # e.g., https://github.com/muzinan/nanmuz-schedule.git
-    match = re.search(r'github\.com/([^/]+)/([^/.]+)(?:\.git)?', repo_url)
+    # e.g., https://github.com/muzinan/nanmuz-schedule.git or git@github.com:muzinan/nanmuz-schedule.git
+    match = re.search(r'github\.com[:/]([^/]+)/([^/.]+)(?:\.git)?', repo_url)
     if not match:
-        print("❌ Invalid GitHub URL format. Example: https://github.com/username/repo-name.git")
+        print("❌ Invalid GitHub URL format. Example: https://github.com/username/repo-name.git or git@github.com:username/repo-name.git")
         sys.exit(1)
         
     username, repo_name = match.groups()
