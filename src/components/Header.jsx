@@ -4,7 +4,7 @@ const Header = ({ viewMode, setViewMode, theme, toggleTheme }) => {
   return (
     <header className="glass-panel" style={styles.header}>
       <div style={styles.brand}>
-        <img src="/logo.png" alt="Logo" style={styles.logo} />
+        <img src="logo.png" alt="Logo" style={styles.logo} />
         <h1 style={styles.title}>NanMuZ's Schedule</h1>
       </div>
       

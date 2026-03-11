@@ -30,7 +30,7 @@ const AuthOverlay = ({ onAuthenticated }) => {
   return (
     <div className="auth-container" style={styles.container}>
       <div className="glass-panel" style={styles.panel}>
-        <img src="/logo.png" alt="NanMuZ Logo" style={styles.logo} />
+        <img src="logo.png" alt="NanMuZ Logo" style={styles.logo} />
         <h2>Welcome to NanMuZ's Schedule</h2>
         <p style={styles.subtitle}>Enter your password to access your private plans.</p>
         
