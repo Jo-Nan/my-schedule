@@ -74,7 +74,6 @@ const WeeklyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData }) => 
                     </div>
                     <div style={styles.weatherDetails}>
                       <span>💧 {dayWeather.humidity}%</span>
-                      <span>💨 {Math.round(dayWeather.windSpeed)}</span>
                       <span style={{ color: dayWeather.aqiLabel.color }}>
                         AQI {Math.round(dayWeather.aqi)}
                       </span>

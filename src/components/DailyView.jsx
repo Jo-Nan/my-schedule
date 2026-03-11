@@ -85,7 +85,6 @@ const DailyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData }) => {
                 </div>
                 <div style={styles.wDetails}>
                   <span>💧 Hum: {dayWeather.humidity}%</span>
-                  <span>💨 Wind: {Math.round(dayWeather.windSpeed)}km/h</span>
                   <span style={{ color: dayWeather.aqiLabel.color, fontWeight: 'bold' }}>
                     Air: {dayWeather.aqiLabel.label}
                   </span>
