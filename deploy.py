@@ -137,11 +137,9 @@ jobs:
 
 if __name__ == "__main__":
     print("\n=== NanMuZ Schedule Deploy Automation ===")
-    print("Please make sure you have created an empty repository on GitHub first.")
-    repo = input("Enter your GitHub repository URL (e.g., https://github.com/muzinan/schedule.git): ").strip()
     
-    if not repo:
-        print("❌ URL cannot be empty. Aborting.")
-        sys.exit(1)
-        
+    # Hardcoded for user convenience
+    repo = "git@github.com:Jo-Nan/my-schedule.git"
+    print(f"📍 Target Repository: {repo}")
+    
     setup_github_pages(repo)
