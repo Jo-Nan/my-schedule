@@ -81,9 +81,23 @@ function App() {
     }
   };
 
-  const handleExport = () => {
+  const handleExport = async () => {
     setSyncStatus('uploading');
     try {
+      // Try direct local save via Vite middleware first
+      const apiResponse = await fetch('/api/save-plans', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(plans)
+      });
+
+      if (apiResponse.ok) {
+        setSyncStatus('synced');
+        setTimeout(() => setSyncStatus('idle'), 3000);
+        return;
+      }
+
+      // Fallback: Browser download
       const dataStr = JSON.stringify(plans, null, 2);
       const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
       
@@ -96,7 +110,7 @@ function App() {
       setSyncStatus('synced');
       setTimeout(() => setSyncStatus('idle'), 3000);
     } catch (err) {
-      console.error(err);
+      console.error('Export error:', err);
       setSyncStatus('error');
     }
   };

@@ -15,10 +15,9 @@ const SyncModal = ({ isOpen, onClose, t }) => {
           <p style={styles.info}>{t.fileSyncInfo}</p>
           <div style={styles.steps}>
             <ol>
-              <li>点击 <b>{t.upload}</b> 下载当前的 <code>plans.json</code> 备份。</li>
-              <li>将下载的文件存入项目的 <code>public/data/</code> 文件夹。</li>
-              <li>使用 Git 提交代码以达到多端同步的效果。</li>
-              <li>在其他设备上拉取代码后，点击 <b>{t.sync}</b> 即可载入。</li>
+              <li>点击 <b>{t.upload}</b> 将当前数据直接存入项目的 <code>public/data/plans.json</code> 文件夹。</li>
+              <li>点击 <b>{t.sync}</b> 即可从该文件回读最新数据。</li>
+              <li>要多端同步，只需使用 Git 提交并推送该 JSON 文件即可。</li>
             </ol>
           </div>
         </div>
