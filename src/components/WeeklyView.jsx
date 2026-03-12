@@ -3,11 +3,17 @@ import PlanCard from './PlanCard';
 import PlanModal from './PlanModal';
 
 const WeeklyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t }) => {
-  // Generate a window of 5 days starting from yesterday so Today is column 2: [Today-1, Today, Today+1, Today+2, Today+3]
+  // Week navigation state
+  const [weekOffset, setWeekOffset] = useState(0);
+  
+  // Generate a window of 5 days based on weekOffset
   const today = new Date();
+  const baseDate = new Date(today);
+  baseDate.setDate(today.getDate() - 1 + weekOffset * 7); // Monday of that week
+  
   const days = Array.from({ length: 5 }).map((_, i) => {
-    const d = new Date(today);
-    d.setDate(today.getDate() - 1 + i); // start from yesterday
+    const d = new Date(baseDate);
+    d.setDate(baseDate.getDate() + i);
     return d.toISOString().split('T')[0];
   });
 
@@ -17,6 +23,7 @@ const WeeklyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t }) 
   };
 
   const [modalState, setModalState] = useState({ isOpen: false, date: null, editingPlan: null });
+  const [draggedPlan, setDraggedPlan] = useState(null);
 
   const handleAddTask = (date) => {
     setModalState({ isOpen: true, date, editingPlan: null });
@@ -26,8 +33,58 @@ const WeeklyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t }) 
     setModalState({ isOpen: true, date: plan.date, editingPlan: plan });
   };
 
+  // Drag & drop handlers
+  const handleDragStart = (e, plan) => {
+    setDraggedPlan(plan);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleDrop = (e, targetDate) => {
+    e.preventDefault();
+    if (draggedPlan && draggedPlan.date !== targetDate) {
+      updatePlan(draggedPlan.id, { date: targetDate });
+    }
+    setDraggedPlan(null);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedPlan(null);
+  };
+
   return (
-    <div style={styles.container}>
+    <div style={styles.weekContainer}>
+      {/* Week navigation */}
+      <div className="glass-panel" style={styles.weekNav}>
+        <button 
+          className="glass-button"
+          onClick={() => setWeekOffset(weekOffset - 1)}
+          style={styles.navBtn}
+        >
+          ← {t.languageToggle === '🌐 English' ? 'Prev Week' : '前一周'}
+        </button>
+        
+        <div style={styles.weekLabel}>
+          <h3 style={styles.weekTitle}>
+            {t.languageToggle === '🌐 English' ? `Week of ${days[0]}` : `${days[0]} 周`}
+          </h3>
+        </div>
+        
+        <button 
+          className="glass-button"
+          onClick={() => setWeekOffset(weekOffset + 1)}
+          style={styles.navBtn}
+        >
+          {t.languageToggle === '🌐 English' ? 'Next Week' : '后一周'} →
+        </button>
+      </div>
+
+      {/* Days grid */}
+      <div style={styles.container}>
       <PlanModal 
         isOpen={modalState.isOpen} 
         onClose={() => setModalState({ isOpen: false, date: null, editingPlan: null })}
@@ -37,10 +94,10 @@ const WeeklyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t }) 
         t={t}
       />
       {days.map(dateStr => {
-        const isToday = dateStr === today.toISOString().split('T')[0];
+        const isToday = dateStr === new Date().toISOString().split('T')[0];
         
-        const yesterday = new Date(today);
-        yesterday.setDate(today.getDate() - 1);
+        const yesterday = new Date();
+        yesterday.setDate(new Date().getDate() - 1);
         const isYesterday = dateStr === yesterday.toISOString().split('T')[0];
 
         const dayWeather = weatherData.find(w => w.date === dateStr);
@@ -54,11 +111,18 @@ const WeeklyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t }) 
         });
 
         return (
-          <div key={dateStr} className="glass-panel" style={{
-            ...styles.dayColumn,
-            borderColor: isToday ? 'var(--accent-color)' : 'var(--glass-border)',
-            boxShadow: isToday ? 'var(--accent-glow)' : 'var(--glass-shadow)',
-          }}>
+          <div 
+            key={dateStr} 
+            className="glass-panel" 
+            style={{
+              ...styles.dayColumn,
+              borderColor: isToday ? 'var(--accent-color)' : 'var(--glass-border)',
+              boxShadow: isToday ? 'var(--accent-glow)' : 'var(--glass-shadow)',
+              backgroundColor: draggedPlan ? 'rgba(255, 255, 255, 0.5)' : 'rgba(255, 255, 255, 0.4)',
+            }}
+            onDragOver={handleDragOver}
+            onDrop={(e) => handleDrop(e, dateStr)}
+          >
             <div style={styles.dayHeader}>
               <div style={styles.dateInfo}>
                 <span style={styles.weekday}>{getDayName(dateStr)}</span>
@@ -67,7 +131,7 @@ const WeeklyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t }) 
                 {isYesterday && <span style={styles.yesterdayBadge}>{t.languageToggle === '🌐 English' ? 'Yesterday' : '昨天'}</span>}
               </div>
               
-              {new Date(dateStr) >= new Date(today.toISOString().split('T')[0]) ? (
+              {new Date(dateStr) >= new Date(new Date().toISOString().split('T')[0]) ? (
                 dayWeather ? (
                   <div style={styles.weatherBlock}>
                     <div style={styles.weatherMain}>
@@ -91,14 +155,25 @@ const WeeklyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t }) 
 
             <div style={styles.planList}>
               {dayPlans.map(plan => (
-                <PlanCard 
-                  key={plan.id} 
-                  plan={plan} 
-                  updatePlan={updatePlan} 
-                  deletePlan={deletePlan} 
-                  onEdit={handleEditTask}
-                  t={t}
-                />
+                <div
+                  key={plan.id}
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, plan)}
+                  onDragEnd={handleDragEnd}
+                  style={{
+                    opacity: draggedPlan?.id === plan.id ? 0.5 : 1,
+                    cursor: 'grab',
+                    transition: 'opacity 0.2s ease',
+                  }}
+                >
+                  <PlanCard 
+                    plan={plan} 
+                    updatePlan={updatePlan} 
+                    deletePlan={deletePlan} 
+                    onEdit={handleEditTask}
+                    t={t}
+                  />
+                </div>
               ))}
               <div 
                 className="glass-button add-btn" 
@@ -111,11 +186,37 @@ const WeeklyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t }) 
           </div>
         )
       })}
+      </div>
     </div>
   );
 };
 
 const styles = {
+  weekContainer: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '1.5rem',
+    width: '100%',
+  },
+  weekNav: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '1rem 2rem',
+    gap: '1rem',
+  },
+  navBtn: {
+    padding: '0.6rem 1.2rem',
+  },
+  weekLabel: {
+    flex: 1,
+    textAlign: 'center',
+  },
+  weekTitle: {
+    margin: 0,
+    fontSize: '1.3rem',
+    color: 'var(--text-primary)',
+  },
   container: {
     display: 'grid',
     gridTemplateColumns: 'repeat(5, 1fr)',
