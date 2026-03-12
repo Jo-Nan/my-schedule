@@ -1,49 +1,57 @@
 import React from 'react';
 
-const Header = ({ viewMode, setViewMode, theme, toggleTheme }) => {
+const Header = ({ viewMode, setViewMode, theme, toggleTheme, language, toggleLanguage, t }) => {
   return (
     <header className="glass-panel" style={styles.header}>
       <div style={styles.brand}>
         <img src="logo.png" alt="Logo" style={styles.logo} />
-        <h1 style={styles.title}>NanMuZ's Schedule</h1>
+        <h1 style={styles.title}>{t.title}</h1>
       </div>
       
       <div style={styles.controls}>
         <button 
           className="glass-button" 
+          onClick={toggleLanguage}
+          style={styles.themeBtn}
+          title="Toggle Language (Alt+L)"
+        >
+          {t.languageToggle}
+        </button>
+        <button 
+          className="glass-button" 
           onClick={toggleTheme}
           style={styles.themeBtn}
-          title="Toggle Theme"
+          title="Toggle Theme (Alt+T)"
         >
-          {theme === 'light' ? '🌙 Dark Mode' : '☀️ Light Mode'}
+          {theme === 'light' ? t.darkMode : t.lightMode}
         </button>
         <button 
           className={`glass-button ${viewMode === 'daily' ? 'active-tab' : ''}`}
           style={viewMode === 'daily' ? styles.activeBtn : styles.btn}
           onClick={() => setViewMode('daily')}
         >
-          Daily
+          {t.daily}
         </button>
         <button 
           className={`glass-button ${viewMode === 'weekly' ? 'active-tab' : ''}`}
           style={viewMode === 'weekly' ? styles.activeBtn : styles.btn}
           onClick={() => setViewMode('weekly')}
         >
-          Weekly
+          {t.weekly}
         </button>
         <button 
           className={`glass-button ${viewMode === 'monthly' ? 'active-tab' : ''}`}
           style={viewMode === 'monthly' ? styles.activeBtn : styles.btn}
           onClick={() => setViewMode('monthly')}
         >
-          Monthly
+          {t.monthly}
         </button>
         <button 
           className={`glass-button ${viewMode === 'yearly' ? 'active-tab' : ''}`}
           style={viewMode === 'yearly' ? styles.activeBtn : styles.btn}
           onClick={() => setViewMode('yearly')}
         >
-          Yearly
+          {t.yearly}
         </button>
       </div>
     </header>

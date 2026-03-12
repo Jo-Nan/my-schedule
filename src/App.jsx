@@ -6,12 +6,15 @@ import MonthlyView from './components/MonthlyView';
 import DailyView from './components/DailyView';
 import YearlyView from './components/YearlyView';
 import { fetchWeeklyWeather } from './utils/weatherApi';
+import { translations } from './utils/translations';
 import './index.css';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [viewMode, setViewMode] = useState('daily'); // 'daily', 'weekly', 'monthly', 'yearly'
   const [theme, setTheme] = useState('light'); // 'light' or 'dark'
+  const [language, setLanguage] = useState(() => localStorage.getItem('nanmuz_lang') || 'en');
+  const t = translations[language];
   
   // Synchronous initialization prevents overwriting saved data on hard reloads
   const [plans, setPlans] = useState(() => {
@@ -42,6 +45,28 @@ function App() {
     localStorage.setItem('nanmuz_plans', JSON.stringify(plans));
   }, [plans]);
 
+  // Global Keyboard Shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Alt+T: Toggle Theme
+      if (e.altKey && e.key.toLowerCase() === 't') {
+        toggleTheme();
+      }
+      // Alt+L: Toggle Language
+      if (e.altKey && e.key.toLowerCase() === 'l') {
+        toggleLanguage();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [theme, language]);
+
+  const toggleLanguage = () => {
+    const newLang = language === 'en' ? 'zh' : 'en';
+    setLanguage(newLang);
+    localStorage.setItem('nanmuz_lang', newLang);
+  };
+
   // Fetch weather data when authenticated
   useEffect(() => {
     if (isAuthenticated) {
@@ -64,12 +89,20 @@ function App() {
   };
 
   if (!isAuthenticated) {
-    return <AuthOverlay onAuthenticated={() => setIsAuthenticated(true)} />;
+    return <AuthOverlay onAuthenticated={() => setIsAuthenticated(true)} t={t} />;
   }
 
   return (
     <div className="animate-fade-in" style={{ width: '100%' }}>
-      <Header viewMode={viewMode} setViewMode={setViewMode} theme={theme} toggleTheme={toggleTheme} />
+      <Header 
+        viewMode={viewMode} 
+        setViewMode={setViewMode} 
+        theme={theme} 
+        toggleTheme={toggleTheme} 
+        language={language}
+        toggleLanguage={toggleLanguage}
+        t={t}
+      />
       
       <main>
         {viewMode === 'daily' && (
