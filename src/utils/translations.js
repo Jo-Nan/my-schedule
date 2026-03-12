@@ -49,6 +49,11 @@ export const translations = {
     restore: "Restore",
     version: "Version",
     noHistory: "No history found",
+    syncStatusIdle: "Up to date",
+    syncStatusLoading: "Checking cloud...",
+    syncStatusUploading: "Saving to cloud...",
+    syncStatusError: "Sync Error",
+    syncStatusSynced: "Cloud Synced",
   },
   zh: {
     title: "NanMuZ 的日程表",
@@ -100,5 +105,10 @@ export const translations = {
     restore: "恢复",
     version: "版本",
     noHistory: "未找到历史记录",
+    syncStatusIdle: "已是最新",
+    syncStatusLoading: "正在检查云端...",
+    syncStatusUploading: "正在保存到云端...",
+    syncStatusError: "同步错误",
+    syncStatusSynced: "云端已同步",
   }
 };

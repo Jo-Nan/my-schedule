@@ -20,6 +20,7 @@ function App() {
     const saved = localStorage.getItem('nanmuz_sync_config');
     return saved ? JSON.parse(saved) : { token: '', gistId: '' };
   });
+  const [syncStatus, setSyncStatus] = useState('idle'); // 'idle', 'loading', 'uploading', 'synced', 'error'
 
   const t = translations[language];
   
@@ -68,35 +69,40 @@ function App() {
     return merged;
   };
 
-  const handleSync = async () => {
+  const handleSync = async (silent = false) => {
     if (!syncConfig.token || !syncConfig.gistId) {
-      setIsSyncModalOpen(true);
+      if (!silent) setIsSyncModalOpen(true);
       return;
     }
 
+    setSyncStatus('loading');
     try {
       const response = await fetch(`https://api.github.com/gists/${syncConfig.gistId}`, {
         headers: { Authorization: `token ${syncConfig.token}` }
       });
       if (!response.ok) throw new Error('Fetch failed');
       const gist = await response.json();
-      const remotePlans = JSON.parse(gist.files['plans.json'].content);
+      const content = gist.files['plans.json']?.content;
+      if (!content) throw new Error('No plans.json found in Gist');
       
+      const remotePlans = JSON.parse(content);
       const merged = mergePlans(plans, remotePlans);
       setPlans(merged);
-      alert(t.syncSuccess);
+      setSyncStatus('synced');
+      setTimeout(() => setSyncStatus('idle'), 3000);
     } catch (err) {
       console.error(err);
-      alert(t.syncError);
+      setSyncStatus('error');
+      if (!silent) alert(t.syncError);
     }
   };
 
-  const handleUpload = async () => {
+  const handleUpload = async (silent = false) => {
     if (!syncConfig.token || !syncConfig.gistId) {
-      setIsSyncModalOpen(true);
       return;
     }
 
+    setSyncStatus('uploading');
     try {
       const response = await fetch(`https://api.github.com/gists/${syncConfig.gistId}`, {
         method: 'PATCH',
@@ -113,12 +119,32 @@ function App() {
         })
       });
       if (!response.ok) throw new Error('Upload failed');
-      alert(t.uploadSuccess);
+      setSyncStatus('synced');
+      setTimeout(() => setSyncStatus('idle'), 3000);
     } catch (err) {
       console.error(err);
-      alert(t.syncError);
+      setSyncStatus('error');
+      if (!silent) alert(t.syncError);
     }
   };
+
+  // Auto-Sync on load
+  useEffect(() => {
+    if (isAuthenticated && syncConfig.token && syncConfig.gistId) {
+      handleSync(true);
+    }
+  }, [isAuthenticated]);
+
+  // Debounced Auto-Upload on plan changes
+  useEffect(() => {
+    if (!isAuthenticated || !syncConfig.token || !syncConfig.gistId) return;
+    
+    const timer = setTimeout(() => {
+      handleUpload(true);
+    }, 2000); // 2 second debounce
+
+    return () => clearTimeout(timer);
+  }, [plans]);
 
   const saveSyncConfig = (config) => {
     setSyncConfig(config);
@@ -182,9 +208,10 @@ function App() {
         language={language}
         toggleLanguage={toggleLanguage}
         t={t}
-        onSync={handleSync}
-        onUpload={handleUpload}
+        onSync={() => handleSync()}
+        onUpload={() => handleUpload()}
         setSyncModalOpen={setIsSyncModalOpen}
+        syncStatus={syncStatus}
       />
       
       <SyncModal 

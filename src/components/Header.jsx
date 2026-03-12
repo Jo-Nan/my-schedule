@@ -1,6 +1,6 @@
 import React from 'react';
 
-const Header = ({ viewMode, setViewMode, theme, toggleTheme, language, toggleLanguage, t, onSync, onUpload, setSyncModalOpen }) => {
+const Header = ({ viewMode, setViewMode, theme, toggleTheme, language, toggleLanguage, t, onSync, onUpload, setSyncModalOpen, syncStatus }) => {
   return (
     <header className="glass-panel" style={styles.header}>
       <div style={styles.brand}>
@@ -9,6 +9,11 @@ const Header = ({ viewMode, setViewMode, theme, toggleTheme, language, toggleLan
       </div>
       
       <div style={styles.controls}>
+        <div style={styles.statusGroup}>
+          <span style={{ ...styles.statusText, color: getStatusColor(syncStatus) }}>
+            {getStatusIcon(syncStatus)} {getStatusLabel(syncStatus, t)}
+          </span>
+        </div>
         <button 
           className="glass-button" 
           onClick={() => setSyncModalOpen(true)}
@@ -81,6 +86,36 @@ const Header = ({ viewMode, setViewMode, theme, toggleTheme, language, toggleLan
   );
 };
 
+const getStatusColor = (status) => {
+  switch (status) {
+    case 'loading': return 'var(--accent-color)';
+    case 'uploading': return '#fbbf24'; // Amber
+    case 'synced': return '#10b981'; // Emerald
+    case 'error': return 'var(--danger-color)';
+    default: return 'var(--text-secondary)';
+  }
+};
+
+const getStatusIcon = (status) => {
+  switch (status) {
+    case 'loading': return '📡';
+    case 'uploading': return '⏳';
+    case 'synced': return '✅';
+    case 'error': return '⚠️';
+    default: return '☁️';
+  }
+};
+
+const getStatusLabel = (status, t) => {
+  switch (status) {
+    case 'loading': return t.syncStatusLoading;
+    case 'uploading': return t.syncStatusUploading;
+    case 'synced': return t.syncStatusSynced;
+    case 'error': return t.syncStatusError;
+    default: return t.syncStatusIdle;
+  }
+};
+
 const styles = {
   header: {
     display: 'flex',
@@ -112,6 +147,21 @@ const styles = {
     display: 'flex',
     gap: '0.8rem',
     alignItems: 'center',
+  },
+  statusGroup: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.5rem',
+    marginRight: '1rem',
+    padding: '0.4rem 0.8rem',
+    background: 'rgba(255,255,255,0.05)',
+    borderRadius: '12px',
+  },
+  statusText: {
+    fontSize: '0.8rem',
+    fontWeight: 500,
+    whiteSpace: 'nowrap',
+    transition: 'all 0.3s ease',
   },
   themeBtn: {
     padding: '0.5rem 1rem',
