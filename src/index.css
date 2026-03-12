@@ -137,6 +137,53 @@ a:hover {
   transform: translateY(0);
 }
 
+/* Button Group / Segmented Control */
+.segmented-control {
+  display: flex;
+  background: rgba(0, 0, 0, 0.05);
+  padding: 4px;
+  border-radius: 12px;
+  gap: 2px;
+}
+
+.segmented-control .glass-button {
+  background: transparent;
+  border: none;
+  padding: 6px 12px;
+  font-size: 0.9rem;
+  border-radius: 8px;
+  box-shadow: none;
+}
+
+.segmented-control .glass-button.active-tab {
+  background: var(--glass-bg);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  color: var(--accent-color);
+}
+
+.button-group {
+  display: flex;
+  gap: 1px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--glass-border);
+}
+
+.button-group .glass-button {
+  border-radius: 0;
+  border: none;
+  padding: 8px 12px;
+}
+
+.icon-only {
+  padding: 8px !important;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .glass-input {
   background: var(--input-bg);
   border: 1px solid var(--glass-border);

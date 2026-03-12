@@ -3,84 +3,86 @@ import React from 'react';
 const Header = ({ viewMode, setViewMode, theme, toggleTheme, language, toggleLanguage, t, onSync, onUpload, setSyncModalOpen, syncStatus }) => {
   return (
     <header className="glass-panel" style={styles.header}>
-      <div style={styles.brand}>
+      <div style={styles.left}>
         <img src="logo.png" alt="Logo" style={styles.logo} />
         <h1 style={styles.title}>{t.title}</h1>
       </div>
-      
-      <div style={styles.controls}>
-        <div style={styles.statusGroup}>
-          <span style={{ ...styles.statusText, color: getStatusColor(syncStatus) }}>
-            {getStatusIcon(syncStatus)} {getStatusLabel(syncStatus, t)}
-          </span>
-        </div>
-        <button 
-          className="glass-button" 
-          onClick={() => setSyncModalOpen(true)}
-          style={styles.themeBtn}
-          title={t.syncSettings}
-        >
-          ⚙️
-        </button>
-        <button 
-          className="glass-button" 
-          onClick={onSync}
-          style={styles.themeBtn}
-        >
-          🔄 {t.sync}
-        </button>
-        <button 
-          className="glass-button" 
-          onClick={onUpload}
-          style={styles.themeBtn}
-        >
-          📤 {t.upload}
-        </button>
-        <div style={styles.divider}></div>
-        <button 
-          className="glass-button" 
-          onClick={toggleLanguage}
-          style={styles.themeBtn}
-          title="Toggle Language (Alt+L)"
-        >
-          {t.languageToggle}
-        </button>
-        <button 
-          className="glass-button" 
-          onClick={toggleTheme}
-          style={styles.themeBtn}
-          title="Toggle Theme (Alt+T)"
-        >
-          {theme === 'light' ? t.darkMode : t.lightMode}
-        </button>
+
+      <div className="segmented-control" style={styles.center}>
         <button 
           className={`glass-button ${viewMode === 'daily' ? 'active-tab' : ''}`}
-          style={viewMode === 'daily' ? styles.activeBtn : styles.btn}
           onClick={() => setViewMode('daily')}
         >
           {t.daily}
         </button>
         <button 
           className={`glass-button ${viewMode === 'weekly' ? 'active-tab' : ''}`}
-          style={viewMode === 'weekly' ? styles.activeBtn : styles.btn}
           onClick={() => setViewMode('weekly')}
         >
           {t.weekly}
         </button>
         <button 
           className={`glass-button ${viewMode === 'monthly' ? 'active-tab' : ''}`}
-          style={viewMode === 'monthly' ? styles.activeBtn : styles.btn}
           onClick={() => setViewMode('monthly')}
         >
           {t.monthly}
         </button>
         <button 
           className={`glass-button ${viewMode === 'yearly' ? 'active-tab' : ''}`}
-          style={viewMode === 'yearly' ? styles.activeBtn : styles.btn}
           onClick={() => setViewMode('yearly')}
         >
           {t.yearly}
         </button>
+      </div>
+      
+      <div style={styles.right}>
+        <div style={styles.statusGroup}>
+          <span style={{ ...styles.statusText, color: getStatusColor(syncStatus) }}>
+            {getStatusIcon(syncStatus)} {getStatusLabel(syncStatus, t)}
+          </span>
+        </div>
+
+        <div className="button-group">
+          <button 
+            className="glass-button icon-only" 
+            onClick={onSync}
+            title={t.sync}
+          >
+            🔄
+          </button>
+          <button 
+            className="glass-button icon-only" 
+            onClick={onUpload}
+            title={t.upload}
+          >
+            📥
+          </button>
+          <button 
+            className="glass-button icon-only" 
+            onClick={() => setSyncModalOpen(true)}
+            title={t.settings}
+          >
+            ⚙️
+          </button>
+        </div>
+
+        <div className="button-group">
+          <button 
+            className="glass-button icon-only" 
+            onClick={toggleLanguage}
+            title="Toggle Language (Alt+L)"
+          >
+            🌐
+          </button>
+          <button 
+            className="glass-button" 
+            style={{ padding: '0 0.8rem', fontSize: '1.2rem'}}
+            onClick={toggleTheme}
+            title="Toggle Theme (Alt+T)"
+          >
+            {theme === 'light' ? '🌙' : '☀️'}
+          </button>
+        </div>
       </div>
     </header>
   );
@@ -121,68 +123,56 @@ const styles = {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: '1rem 2rem',
+    gap: '1.5rem',
+    padding: '0.8rem 1.5rem',
     marginBottom: '2rem',
     borderRadius: '24px',
+    flexWrap: 'wrap',
   },
-  brand: {
+  left: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.8rem',
+    flexShrink: 0,
+  },
+  center: {
+    flexShrink: 0,
+  },
+  right: {
     display: 'flex',
     alignItems: 'center',
     gap: '1rem',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
   },
   logo: {
-    width: '45px',
-    height: '45px',
-    borderRadius: '12px',
-    boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
+    width: '36px',
+    height: '36px',
+    borderRadius: '10px',
+    boxShadow: '0 4px 12px rgba(0,0,0,0.2)'
   },
   title: {
     margin: 0,
-    fontSize: '1.5rem',
+    fontSize: '1.3rem',
     background: 'linear-gradient(90deg, var(--text-primary), var(--accent-color))',
     WebkitBackgroundClip: 'text',
     WebkitTextFillColor: 'transparent',
-  },
-  controls: {
-    display: 'flex',
-    gap: '0.8rem',
-    alignItems: 'center',
+    whiteSpace: 'nowrap',
   },
   statusGroup: {
     display: 'flex',
     alignItems: 'center',
     gap: '0.5rem',
-    marginRight: '1rem',
     padding: '0.4rem 0.8rem',
     background: 'rgba(255,255,255,0.05)',
-    borderRadius: '12px',
+    borderRadius: '10px',
   },
   statusText: {
-    fontSize: '0.8rem',
+    fontSize: '0.75rem',
     fontWeight: 500,
     whiteSpace: 'nowrap',
     transition: 'all 0.3s ease',
   },
-  themeBtn: {
-    padding: '0.5rem 1rem',
-    marginRight: '1rem',
-    background: 'var(--glass-bg)',
-  },
-  btn: {
-    padding: '0.5rem 1.2rem',
-  },
-  divider: {
-    width: '1px',
-    height: '24px',
-    background: 'var(--border-color)',
-    margin: '0 0.5rem',
-    opacity: 0.5,
-  },
-  activeBtn: {
-    background: 'rgba(99, 102, 241, 0.2)',
-    borderColor: 'var(--accent-color)',
-    boxShadow: 'var(--accent-glow)',
-  }
 };
 
 export default Header;

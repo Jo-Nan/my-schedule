@@ -16,10 +16,6 @@ function App() {
   const [theme, setTheme] = useState('light'); // 'light' or 'dark'
   const [language, setLanguage] = useState(() => localStorage.getItem('nanmuz_lang') || 'en');
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
-  const [syncConfig, setSyncConfig] = useState(() => {
-    const saved = localStorage.getItem('nanmuz_sync_config');
-    return saved ? JSON.parse(saved) : { token: '', gistId: '' };
-  });
   const [syncStatus, setSyncStatus] = useState('idle'); // 'idle', 'loading', 'uploading', 'synced', 'error'
 
   const t = translations[language];
@@ -46,8 +42,6 @@ function App() {
     document.documentElement.setAttribute('data-theme', newTheme);
   };
 
-  // (Removed async load effect since we now initialize synchronously in useState)
-
   // Save plans to local storage whenever they change
   useEffect(() => {
     localStorage.setItem('nanmuz_plans', JSON.stringify(plans));
@@ -69,23 +63,13 @@ function App() {
     return merged;
   };
 
-  const handleSync = async (silent = false) => {
-    if (!syncConfig.token || !syncConfig.gistId) {
-      if (!silent) setIsSyncModalOpen(true);
-      return;
-    }
-
+  const handleSync = async () => {
     setSyncStatus('loading');
     try {
-      const response = await fetch(`https://api.github.com/gists/${syncConfig.gistId}`, {
-        headers: { Authorization: `token ${syncConfig.token}` }
-      });
+      const response = await fetch('./data/plans.json?t=' + Date.now()); // Anti-cache
       if (!response.ok) throw new Error('Fetch failed');
-      const gist = await response.json();
-      const content = gist.files['plans.json']?.content;
-      if (!content) throw new Error('No plans.json found in Gist');
+      const remotePlans = await response.json();
       
-      const remotePlans = JSON.parse(content);
       const merged = mergePlans(plans, remotePlans);
       setPlans(merged);
       setSyncStatus('synced');
@@ -93,62 +77,28 @@ function App() {
     } catch (err) {
       console.error(err);
       setSyncStatus('error');
-      if (!silent) alert(t.syncError);
+      alert(t.syncError);
     }
   };
 
-  const handleUpload = async (silent = false) => {
-    if (!syncConfig.token || !syncConfig.gistId) {
-      return;
-    }
-
+  const handleExport = () => {
     setSyncStatus('uploading');
     try {
-      const response = await fetch(`https://api.github.com/gists/${syncConfig.gistId}`, {
-        method: 'PATCH',
-        headers: {
-          Authorization: `token ${syncConfig.token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          files: {
-            'plans.json': {
-              content: JSON.stringify(plans, null, 2)
-            }
-          }
-        })
-      });
-      if (!response.ok) throw new Error('Upload failed');
+      const dataStr = JSON.stringify(plans, null, 2);
+      const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+      
+      const exportFileDefaultName = 'plans.json';
+      const linkElement = document.createElement('a');
+      linkElement.setAttribute('href', dataUri);
+      linkElement.setAttribute('download', exportFileDefaultName);
+      linkElement.click();
+      
       setSyncStatus('synced');
       setTimeout(() => setSyncStatus('idle'), 3000);
     } catch (err) {
       console.error(err);
       setSyncStatus('error');
-      if (!silent) alert(t.syncError);
     }
-  };
-
-  // Auto-Sync on load
-  useEffect(() => {
-    if (isAuthenticated && syncConfig.token && syncConfig.gistId) {
-      handleSync(true);
-    }
-  }, [isAuthenticated]);
-
-  // Debounced Auto-Upload on plan changes
-  useEffect(() => {
-    if (!isAuthenticated || !syncConfig.token || !syncConfig.gistId) return;
-    
-    const timer = setTimeout(() => {
-      handleUpload(true);
-    }, 2000); // 2 second debounce
-
-    return () => clearTimeout(timer);
-  }, [plans]);
-
-  const saveSyncConfig = (config) => {
-    setSyncConfig(config);
-    localStorage.setItem('nanmuz_sync_config', JSON.stringify(config));
   };
 
   // Global Keyboard Shortcuts
@@ -209,7 +159,7 @@ function App() {
         toggleLanguage={toggleLanguage}
         t={t}
         onSync={() => handleSync()}
-        onUpload={() => handleUpload()}
+        onUpload={() => handleExport()}
         setSyncModalOpen={setIsSyncModalOpen}
         syncStatus={syncStatus}
       />
@@ -217,10 +167,7 @@ function App() {
       <SyncModal 
         isOpen={isSyncModalOpen} 
         onClose={() => setIsSyncModalOpen(false)} 
-        onSave={saveSyncConfig}
-        config={syncConfig}
         t={t}
-        onRestore={setPlans}
       />
       
       <main>
