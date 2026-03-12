@@ -32,6 +32,8 @@ function App() {
   const autoSyncTimerRef = useRef(null);
   // Track if we should auto-sync (skip initial load)
   const isInitializedRef = useRef(false);
+  // Track last synced plans hash to prevent infinite loops
+  const lastSyncedHashRef = useRef(null);
 
   // Init Theme
   useEffect(() => {
@@ -51,11 +53,21 @@ function App() {
   useEffect(() => {
     localStorage.setItem('nanmuz_plans', JSON.stringify(plans));
     
-    // Auto-sync with debounce when plans change (but skip initial load)
+    // Auto-sync with debounce when plans change (but skip initial load and duplicate syncs)
     if (isInitializedRef.current && isAuthenticated) {
+      // Create a simple hash to detect actual changes
+      const currentHash = JSON.stringify(plans);
+      
+      // Skip if we just synced this exact data
+      if (currentHash === lastSyncedHashRef.current) {
+        console.log('[AutoSync] Skipping sync - data unchanged');
+        return;
+      }
+      
       if (autoSyncTimerRef.current) {
         clearTimeout(autoSyncTimerRef.current);
       }
+      
       autoSyncTimerRef.current = setTimeout(() => {
         console.log('[AutoSync] Syncing updated plans to GitHub');
         handleExport();
@@ -145,6 +157,11 @@ function App() {
       const syncResult = await syncResponse.json();
       if (syncResult.status === 'success') {
         const remotePlans = syncResult.data || [];
+        const planHash = JSON.stringify(remotePlans);
+        
+        // 更新 hash，标记已同步的状态（防止无限循环）
+        lastSyncedHashRef.current = planHash;
+        
         // 直接使用远程数据作为真实来源（避免再次合并）
         setPlans(remotePlans);
       }
@@ -199,7 +216,10 @@ function App() {
             // 使用 mergePlans 确保本地更新的数据不会被覆盖
             setPlans(prev => {
               const merged = mergePlans(prev, remotePlans);
-              // 初始化完成后，后续改动会自动 sync
+              const mergedHash = JSON.stringify(merged);
+              
+              // 记录初始化完成后的状态 hash，防止立即触发 auto-sync
+              lastSyncedHashRef.current = mergedHash;
               isInitializedRef.current = true;
               return merged;
             });
