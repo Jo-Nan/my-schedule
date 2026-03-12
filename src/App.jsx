@@ -197,6 +197,14 @@ function App() {
     localStorage.setItem('nanmuz_lang', newLang);
   };
 
+  // Helper: Get local date string (handles timezone correctly)
+  const getLocalDateStr = (date = new Date()) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   // Auto-sync and fetch weather when authenticated
   useEffect(() => {
     if (isAuthenticated) {
@@ -262,7 +270,7 @@ function App() {
     const completePlan = {
       id: newPlan.id || `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
       event: newPlan.event || '',
-      date: newPlan.date || new Date().toISOString().split('T')[0],
+      date: newPlan.date || getLocalDateStr(),
       time: newPlan.time || '',
       person: newPlan.person || 'self',
       ddl: newPlan.ddl || '',

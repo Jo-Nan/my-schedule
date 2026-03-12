@@ -9,12 +9,20 @@ const DailyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t }) =
   // Current time display
   const [currentTime, setCurrentTime] = useState(new Date());
 
-  const dateStr = currentDateObj.toISOString().split('T')[0];
-  const isToday = dateStr === new Date().toISOString().split('T')[0];
+  // Get local date string (handles timezone correctly)
+  const getLocalDateStr = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const dateStr = getLocalDateStr(currentDateObj);
+  const isToday = dateStr === getLocalDateStr(new Date());
   
   const yesterdayObj = new Date();
   yesterdayObj.setDate(new Date().getDate() - 1);
-  const isYesterday = dateStr === yesterdayObj.toISOString().split('T')[0];
+  const isYesterday = dateStr === getLocalDateStr(yesterdayObj);
 
   // Update time every second
   useEffect(() => {
@@ -75,27 +83,25 @@ const DailyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t }) =
 
       {/* Focus Header */}
       <div className="glass-panel" style={styles.focusHeader}>
-        {/* Clock Display */}
-        {isToday && (
-          <div style={styles.clockWidget}>
-            <div style={styles.clockDisplay}>
-              {String(currentTime.getHours()).padStart(2, '0')}
-              <span style={styles.clockColon}>:</span>
-              {String(currentTime.getMinutes()).padStart(2, '0')}
-            </div>
-            <div style={styles.clockLabel}>{t.languageToggle === '🌐 English' ? 'Current Time' : '当前时间'}</div>
-          </div>
-        )}
-
         <div style={styles.headerTop}>
           <button className="glass-button" style={styles.navBtn} onClick={handlePrevDay}>← {t.languageToggle === '🌐 English' ? 'Prev Day' : '前一天'}</button>
           
           <div style={styles.dateBlock} onClick={handleToday} title={t.languageToggle === '🌐 English' ? 'Back to Today' : '回到今天'}>
-            <h1 style={styles.weekdayName}>
-              {getDayName(dateStr)}
-              {isToday && <span style={styles.badgeToday}>{t.languageToggle === '🌐 English' ? 'Today' : '今天'}</span>}
-              {isYesterday && <span style={styles.badgeYesterday}>{t.languageToggle === '🌐 English' ? 'Yesterday' : '昨天'}</span>}
-            </h1>
+            <div style={styles.dateTimeRow}>
+              <h1 style={styles.weekdayName}>
+                {getDayName(dateStr)}
+                {isToday && <span style={styles.badgeToday}>{t.languageToggle === '🌐 English' ? 'Today' : '今天'}</span>}
+                {isYesterday && <span style={styles.badgeYesterday}>{t.languageToggle === '🌐 English' ? 'Yesterday' : '昨天'}</span>}
+              </h1>
+              
+              {isToday && (
+                <div style={styles.clockInline}>
+                  <span style={styles.clockTimeSmall}>
+                    {String(currentTime.getHours()).padStart(2, '0')}:{String(currentTime.getMinutes()).padStart(2, '0')}
+                  </span>
+                </div>
+              )}
+            </div>
             <p style={styles.fullDate}>{getFullDateDisplay(dateStr)}</p>
           </div>
 
@@ -209,33 +215,25 @@ const styles = {
     padding: '2rem',
     gap: '2rem'
   },
-  clockWidget: {
+  dateTimeRow: {
     display: 'flex',
-    flexDirection: 'column',
     alignItems: 'center',
-    padding: '1.5rem',
-    background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(59, 130, 246, 0.1))',
-    borderRadius: '16px',
-    border: '1px solid var(--glass-border)',
+    justifyContent: 'center',
+    gap: '1.5rem',
+    flexWrap: 'wrap',
   },
-  clockDisplay: {
-    fontSize: '4rem',
-    fontWeight: '700',
+  clockInline: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.5rem',
+  },
+  clockTimeSmall: {
+    fontSize: '1.8rem',
+    fontWeight: '600',
     fontVariantNumeric: 'tabular-nums',
     color: 'var(--accent-color)',
-    lineHeight: 1,
-    letterSpacing: '-0.05em',
     fontFamily: '"SF Mono", "Monaco", "Menlo", monospace',
-  },
-  clockColon: {
-    display: 'inline-block',
     animation: 'blink 1s step-start infinite',
-  },
-  clockLabel: {
-    marginTop: '0.8rem',
-    fontSize: '0.9rem',
-    color: 'var(--text-secondary)',
-    fontWeight: '500',
   },
   headerTop: {
     display: 'flex',
