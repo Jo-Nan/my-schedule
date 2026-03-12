@@ -9,6 +9,16 @@ const getLocalDateStr = (date = new Date()) => {
   return `${year}-${month}-${day}`;
 };
 
+const HOLIDAYS = {
+  '2026-01-01': 'New Year',
+  '2026-02-17': 'Spring Festival',
+  '2026-04-05': 'Qingming',
+  '2026-05-01': 'Labor Day',
+  '2026-06-19': 'Dragon Boat',
+  '2026-09-25': 'Mid-Autumn',
+  '2026-10-01': 'National Day'
+};
+
 const YearlyView = ({ plans, addPlan, t }) => {
   const [modalState, setModalState] = useState({ isOpen: false, date: null });
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
@@ -35,8 +45,17 @@ const YearlyView = ({ plans, addPlan, t }) => {
   };
 
   const getDaysInMonthArray = (year, month) => {
+    const firstDayOfMonth = new Date(year, month, 1).getDay();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
-    return Array.from({ length: daysInMonth }, (_, i) => i + 1);
+    return [
+      ...Array.from({ length: firstDayOfMonth }, () => null),
+      ...Array.from({ length: daysInMonth }, (_, i) => i + 1)
+    ];
+  };
+
+  const getHolidayColor = (dateStr) => {
+    if (!HOLIDAYS[dateStr]) return null;
+    return 'var(--danger-color)';
   };
 
   const isEn = t.languageToggle === '🌐 English';
@@ -66,9 +85,14 @@ const YearlyView = ({ plans, addPlan, t }) => {
             <div key={month} className="glass-panel" style={styles.monthCard}>
               <h4 style={styles.monthName}>{monthName}</h4>
               <div style={styles.daysGrid}>
-                {days.map(day => {
+                {days.map((day, index) => {
+                  if (!day) {
+                    return <div key={`empty-${month}-${index}`} style={styles.emptyDayCell} />;
+                  }
+
                   const dateStr = `${currentYear}-${String(month + 1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
                   const dotColor = getDayStatusDot(dateStr);
+                  const holidayColor = getHolidayColor(dateStr);
                   const isToday = dateStr === getLocalDateStr();
 
                   return (
@@ -77,18 +101,30 @@ const YearlyView = ({ plans, addPlan, t }) => {
                       style={{
                         ...styles.dayCell,
                         borderColor: isToday ? 'var(--accent-color)' : 'transparent',
-                        background: isToday ? 'rgba(255,255,255,0.05)' : 'transparent'
+                        background: holidayColor
+                          ? 'rgba(239, 68, 68, 0.12)'
+                          : isToday
+                            ? 'rgba(255,255,255,0.05)'
+                            : 'transparent'
                       }}
                       onClick={() => setModalState({ isOpen: true, date: dateStr })}
                       title={dateStr}
                     >
-                      <span style={{ fontSize: '0.7rem', color: isToday ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
+                      <span style={{
+                        fontSize: '0.7rem',
+                        color: holidayColor
+                          ? 'var(--danger-color)'
+                          : isToday
+                            ? 'var(--text-primary)'
+                            : 'var(--text-secondary)',
+                        fontWeight: holidayColor ? '700' : '400'
+                      }}>
                         {day}
                       </span>
                       <div style={{
                         ...styles.dot,
-                        background: dotColor || 'rgba(0,0,0,0.1)',
-                        opacity: dotColor ? 1 : 0.2
+                        background: holidayColor || dotColor || 'rgba(0,0,0,0.1)',
+                        opacity: holidayColor || dotColor ? 1 : 0.2
                       }} />
                     </div>
                   )
@@ -146,7 +182,12 @@ const styles = {
   daysGrid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(7, 1fr)',
-    gap: '4px'
+    gap: '4px',
+    alignItems: 'start'
+  },
+  emptyDayCell: {
+    minHeight: '34px',
+    borderRadius: '6px',
   },
   dayCell: {
     display: 'flex',

@@ -100,7 +100,6 @@ const MonthlyView = ({ plans, t }) => {
               background: isToday ? 'rgba(99, 102, 241, 0.15)' : 'transparent'
             }}>
               <div className="monthly-day-top" style={styles.dayTopRow}>
-                {cell.holiday && <span className="monthly-holiday-badge" style={styles.holidayBadge}>🏮 {cell.holiday}</span>}
                 <span style={{
                   ...styles.dayNumber,
                   color: isToday ? 'var(--accent-color)' : 'inherit',
@@ -108,6 +107,7 @@ const MonthlyView = ({ plans, t }) => {
                 }}>
                   {cell.day}
                 </span>
+                {cell.holiday && <span className="monthly-holiday-badge" style={styles.holidayBadge}>🏮 {cell.holiday}</span>}
               </div>
               
               <div className="monthly-task-list" style={styles.taskListContainer}>
@@ -199,8 +199,8 @@ const styles = {
   },
   dayTopRow: {
     display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    justifyContent: 'flex-start',
+    alignItems: 'center',
     marginBottom: '0.5rem',
     gap: '0.35rem',
     minWidth: 0,
@@ -220,7 +220,7 @@ const styles = {
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
-    flex: 1,
+    flex: 0,
     minWidth: 0,
   },
   taskListContainer: {
