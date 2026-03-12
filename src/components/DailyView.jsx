@@ -87,12 +87,13 @@ const DailyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t }) =
               <div className="daily-date-headline" style={styles.dateHeadline}>
                 <h1 style={styles.weekdayName}>{getDayName(dateStr)}</h1>
                 <p style={styles.fullDate}>{getFullDateDisplay(dateStr)}</p>
-                {isToday && (
-                  <span style={styles.inlineTime}>
-                    {String(currentTime.getHours()).padStart(2, '0')}:{String(currentTime.getMinutes()).padStart(2, '0')}
-                  </span>
-                )}
               </div>
+
+              {isToday && (
+                <span style={styles.inlineTime}>
+                  {String(currentTime.getHours()).padStart(2, '0')}:{String(currentTime.getMinutes()).padStart(2, '0')}
+                </span>
+              )}
             </div>
 
             {!isToday && (
@@ -236,16 +237,19 @@ const styles = {
   dateHeadline: {
     display: 'flex',
     alignItems: 'baseline',
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     gap: '1rem',
     flexWrap: 'wrap',
+    flex: 1,
+    minWidth: 0,
   },
   inlineTime: {
-    fontSize: '1.25rem',
-    fontWeight: '600',
+    fontSize: '1.2rem',
+    fontWeight: '500',
     color: 'var(--text-primary)',
     fontVariantNumeric: 'tabular-nums',
     lineHeight: 1,
+    whiteSpace: 'nowrap',
   },
   headerTop: {
     display: 'flex',
@@ -262,12 +266,14 @@ const styles = {
   },
   weekdayName: {
     margin: 0,
-    fontSize: '2.5rem',
+    fontSize: '1.2rem',
+    fontWeight: '500',
     color: 'var(--text-primary)'
   },
   fullDate: {
     margin: 0,
     fontSize: '1.2rem',
+    fontWeight: '500',
     color: 'var(--text-secondary)',
   },
   quickActions: {

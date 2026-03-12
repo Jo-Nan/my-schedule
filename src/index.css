@@ -310,9 +310,9 @@ code {
   }
 
   .daily-date-headline {
-    flex-direction: column;
     align-items: center !important;
-    gap: 0.35rem !important;
+    justify-content: center !important;
+    gap: 0.5rem !important;
   }
 
   .daily-insight-bar {
@@ -364,13 +364,16 @@ code {
     gap: 1.25rem !important;
   }
 
-  .daily-date-headline h1 {
-    font-size: 2rem !important;
-    text-align: center;
+  .daily-date-hero {
+    align-items: center !important;
+    gap: 0.75rem !important;
   }
 
-  .daily-date-headline p {
+  .daily-date-headline h1,
+  .daily-date-headline p,
+  .daily-date-headline span {
     font-size: 1rem !important;
+    text-align: center;
   }
 
   .daily-quick-actions {
