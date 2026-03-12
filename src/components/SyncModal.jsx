@@ -4,7 +4,7 @@ const SyncModal = ({ isOpen, onClose, t }) => {
   if (!isOpen) return null;
 
   return (
-    <div className="modal-overlay animate-fade-in" style={styles.overlay}>
+    <div style={styles.overlay}>
       <div className="glass-panel" style={styles.modal}>
         <div style={styles.header}>
           <h2>{t.syncSettings}</h2>
@@ -46,6 +46,8 @@ const styles = {
     justifyContent: 'center',
     zIndex: 10000,
     backdropFilter: 'blur(8px)',
+    WebkitBackdropFilter: 'blur(8px)',
+    animation: 'fadeIn 0.25s ease-in',
   },
   modal: {
     width: '90%',

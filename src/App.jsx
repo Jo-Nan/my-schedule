@@ -137,9 +137,12 @@ function App() {
     localStorage.setItem('nanmuz_lang', newLang);
   };
 
-  // Fetch weather data when authenticated
+  // Auto-sync and fetch weather when authenticated
   useEffect(() => {
     if (isAuthenticated) {
+      // Auto-load plans from GitHub on page load/refresh
+      handleSync();
+      // Fetch weather data
       fetchWeeklyWeather().then(data => {
         setWeatherData(data);
       });

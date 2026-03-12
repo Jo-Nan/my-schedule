@@ -73,13 +73,6 @@ const Header = ({ viewMode, setViewMode, theme, toggleTheme, language, toggleLan
           >
             📥
           </button>
-          <button 
-            className="glass-button icon-only" 
-            onClick={() => setSyncModalOpen(true)}
-            title={t.settings}
-          >
-            ⚙️
-          </button>
         </div>
 
         <div className="button-group">
