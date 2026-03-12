@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import PlanCard from './PlanCard';
 import PlanModal from './PlanModal';
 
@@ -13,6 +13,8 @@ const getLocalDateStr = (date = new Date()) => {
 const WeeklyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t }) => {
   // Sliding window navigation state
   const [dayOffset, setDayOffset] = useState(0);
+  const gridRef = useRef(null);
+  const dayRefs = useRef({});
   
   // Generate a window of 5 days based on dayOffset
   const today = new Date();
@@ -24,6 +26,20 @@ const WeeklyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t }) 
     d.setDate(baseDate.getDate() + i);
     return getLocalDateStr(d);
   });
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || window.innerWidth > 900) return;
+
+    const todayStr = getLocalDateStr(new Date());
+    const targetDate = days.includes(todayStr) ? todayStr : days[0];
+    const targetNode = dayRefs.current[targetDate];
+
+    if (targetNode) {
+      targetNode.scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' });
+    } else if (gridRef.current) {
+      gridRef.current.scrollTo({ left: 0, behavior: 'smooth' });
+    }
+  }, [days]);
 
   const getDayName = (dateStr) => {
     const d = new Date(dateStr);
@@ -89,6 +105,9 @@ const WeeklyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t }) 
             <h3 style={styles.weekTitle}>
               {t.languageToggle === '🌐 English' ? `Week of ${days[0]}` : `${days[0]} 周`}
             </h3>
+            <p style={styles.weekRangeText}>
+              {t.languageToggle === '🌐 English' ? `${days[0]} → ${days[days.length - 1]}` : `${days[0]} 至 ${days[days.length - 1]}`}
+            </p>
 
             <button
               className="glass-button"
@@ -110,7 +129,7 @@ const WeeklyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t }) 
       </div>
 
       {/* Days grid */}
-      <div className="weekly-grid" style={styles.container}>
+      <div ref={gridRef} className="weekly-grid" style={styles.container}>
       <PlanModal 
         isOpen={modalState.isOpen} 
         onClose={() => setModalState({ isOpen: false, date: null, editingPlan: null })}
@@ -139,6 +158,9 @@ const WeeklyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t }) 
         return (
           <div 
             key={dateStr} 
+            ref={(node) => {
+              if (node) dayRefs.current[dateStr] = node;
+            }}
             className="glass-panel weekly-day-column" 
             style={{
               ...styles.dayColumn,
@@ -255,6 +277,11 @@ const styles = {
     fontSize: '1.3rem',
     color: 'var(--text-primary)',
     minWidth: '190px',
+  },
+  weekRangeText: {
+    margin: 0,
+    fontSize: '0.82rem',
+    color: 'var(--text-secondary)',
   },
   container: {
     display: 'grid',

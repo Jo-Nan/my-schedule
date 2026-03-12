@@ -20,10 +20,6 @@ const DailyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t }) =
   const dateStr = getLocalDateStr(currentDateObj);
   const isToday = dateStr === getLocalDateStr(new Date());
   
-  const yesterdayObj = new Date();
-  yesterdayObj.setDate(new Date().getDate() - 1);
-  const isYesterday = dateStr === getLocalDateStr(yesterdayObj);
-
   // Update time every second
   useEffect(() => {
     const timer = setInterval(() => {
@@ -91,22 +87,24 @@ const DailyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t }) =
               <div className="daily-date-headline" style={styles.dateHeadline}>
                 <h1 style={styles.weekdayName}>{getDayName(dateStr)}</h1>
                 <p style={styles.fullDate}>{getFullDateDisplay(dateStr)}</p>
-              </div>
-
-              {isToday && (
-                <div className="daily-clock-card" style={styles.clockCard}>
-                  <span style={styles.clockLabel}>{t.languageToggle === '🌐 English' ? 'Current Time' : '当前时间'}</span>
-                  <span style={styles.clockTimeSmall}>
+                {isToday && (
+                  <span style={styles.inlineTime}>
                     {String(currentTime.getHours()).padStart(2, '0')}:{String(currentTime.getMinutes()).padStart(2, '0')}
                   </span>
-                </div>
-              )}
+                )}
+              </div>
             </div>
 
-            <div className="daily-badge-row" style={styles.badgeRow}>
-              {isToday && <span style={styles.badgeToday}>{t.languageToggle === '🌐 English' ? 'Today' : '今天'}</span>}
-              {isYesterday && <span style={styles.badgeYesterday}>{t.languageToggle === '🌐 English' ? 'Yesterday' : '昨天'}</span>}
-            </div>
+            {!isToday && (
+              <div className="daily-quick-actions" style={styles.quickActions}>
+                <button className="glass-button" style={styles.todayShortcutBtn} onClick={(e) => {
+                  e.stopPropagation();
+                  handleToday();
+                }}>
+                  {t.backToToday}
+                </button>
+              </div>
+            )}
           </div>
 
           <button className="glass-button daily-nav-btn" style={styles.navBtn} onClick={handleNextDay}>{t.languageToggle === '🌐 English' ? 'Next Day' : '后一天'} →</button>
@@ -191,13 +189,22 @@ const DailyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t }) =
         )}
 
         <div 
-          className="glass-button" 
+          className="glass-button daily-add-button" 
           style={styles.hugeAddBtn}
           onClick={() => setModalState({ isOpen: true, date: dateStr, editingPlan: null })}
         >
           <span style={{ fontSize: '1.5rem', marginRight: '0.5rem' }}>+</span>
           {t.addPlan}
         </div>
+
+        <button
+          className="glass-button daily-fab"
+          style={styles.mobileFab}
+          onClick={() => setModalState({ isOpen: true, date: dateStr, editingPlan: null })}
+          aria-label={t.addPlan}
+        >
+          +
+        </button>
       </div>
 
     </div>
@@ -233,29 +240,12 @@ const styles = {
     gap: '1rem',
     flexWrap: 'wrap',
   },
-  clockCard: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    gap: '0.35rem',
-    padding: '0.7rem 1rem',
-    borderRadius: '14px',
-    border: '1px solid var(--glass-border)',
-    background: 'rgba(255,255,255,0.08)',
-    minWidth: '120px',
-  },
-  clockLabel: {
-    fontSize: '0.72rem',
-    textTransform: 'uppercase',
-    letterSpacing: '0.08em',
-    color: 'var(--text-secondary)',
-  },
-  clockTimeSmall: {
-    fontSize: '1.6rem',
+  inlineTime: {
+    fontSize: '1.25rem',
     fontWeight: '600',
+    color: 'var(--text-primary)',
     fontVariantNumeric: 'tabular-nums',
-    color: 'var(--accent-color)',
-    fontFamily: '"SF Mono", "Monaco", "Menlo", monospace',
+    lineHeight: 1,
   },
   headerTop: {
     display: 'flex',
@@ -280,33 +270,18 @@ const styles = {
     fontSize: '1.2rem',
     color: 'var(--text-secondary)',
   },
-  badgeRow: {
+  quickActions: {
     display: 'flex',
     justifyContent: 'center',
-    alignItems: 'center',
-    gap: '0.75rem',
     marginTop: '0.9rem',
-    minHeight: '34px',
   },
   navBtn: {
     padding: '0.6rem 1.2rem',
     fontSize: '1rem'
   },
-  badgeToday: {
-    background: 'var(--accent-color)',
-    color: '#fff',
-    fontSize: '0.9rem',
-    padding: '4px 12px',
-    borderRadius: '12px',
-    verticalAlign: 'middle',
-  },
-  badgeYesterday: {
-    background: 'var(--warning-color)',
-    color: '#fff',
-    fontSize: '0.9rem',
-    padding: '4px 12px',
-    borderRadius: '12px',
-    verticalAlign: 'middle',
+  todayShortcutBtn: {
+    padding: '0.55rem 1rem',
+    fontSize: '0.92rem',
   },
   insightBar: {
     display: 'flex',
@@ -392,6 +367,25 @@ const styles = {
     background: 'transparent',
     color: 'var(--text-secondary)',
     marginTop: '2rem'
+  },
+  mobileFab: {
+    display: 'none',
+    position: 'fixed',
+    right: '1rem',
+    bottom: '1rem',
+    width: '60px',
+    height: '60px',
+    borderRadius: '999px',
+    padding: 0,
+    fontSize: '2rem',
+    lineHeight: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: 'var(--accent-color)',
+    color: '#fff',
+    border: 'none',
+    boxShadow: '0 16px 40px rgba(0,0,0,0.22)',
+    zIndex: 1200,
   },
   emptyState: {
     display: 'flex',

@@ -270,11 +270,17 @@ code {
     align-items: stretch;
     padding-bottom: 0.25rem;
     scroll-snap-type: x proximity;
+    -webkit-overflow-scrolling: touch;
+    scroll-padding-inline: 0.25rem;
   }
 
   .weekly-day-column {
     scroll-snap-align: start;
     min-height: 520px;
+  }
+
+  .weekly-day-column .add-btn {
+    margin-top: auto !important;
   }
 
   .weekly-day-header {
@@ -309,16 +315,23 @@ code {
     gap: 0.35rem !important;
   }
 
-  .daily-clock-card {
-    width: 100%;
-    max-width: 220px;
-    margin: 0 auto;
-  }
-
   .daily-insight-bar {
     flex-direction: column;
     gap: 1rem;
     padding: 1rem !important;
+  }
+
+  .daily-quick-actions .glass-button {
+    width: 100%;
+    max-width: 220px;
+  }
+
+  .daily-add-button {
+    display: none !important;
+  }
+
+  .daily-fab {
+    display: inline-flex !important;
   }
 
   .daily-weather-widget,
@@ -339,6 +352,10 @@ code {
     align-items: flex-start !important;
   }
 
+  .weekly-grid {
+    grid-auto-columns: minmax(260px, 88vw);
+  }
+
   .weekly-weather-block {
     align-items: flex-start !important;
   }
@@ -356,9 +373,8 @@ code {
     font-size: 1rem !important;
   }
 
-  .daily-badge-row {
-    flex-wrap: wrap;
-    min-height: 0 !important;
+  .daily-quick-actions {
+    margin-top: 0.5rem !important;
   }
 
   .daily-plan-wrapper {
