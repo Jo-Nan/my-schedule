@@ -9,14 +9,38 @@ import subprocess
 import sys
 import datetime
 
-def run_cmd(cmd, check=True):
+DEFAULT_GIT_NAME = "Jo-Nan"
+DEFAULT_GIT_EMAIL = "nanqiao.ai@gmail.com"
+
+def run_cmd(cmd, check=True, capture_output=False):
     """执行命令"""
-    print(f"🚀 {cmd}")
-    result = subprocess.run(cmd, shell=True, text=True)
+    printable_cmd = " ".join(cmd)
+    print(f"🚀 {printable_cmd}")
+    result = subprocess.run(cmd, text=True, capture_output=capture_output)
     if check and result.returncode != 0:
         print(f"❌ 命令执行失败")
+        if capture_output and result.stderr:
+            print(result.stderr.strip())
         sys.exit(1)
-    return result.returncode == 0
+    return result
+
+def ensure_git_identity():
+    """确保当前仓库 Git 身份正确"""
+    print("\n✅ 检查 Git 用户信息...")
+
+    name_result = run_cmd(["git", "config", "--get", "user.name"], check=False, capture_output=True)
+    email_result = run_cmd(["git", "config", "--get", "user.email"], check=False, capture_output=True)
+
+    current_name = (name_result.stdout or "").strip()
+    current_email = (email_result.stdout or "").strip()
+
+    if current_name != DEFAULT_GIT_NAME:
+        run_cmd(["git", "config", "user.name", DEFAULT_GIT_NAME])
+
+    if current_email != DEFAULT_GIT_EMAIL:
+        run_cmd(["git", "config", "user.email", DEFAULT_GIT_EMAIL])
+
+    print(f"ℹ️  当前提交身份: {DEFAULT_GIT_NAME} <{DEFAULT_GIT_EMAIL}>")
 
 def main():
     # 获取提交信息
@@ -32,21 +56,38 @@ def main():
     
     # 1. 检查 git 状态
     print("\n✅ 检查 Git 状态...")
-    run_cmd("git status", check=False)
+    run_cmd(["git", "status"], check=False)
+
+    # 2. 确保 Git 身份正确
+    ensure_git_identity()
     
-    # 2. 添加所有改动
+    # 3. 添加所有改动
     print("\n✅ 添加文件...")
-    run_cmd("git add .")
+    run_cmd(["git", "add", "."])
     
-    # 3. 提交
+    # 4. 提交
     print(f"\n✅ 提交: \"{message}\"...")
-    if not run_cmd(f'git commit -m "{message}"', check=False):
-        print("ℹ️  无新改动")
-        return
+    commit_result = run_cmd(["git", "commit", "-m", message], check=False, capture_output=True)
+    if commit_result.returncode != 0:
+        stderr = (commit_result.stderr or "").strip()
+        stdout = (commit_result.stdout or "").strip()
+        combined_output = f"{stdout}\n{stderr}".strip()
+
+        if "nothing to commit" in combined_output.lower() or "no changes added to commit" in combined_output.lower():
+            print("ℹ️  无新改动")
+            return
+
+        print("❌ 提交失败")
+        if combined_output:
+            print(combined_output)
+        sys.exit(1)
+
+    if commit_result.stdout:
+        print(commit_result.stdout.strip())
     
-    # 4. 推送到远程
+    # 5. 推送到远程
     print("\n✅ 推送到 GitHub...")
-    run_cmd("git push")
+    run_cmd(["git", "push"])
     
     print("\n" + "="*50)
     print("🎉 提交成功！Vercel 会自动部署")

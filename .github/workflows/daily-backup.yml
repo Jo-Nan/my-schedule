@@ -2,8 +2,8 @@ name: Daily Backup of Plans Data
 
 on:
   schedule:
-    # Run every day at 2:00 AM Beijing time (UTC+8) = 18:00 previous day UTC
-    - cron: '0 18 * * *'
+    # Run every day at 4:00 AM Beijing time (UTC+8) = 20:00 previous day UTC
+    - cron: '0 20 * * *'
   workflow_dispatch:  # Allow manual trigger
 
 jobs:

@@ -30,7 +30,7 @@ const SyncModal = ({ isOpen, onClose, t }) => {
             <h4 style={styles.sectionTitle}>💾 自动备份</h4>
             <div style={styles.steps}>
               <ol>
-                <li>每天凌晨 2:00 AM（北京时间）自动备份一次数据。</li>
+                <li>每天凌晨 4:00 AM（北京时间）自动备份一次数据。</li>
                 <li>备份文件保存在 <code>my-schedule</code> 仓库的 <code>backups/</code> 目录。</li>
                 <li>文件名格式：<code>YYYYMMDD.json</code>（如 <code>20260313.json</code>）。</li>
                 <li>如需恢复数据，可从备份目录选择对应日期的文件。详见项目文档。</li>
