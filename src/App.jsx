@@ -50,19 +50,36 @@ function App() {
     localStorage.setItem('nanmuz_plans', JSON.stringify(plans));
   }, [plans]);
 
-  // Sync Logic
+  // Sync Logic - 正确处理数据合并
   const mergePlans = (local, remote) => {
-    const merged = [...local];
-    remote.forEach(remotePlan => {
-      const existingIdx = merged.findIndex(p => p.id === remotePlan.id);
-      if (existingIdx > -1) {
-        if ((remotePlan.updatedAt || 0) > (merged[existingIdx].updatedAt || 0)) {
-          merged[existingIdx] = remotePlan;
+    // 基于远程数据构建最终结果（远程是真实来源）
+    const merged = [];
+    const remoteIds = new Set(remote.map(p => p.id));
+    
+    // 1. 遍历本地数据，如果在远程存在则比较时间戳
+    local.forEach(localPlan => {
+      const remoteIndex = remote.findIndex(p => p.id === localPlan.id);
+      if (remoteIndex > -1) {
+        // 本地和远程都有 - 保留更新的版本
+        const remotePlan = remote[remoteIndex];
+        if ((remotePlan.updatedAt || 0) > (localPlan.updatedAt || 0)) {
+          merged.push(remotePlan);
+        } else {
+          merged.push(localPlan);
         }
       } else {
+        // 本地有但远程没有 - 可能被其他浏览器删除，不要加回
+        console.log(`[Sync] Skipping locally deleted item: ${localPlan.id}`);
+      }
+    });
+    
+    // 2. 添加远程独有的项目（其他浏览器新增的）
+    remote.forEach(remotePlan => {
+      if (!local.some(p => p.id === remotePlan.id)) {
         merged.push(remotePlan);
       }
     });
+    
     return merged;
   };
 
@@ -106,6 +123,19 @@ function App() {
         throw new Error(result.message || 'Failed to save plans to GitHub');
       }
 
+      // 保存成功后，立即重新同步确保所有浏览器数据一致
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      const syncResponse = await fetch('/api/load-plans?t=' + Date.now());
+      if (!syncResponse.ok) throw new Error('Sync after save failed');
+      
+      const syncResult = await syncResponse.json();
+      if (syncResult.status === 'success') {
+        const remotePlans = syncResult.data || [];
+        // 直接使用远程数据作为真实来源（避免再次合并）
+        setPlans(remotePlans);
+      }
+
       setSyncStatus('synced');
       setTimeout(() => setSyncStatus('idle'), 3000);
     } catch (err) {
@@ -141,7 +171,25 @@ function App() {
   useEffect(() => {
     if (isAuthenticated) {
       // Auto-load plans from GitHub on page load/refresh
-      handleSync();
+      // 使用智能合并：优先保留本地较新的数据
+      const loadAndMergePlans = async () => {
+        try {
+          const response = await fetch('/api/load-plans?t=' + Date.now());
+          if (!response.ok) return;
+          
+          const result = await response.json();
+          if (result.status === 'success') {
+            const remotePlans = result.data || [];
+            // 使用 mergePlans 确保本地更新的数据不会被覆盖
+            setPlans(prev => mergePlans(prev, remotePlans));
+          }
+        } catch (err) {
+          console.error('Auto-sync on load failed:', err);
+        }
+      };
+      
+      loadAndMergePlans();
+      
       // Fetch weather data
       fetchWeeklyWeather().then(data => {
         setWeatherData(data);
@@ -168,8 +216,21 @@ function App() {
   };
 
   const addPlan = (newPlan) => {
+    // 确保新计划有所有必需的字段
+    const completePlan = {
+      id: newPlan.id || `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+      event: newPlan.event || '',
+      date: newPlan.date || new Date().toISOString().split('T')[0],
+      time: newPlan.time || '',
+      person: newPlan.person || 'self',
+      ddl: newPlan.ddl || '',
+      progress: newPlan.progress || 0,
+      status: newPlan.status || 'uncompleted',
+      updatedAt: Date.now()
+    };
+    
     setPlans(prev => {
-      const updated = [...prev, { ...newPlan, updatedAt: Date.now() }];
+      const updated = [...prev, completePlan];
       triggerAutoSync();
       return updated;
     });

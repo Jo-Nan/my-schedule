@@ -1,5 +1,12 @@
 import React, { useState, useEffect } from 'react';
 
+// 生成更可靠的 ID（避免同毫秒冲突）
+const generateId = () => {
+  const timestamp = Date.now();
+  const random = Math.random().toString(36).substring(2, 9);
+  return `${timestamp}-${random}`;
+};
+
 const PlanModal = ({ isOpen, onClose, onSave, date, initialData, t }) => {
   const [formData, setFormData] = useState({
     event: '',
@@ -41,7 +48,7 @@ const PlanModal = ({ isOpen, onClose, onSave, date, initialData, t }) => {
       onSave({
         ...formData,
         date,
-        id: Date.now().toString(),
+        id: generateId(),
         progress: 0,
         status: 'uncompleted'
       });
