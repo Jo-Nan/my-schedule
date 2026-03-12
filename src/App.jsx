@@ -66,23 +66,16 @@ function App() {
   const handleSync = async () => {
     setSyncStatus('loading');
     try {
-      // 1. Try the local dev API first (handles OS-specific absolute paths)
-      let response = await fetch('/api/load-plans?t=' + Date.now()); 
-      
-      // 2. Fallback to static file if API is not found (Production/GitHub Pages)
-      if (!response.ok || response.status === 404) {
-        response = await fetch('./data/plans.json?t=' + Date.now());
-      }
-
-      if (response.status === 404) {
-        // Still not found? Just idle (first run case)
-        setSyncStatus('idle');
-        return;
-      }
+      const response = await fetch('/api/load-plans?t=' + Date.now());
 
       if (!response.ok) throw new Error('Sync failed');
-      const remotePlans = await response.json();
+      const result = await response.json();
       
+      if (result.status !== 'success') {
+        throw new Error(result.message || 'Failed to load plans from GitHub');
+      }
+
+      const remotePlans = result.data || [];
       const merged = mergePlans(plans, remotePlans);
       setPlans(merged);
       setSyncStatus('synced');
@@ -90,41 +83,32 @@ function App() {
     } catch (err) {
       console.error('Sync Error:', err);
       setSyncStatus('error');
-      alert(t.syncError);
+      alert(t.syncError || 'Sync failed');
     }
   };
 
   const handleExport = async () => {
     setSyncStatus('uploading');
     try {
-      // Try direct local save via Vite middleware first
-      const apiResponse = await fetch('/api/save-plans', {
+      const response = await fetch('/api/save-plans', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(plans)
       });
 
-      if (apiResponse.ok) {
-        setSyncStatus('synced');
-        setTimeout(() => setSyncStatus('idle'), 3000);
-        return;
+      if (!response.ok) throw new Error('Save failed');
+      const result = await response.json();
+
+      if (result.status !== 'success') {
+        throw new Error(result.message || 'Failed to save plans to GitHub');
       }
 
-      // Fallback: Browser download
-      const dataStr = JSON.stringify(plans, null, 2);
-      const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
-      
-      const exportFileDefaultName = 'plans.json';
-      const linkElement = document.createElement('a');
-      linkElement.setAttribute('href', dataUri);
-      linkElement.setAttribute('download', exportFileDefaultName);
-      linkElement.click();
-      
       setSyncStatus('synced');
       setTimeout(() => setSyncStatus('idle'), 3000);
     } catch (err) {
       console.error('Export error:', err);
       setSyncStatus('error');
+      alert((t.uploadError || t.syncError) || 'Save failed');
     }
   };
 
