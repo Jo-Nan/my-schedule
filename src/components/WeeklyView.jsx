@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import PlanCard from './PlanCard';
 import PlanModal from './PlanModal';
 
-const WeeklyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData }) => {
+const WeeklyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t }) => {
   // Generate a window of 5 days starting from yesterday so Today is column 2: [Today-1, Today, Today+1, Today+2, Today+3]
   const today = new Date();
   const days = Array.from({ length: 5 }).map((_, i) => {
@@ -13,26 +13,28 @@ const WeeklyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData }) => 
 
   const getDayName = (dateStr) => {
     const d = new Date(dateStr);
-    return new Intl.DateTimeFormat('en-US', { weekday: 'long' }).format(d);
+    return new Intl.DateTimeFormat(t.languageToggle === '🌐 English' ? 'en-US' : 'zh-CN', { weekday: 'long' }).format(d);
   };
 
-  const [modalState, setModalState] = useState({ isOpen: false, date: null });
+  const [modalState, setModalState] = useState({ isOpen: false, date: null, editingPlan: null });
 
   const handleAddTask = (date) => {
-    setModalState({ isOpen: true, date });
+    setModalState({ isOpen: true, date, editingPlan: null });
   };
 
-  const handleSaveTask = (newPlan) => {
-    addPlan(newPlan);
+  const handleEditTask = (plan) => {
+    setModalState({ isOpen: true, date: plan.date, editingPlan: plan });
   };
 
   return (
     <div style={styles.container}>
       <PlanModal 
         isOpen={modalState.isOpen} 
-        onClose={() => setModalState({ isOpen: false, date: null })}
-        onSave={handleSaveTask}
+        onClose={() => setModalState({ isOpen: false, date: null, editingPlan: null })}
+        onSave={modalState.editingPlan ? updatePlan : addPlan}
         date={modalState.date}
+        initialData={modalState.editingPlan}
+        t={t}
       />
       {days.map(dateStr => {
         const isToday = dateStr === today.toISOString().split('T')[0];
@@ -48,7 +50,7 @@ const WeeklyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData }) => 
         dayPlans.sort((a,b) => {
           if (a.status !== 'completed' && b.status === 'completed') return -1;
           if (a.status === 'completed' && b.status !== 'completed') return 1;
-          return a.time.localeCompare(b.time);
+          return (a.time || '').localeCompare(b.time || '');
         });
 
         return (
@@ -61,8 +63,8 @@ const WeeklyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData }) => 
               <div style={styles.dateInfo}>
                 <span style={styles.weekday}>{getDayName(dateStr)}</span>
                 <span style={styles.dateText}>{dateStr.slice(5)}</span>
-                {isToday && <span style={styles.todayBadge}>Today</span>}
-                {isYesterday && <span style={styles.yesterdayBadge}>Yesterday</span>}
+                {isToday && <span style={styles.todayBadge}>{t.languageToggle === '🌐 English' ? 'Today' : '今天'}</span>}
+                {isYesterday && <span style={styles.yesterdayBadge}>{t.languageToggle === '🌐 English' ? 'Yesterday' : '昨天'}</span>}
               </div>
               
               {new Date(dateStr) >= new Date(today.toISOString().split('T')[0]) ? (
@@ -80,7 +82,7 @@ const WeeklyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData }) => 
                     </div>
                   </div>
                 ) : (
-                  <div style={{minHeight: '66px', opacity: 0.5}}>Fetching weather...</div>
+                  <div style={{minHeight: '66px', opacity: 0.5}}>{t.languageToggle === '🌐 English' ? 'Fetching weather...' : '获取天气中...'}</div>
                 )
               ) : (
                 <div style={{minHeight: '66px'}}></div>
@@ -89,14 +91,21 @@ const WeeklyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData }) => 
 
             <div style={styles.planList}>
               {dayPlans.map(plan => (
-                <PlanCard key={plan.id} plan={plan} updatePlan={updatePlan} deletePlan={deletePlan} />
+                <PlanCard 
+                  key={plan.id} 
+                  plan={plan} 
+                  updatePlan={updatePlan} 
+                  deletePlan={deletePlan} 
+                  onEdit={handleEditTask}
+                  t={t}
+                />
               ))}
               <div 
                 className="glass-button add-btn" 
                 style={styles.addBtn}
                 onClick={() => handleAddTask(dateStr)}
               >
-                + Add Plan
+                + {t.addPlan}
               </div>
             </div>
           </div>

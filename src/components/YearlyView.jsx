@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import PlanModal from './PlanModal';
 
-const YearlyView = ({ plans, addPlan }) => {
+const YearlyView = ({ plans, addPlan, t }) => {
   const [modalState, setModalState] = useState({ isOpen: false, date: null });
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
 
@@ -31,6 +31,8 @@ const YearlyView = ({ plans, addPlan }) => {
     return Array.from({ length: daysInMonth }, (_, i) => i + 1);
   };
 
+  const isEn = t.languageToggle === '🌐 English';
+
   return (
     <div className="animate-fade-in" style={styles.container}>
       <PlanModal 
@@ -38,18 +40,19 @@ const YearlyView = ({ plans, addPlan }) => {
         onClose={() => setModalState({ isOpen: false, date: null })}
         onSave={addPlan}
         date={modalState.date}
+        t={t}
       />
 
       <div style={styles.header}>
-        <button className="glass-button" style={styles.navBtn} onClick={handlePrevYear}>← Prev Year</button>
-        <h2 style={styles.yearTitle} onClick={handleThisYear} title="Back to Current Year">{currentYear}</h2>
-        <button className="glass-button" style={styles.navBtn} onClick={handleNextYear}>Next Year →</button>
+        <button className="glass-button" style={styles.navBtn} onClick={handlePrevYear}>← {t.prevYear}</button>
+        <h2 style={styles.yearTitle} onClick={handleThisYear} title={t.backToCurrentYear}>{currentYear}</h2>
+        <button className="glass-button" style={styles.navBtn} onClick={handleNextYear}>{t.nextYear} →</button>
       </div>
 
       <div style={styles.yearGrid}>
         {months.map(month => {
           const days = getDaysInMonthArray(currentYear, month);
-          const monthName = new Intl.DateTimeFormat('en-US', { month: 'long' }).format(new Date(currentYear, month, 1));
+          const monthName = new Intl.DateTimeFormat(isEn ? 'en-US' : 'zh-CN', { month: 'long' }).format(new Date(currentYear, month, 1));
           
           return (
             <div key={month} className="glass-panel" style={styles.monthCard}>

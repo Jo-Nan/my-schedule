@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
-const PlanModal = ({ isOpen, onClose, onSave, date }) => {
+const PlanModal = ({ isOpen, onClose, onSave, date, initialData, t }) => {
   const [formData, setFormData] = useState({
     event: '',
     time: '',
@@ -8,45 +8,73 @@ const PlanModal = ({ isOpen, onClose, onSave, date }) => {
     ddl: ''
   });
 
+  useEffect(() => {
+    if (initialData) {
+      setFormData({
+        event: initialData.event || '',
+        time: initialData.time || '',
+        person: initialData.person || '',
+        ddl: initialData.ddl || ''
+      });
+    } else {
+      setFormData({ event: '', time: '', person: '', ddl: '' });
+    }
+  }, [initialData, isOpen]);
+
   if (!isOpen) return null;
 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!formData.event.trim()) {
-      alert('Event name is required!');
+      alert(t.eventRequired || 'Event name is required!');
       return;
     }
-    onSave({
-      ...formData,
-      date,
-      id: Date.now().toString(),
-      progress: 0,
-      status: 'uncompleted'
-    });
+    
+    if (initialData) {
+      // Edit mode
+      onSave(initialData.id, {
+        ...formData,
+        date: date || initialData.date
+      });
+    } else {
+      // Add mode
+      onSave({
+        ...formData,
+        date,
+        id: Date.now().toString(),
+        progress: 0,
+        status: 'uncompleted'
+      });
+    }
+    
     setFormData({ event: '', time: '', person: '', ddl: '' });
     onClose();
   };
 
+  const isEdit = !!initialData;
+
   return (
     <div style={styles.overlay} className="animate-fade-in">
       <div style={styles.modal} className="glass-panel">
-        <h3 style={styles.title}>Add Plan for {date}</h3>
+        <h3 style={styles.title}>
+          {isEdit ? t.editPlan : t.addPlan} {date ? `(${date})` : ''}
+        </h3>
         
         <form onSubmit={handleSubmit} style={styles.form}>
           <div style={styles.field}>
-            <label style={styles.label}>Event *</label>
+            <label style={styles.label}>{t.eventLabel || 'Event'} *</label>
             <input
               className="glass-input"
               value={formData.event}
               onChange={(e) => setFormData({ ...formData, event: e.target.value })}
-              placeholder="What needs to be done?"
+              placeholder={t.eventPlaceholder || "What needs to be done?"}
               autoFocus
             />
           </div>
 
           <div style={styles.row}>
             <div style={styles.field}>
-              <label style={styles.label}>Time</label>
+              <label style={styles.label}>{t.timeLabel || 'Time'}</label>
               <input
                 className="glass-input"
                 value={formData.time}
@@ -55,7 +83,7 @@ const PlanModal = ({ isOpen, onClose, onSave, date }) => {
               />
             </div>
             <div style={styles.field}>
-              <label style={styles.label}>Person</label>
+              <label style={styles.label}>{t.personLabel || 'Person'}</label>
               <input
                 className="glass-input"
                 value={formData.person}
@@ -66,7 +94,7 @@ const PlanModal = ({ isOpen, onClose, onSave, date }) => {
           </div>
 
           <div style={styles.field}>
-            <label style={styles.label}>DDL</label>
+            <label style={styles.label}>{t.ddlLabel || 'DDL'}</label>
             <input
               className="glass-input"
               value={formData.ddl}
@@ -77,10 +105,10 @@ const PlanModal = ({ isOpen, onClose, onSave, date }) => {
 
           <div style={styles.actions}>
             <button type="button" className="glass-button" onClick={onClose} style={styles.cancelBtn}>
-              Cancel
+              {t.cancel}
             </button>
             <button type="submit" className="glass-button" style={styles.saveBtn}>
-              Save Plan
+              {t.save}
             </button>
           </div>
         </form>

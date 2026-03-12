@@ -112,6 +112,7 @@ function App() {
             addPlan={addPlan} 
             deletePlan={deletePlan}
             weatherData={weatherData} 
+            t={t}
           />
         )}
         {viewMode === 'weekly' && (
@@ -121,13 +122,14 @@ function App() {
             addPlan={addPlan} 
             deletePlan={deletePlan}
             weatherData={weatherData} 
+            t={t}
           />
         )}
         {viewMode === 'monthly' && (
-          <MonthlyView plans={plans} />
+          <MonthlyView plans={plans} t={t} />
         )}
         {viewMode === 'yearly' && (
-          <YearlyView plans={plans} addPlan={addPlan} />
+          <YearlyView plans={plans} addPlan={addPlan} t={t} />
         )}
       </main>
     </div>

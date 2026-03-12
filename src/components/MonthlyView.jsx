@@ -11,7 +11,7 @@ const HOLIDAYS = {
   '2026-10-01': 'National Day'
 };
 
-const MonthlyView = ({ plans }) => {
+const MonthlyView = ({ plans, t }) => {
   const today = new Date();
   const [currentDate, setCurrentDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
   
@@ -52,21 +52,24 @@ const MonthlyView = ({ plans }) => {
     });
   }
 
-  const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const isEn = t.languageToggle === '🌐 English';
+  const weekdays = isEn 
+    ? ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+    : ['日', '一', '二', '三', '四', '五', '六'];
 
   return (
     <div className="glass-panel animate-fade-in" style={styles.container}>
       <div style={styles.header}>
         <div style={styles.navControls}>
-          <button className="glass-button" style={styles.navBtn} onClick={prevMonth}>← Prev</button>
+          <button className="glass-button" style={styles.navBtn} onClick={prevMonth}>← {isEn ? 'Prev' : '上个月'}</button>
         </div>
         
-        <h2 style={styles.title} onClick={resetToToday} title="Back to current month">
-          {new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' }).format(currentDate)}
+        <h2 style={styles.title} onClick={resetToToday} title={isEn ? "Back to current month" : "回到本月"}>
+          {new Intl.DateTimeFormat(isEn ? 'en-US' : 'zh-CN', { month: 'long', year: 'numeric' }).format(currentDate)}
         </h2>
         
         <div style={styles.navControls}>
-          <button className="glass-button" style={styles.navBtn} onClick={nextMonth}>Next →</button>
+          <button className="glass-button" style={styles.navBtn} onClick={nextMonth}>{isEn ? 'Next' : '下个月'} →</button>
         </div>
       </div>
       

@@ -2,8 +2,8 @@ import React, { useState } from 'react';
 import PlanCard from './PlanCard';
 import PlanModal from './PlanModal';
 
-const DailyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData }) => {
-  const [modalState, setModalState] = useState({ isOpen: false, date: null });
+const DailyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t }) => {
+  const [modalState, setModalState] = useState({ isOpen: false, date: null, editingPlan: null });
   // Start from Today
   const [currentDateObj, setCurrentDateObj] = useState(new Date());
 
@@ -20,14 +20,14 @@ const DailyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData }) => {
   dayPlans.sort((a,b) => {
     if (a.status !== 'completed' && b.status === 'completed') return -1;
     if (a.status === 'completed' && b.status !== 'completed') return 1;
-    return a.time.localeCompare(b.time);
+    return (a.time || '').localeCompare(b.time || '');
   });
 
   const getDayName = (dStr) => {
-    return new Intl.DateTimeFormat('en-US', { weekday: 'long' }).format(new Date(dStr));
+    return new Intl.DateTimeFormat(t.languageToggle === '🌐 English' ? 'en-US' : 'zh-CN', { weekday: 'long' }).format(new Date(dStr));
   };
   const getFullDateDisplay = (dStr) => {
-    return new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric', year: 'numeric' }).format(new Date(dStr));
+    return new Intl.DateTimeFormat(t.languageToggle === '🌐 English' ? 'en-US' : 'zh-CN', { month: 'long', day: 'numeric', year: 'numeric' }).format(new Date(dStr));
   };
 
   const handlePrevDay = () => {
@@ -44,6 +44,10 @@ const DailyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData }) => {
     setCurrentDateObj(new Date());
   };
 
+  const handleEdit = (plan) => {
+    setModalState({ isOpen: true, date: plan.date, editingPlan: plan });
+  };
+
   const completedCount = dayPlans.filter(p => p.status === 'completed').length;
   const totalCount = dayPlans.length;
   const progressRatio = totalCount === 0 ? 0 : Math.round((completedCount / totalCount) * 100);
@@ -52,26 +56,28 @@ const DailyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData }) => {
     <div className="animate-fade-in" style={styles.container}>
       <PlanModal 
         isOpen={modalState.isOpen} 
-        onClose={() => setModalState({ isOpen: false, date: null })}
-        onSave={addPlan}
+        onClose={() => setModalState({ isOpen: false, date: null, editingPlan: null })}
+        onSave={modalState.editingPlan ? updatePlan : addPlan}
         date={modalState.date}
+        initialData={modalState.editingPlan}
+        t={t}
       />
 
       {/* Focus Header */}
       <div className="glass-panel" style={styles.focusHeader}>
         <div style={styles.headerTop}>
-          <button className="glass-button" style={styles.navBtn} onClick={handlePrevDay}>← Prev Day</button>
+          <button className="glass-button" style={styles.navBtn} onClick={handlePrevDay}>← {t.languageToggle === '🌐 English' ? 'Prev Day' : '前一天'}</button>
           
-          <div style={styles.dateBlock} onClick={handleToday} title="Back to Today">
+          <div style={styles.dateBlock} onClick={handleToday} title={t.languageToggle === '🌐 English' ? 'Back to Today' : '回到今天'}>
             <h1 style={styles.weekdayName}>
               {getDayName(dateStr)}
-              {isToday && <span style={styles.badgeToday}>Today</span>}
-              {isYesterday && <span style={styles.badgeYesterday}>Yesterday</span>}
+              {isToday && <span style={styles.badgeToday}>{t.languageToggle === '🌐 English' ? 'Today' : '今天'}</span>}
+              {isYesterday && <span style={styles.badgeYesterday}>{t.languageToggle === '🌐 English' ? 'Yesterday' : '昨天'}</span>}
             </h1>
             <p style={styles.fullDate}>{getFullDateDisplay(dateStr)}</p>
           </div>
 
-          <button className="glass-button" style={styles.navBtn} onClick={handleNextDay}>Next Day →</button>
+          <button className="glass-button" style={styles.navBtn} onClick={handleNextDay}>{t.languageToggle === '🌐 English' ? 'Next Day' : '后一天'} →</button>
         </div>
 
         {/* Weather Sub-panel for Daily Focus */}
@@ -84,22 +90,22 @@ const DailyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData }) => {
                   <span style={{ fontSize: '1.8rem', fontWeight: 'bold' }}>{Math.round(dayWeather.tempMax)}°</span>
                 </div>
                 <div style={styles.wDetails}>
-                  <span>💧 Hum: {dayWeather.humidity}%</span>
+                  <span>💧 {t.languageToggle === '🌐 English' ? 'Hum' : '湿度'}: {dayWeather.humidity}%</span>
                   <span style={{ color: dayWeather.aqiLabel.color, fontWeight: 'bold' }}>
-                    Air: {dayWeather.aqiLabel.label}
+                    {t.languageToggle === '🌐 English' ? 'Air' : '空气'}: {dayWeather.aqiLabel.label}
                   </span>
                 </div>
               </div>
             ) : (
-               <div style={{ opacity: 0.5, fontStyle: 'italic' }}>Loading local weather...</div>
+                <div style={{ opacity: 0.5, fontStyle: 'italic' }}>{t.languageToggle === '🌐 English' ? 'Loading local weather...' : '正在加载天气...'}</div>
             )
           ) : (
-            <div style={{ color: 'var(--text-tertiary)' }}>No weather data for past dates.</div>
+            <div style={{ color: 'var(--text-tertiary)' }}>{t.languageToggle === '🌐 English' ? 'No weather data for past dates.' : '过去日期无天气数据。'}</div>
           )}
 
           {/* Daily Progress Widget */}
           <div style={styles.progressWidget}>
-            <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--text-secondary)' }}>Daily Mission</h3>
+            <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--text-secondary)' }}>{t.languageToggle === '🌐 English' ? 'Daily Mission' : '今日目标'}</h3>
             <div style={styles.progressText}>
               <span style={{ fontSize: '2rem', fontWeight: 'bold', color: progressRatio === 100 ? 'var(--success-color)' : 'var(--text-primary)' }}>
                 {completedCount}
@@ -118,7 +124,7 @@ const DailyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData }) => {
         {dayPlans.length === 0 ? (
           <div style={styles.emptyState}>
             <p style={{ fontSize: '4rem', margin: 0 }}>☕️</p>
-            <h3 style={{ color: 'var(--text-secondary)' }}>No plans scheduled for this day yet.</h3>
+            <h3 style={{ color: 'var(--text-secondary)' }}>{t.languageToggle === '🌐 English' ? 'No plans scheduled for this day yet.' : '今天还没有计划。'}</h3>
           </div>
         ) : (
           <div style={styles.plansStack}>
@@ -139,7 +145,13 @@ const DailyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData }) => {
                 
                 {/* Resizing PlanCard for focus mode */}
                 <div style={styles.expandedCard}>
-                  <PlanCard plan={plan} updatePlan={updatePlan} deletePlan={deletePlan} />
+                  <PlanCard 
+                    plan={plan} 
+                    updatePlan={updatePlan} 
+                    deletePlan={deletePlan} 
+                    onEdit={handleEdit}
+                    t={t}
+                  />
                 </div>
               </div>
             ))}
@@ -149,10 +161,10 @@ const DailyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData }) => {
         <div 
           className="glass-button" 
           style={styles.hugeAddBtn}
-          onClick={() => setModalState({ isOpen: true, date: dateStr })}
+          onClick={() => setModalState({ isOpen: true, date: dateStr, editingPlan: null })}
         >
           <span style={{ fontSize: '1.5rem', marginRight: '0.5rem' }}>+</span>
-          Schedule a New Focused Action
+          {t.addPlan}
         </div>
       </div>
 

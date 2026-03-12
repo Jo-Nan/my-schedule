@@ -1,11 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 
-const PlanCard = ({ plan, updatePlan, deletePlan }) => {
+const PlanCard = ({ plan, updatePlan, deletePlan, onEdit, t }) => {
   const [isDragging, setIsDragging] = useState(false);
   const sliderRef = useRef(null);
 
   const handleDelete = () => {
-    if (window.confirm(`Are you sure you want to delete "${plan.event}"?`)) {
+    if (window.confirm(`${t.confirmDelete || 'Are you sure you want to delete'} "${plan.event}"?`)) {
       deletePlan(plan.id);
     }
   };
@@ -66,14 +66,24 @@ const PlanCard = ({ plan, updatePlan, deletePlan }) => {
       <div style={styles.header}>
         <h4 style={styles.event}>{plan.event}</h4>
         
-        <button 
-          className="glass-button"
-          onClick={handleDelete}
-          style={styles.deleteBtn}
-          title="Delete Plan"
-        >
-          🗑️
-        </button>
+        <div style={styles.headerActions}>
+          <button 
+            className="glass-button"
+            onClick={() => onEdit(plan)}
+            style={styles.editBtn}
+            title={t.editPlan}
+          >
+            ✏️
+          </button>
+          <button 
+            className="glass-button"
+            onClick={handleDelete}
+            style={styles.deleteBtn}
+            title={t.deletePlan}
+          >
+            🗑️
+          </button>
+        </div>
       </div>
       
       <div style={styles.metaRow}>
@@ -144,6 +154,18 @@ const styles = {
     margin: 0,
     fontWeight: 500,
     lineHeight: 1.3,
+  },
+  headerActions: {
+    display: 'flex',
+    gap: '0.4rem',
+  },
+  editBtn: {
+    padding: '0.2rem',
+    background: 'none',
+    border: 'none',
+    boxShadow: 'none',
+    color: 'var(--text-secondary)',
+    opacity: 0.6,
   },
   deleteBtn: {
     padding: '0.2rem',
