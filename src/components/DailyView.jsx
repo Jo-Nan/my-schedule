@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import PlanCard from './PlanCard';
 import PlanModal from './PlanModal';
 
@@ -6,6 +6,8 @@ const DailyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t }) =
   const [modalState, setModalState] = useState({ isOpen: false, date: null, editingPlan: null });
   // Start from Today
   const [currentDateObj, setCurrentDateObj] = useState(new Date());
+  // Current time display
+  const [currentTime, setCurrentTime] = useState(new Date());
 
   const dateStr = currentDateObj.toISOString().split('T')[0];
   const isToday = dateStr === new Date().toISOString().split('T')[0];
@@ -13,6 +15,14 @@ const DailyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t }) =
   const yesterdayObj = new Date();
   yesterdayObj.setDate(new Date().getDate() - 1);
   const isYesterday = dateStr === yesterdayObj.toISOString().split('T')[0];
+
+  // Update time every second
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   const dayWeather = weatherData.find(w => w.date === dateStr);
   
@@ -65,6 +75,18 @@ const DailyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t }) =
 
       {/* Focus Header */}
       <div className="glass-panel" style={styles.focusHeader}>
+        {/* Clock Display */}
+        {isToday && (
+          <div style={styles.clockWidget}>
+            <div style={styles.clockDisplay}>
+              {String(currentTime.getHours()).padStart(2, '0')}
+              <span style={styles.clockColon}>:</span>
+              {String(currentTime.getMinutes()).padStart(2, '0')}
+            </div>
+            <div style={styles.clockLabel}>{t.languageToggle === '🌐 English' ? 'Current Time' : '当前时间'}</div>
+          </div>
+        )}
+
         <div style={styles.headerTop}>
           <button className="glass-button" style={styles.navBtn} onClick={handlePrevDay}>← {t.languageToggle === '🌐 English' ? 'Prev Day' : '前一天'}</button>
           
@@ -186,6 +208,34 @@ const styles = {
     flexDirection: 'column',
     padding: '2rem',
     gap: '2rem'
+  },
+  clockWidget: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    padding: '1.5rem',
+    background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(59, 130, 246, 0.1))',
+    borderRadius: '16px',
+    border: '1px solid var(--glass-border)',
+  },
+  clockDisplay: {
+    fontSize: '4rem',
+    fontWeight: '700',
+    fontVariantNumeric: 'tabular-nums',
+    color: 'var(--accent-color)',
+    lineHeight: 1,
+    letterSpacing: '-0.05em',
+    fontFamily: '"SF Mono", "Monaco", "Menlo", monospace',
+  },
+  clockColon: {
+    display: 'inline-block',
+    animation: 'blink 1s step-start infinite',
+  },
+  clockLabel: {
+    marginTop: '0.8rem',
+    fontSize: '0.9rem',
+    color: 'var(--text-secondary)',
+    fontWeight: '500',
   },
   headerTop: {
     display: 'flex',
