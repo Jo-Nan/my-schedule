@@ -7,7 +7,7 @@ const AuthOverlay = ({ onAuthenticated, t }) => {
   const [lockoutUntil, setLockoutUntil] = useState(null);
   
   // SHA-256 hash of '571428'
-  const HASHED_PASSWORD = '99742880c98f869153cb100ca2c3666b6c086d0ba5032049e9cf245942f62b4d'; 
+  const HASHED_PASSWORD = 'be7983a25dcc8f7a3f12704e1714b44abd46f041c11984ea637b14aa69a5c869'; 
   const MAX_ATTEMPTS = 5;
   const LOCKOUT_MINUTES = 5;
 
