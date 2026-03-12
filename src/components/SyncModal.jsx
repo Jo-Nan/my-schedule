@@ -13,13 +13,29 @@ const SyncModal = ({ isOpen, onClose, t }) => {
 
         <div style={styles.content}>
           <p style={styles.info}>{t.fileSyncInfo}</p>
-          <div style={styles.steps}>
-            <ol>
-              <li>点击 <b>{t.upload}</b> 后，计划数据会保存到 GitHub 私有仓库。</li>
-              <li>点击 <b>{t.sync}</b> 前，会从 GitHub 私有仓库同步最新的计划数据。</li>
-              <li>所有数据变更会通过 GitHub API 进行，无需本地文件操作。</li>
-              <li>同一设备或多个设备都可以通过同一套 GitHub 同步与保存机制实现数据一致。</li>
-            </ol>
+          
+          <div style={styles.section}>
+            <h4 style={styles.sectionTitle}>📤 数据同步</h4>
+            <div style={styles.steps}>
+              <ol>
+                <li>点击 <b>{t.upload}</b> 后，计划数据会保存到 <code>Jo-Nan/day-data</code> 仓库的 <code>data/plans.json</code>。</li>
+                <li>点击 <b>{t.sync}</b> 时，会从 GitHub 同步最新的计划数据。</li>
+                <li>数据变更会实时自动同步，无需手动点击按钮。</li>
+                <li>同一设备或多个设备都可以通过一套 GitHub 同步机制实现数据一致。</li>
+              </ol>
+            </div>
+          </div>
+
+          <div style={styles.section}>
+            <h4 style={styles.sectionTitle}>💾 自动备份</h4>
+            <div style={styles.steps}>
+              <ol>
+                <li>每天凌晨 2:00 AM（北京时间）自动备份一次数据。</li>
+                <li>备份文件保存在 <code>my-schedule</code> 仓库的 <code>backups/</code> 目录。</li>
+                <li>文件名格式：<code>YYYYMMDD.json</code>（如 <code>20260313.json</code>）。</li>
+                <li>如需恢复数据，可从备份目录选择对应日期的文件。详见项目文档。</li>
+              </ol>
+            </div>
           </div>
         </div>
 
@@ -71,7 +87,18 @@ const styles = {
   content: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '1rem',
+    gap: '1.5rem',
+  },
+  section: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.8rem',
+  },
+  sectionTitle: {
+    margin: 0,
+    fontSize: '1rem',
+    fontWeight: 600,
+    color: 'var(--text-primary)',
   },
   info: {
     lineHeight: 1.6,
