@@ -66,16 +66,21 @@ function App() {
   const handleSync = async () => {
     setSyncStatus('loading');
     try {
-      // Use the local load API which handles absolute paths
-      const response = await fetch('/api/load-plans?t=' + Date.now()); 
+      // 1. Try the local dev API first (handles OS-specific absolute paths)
+      let response = await fetch('/api/load-plans?t=' + Date.now()); 
       
+      // 2. Fallback to static file if API is not found (Production/GitHub Pages)
+      if (!response.ok || response.status === 404) {
+        response = await fetch('./data/plans.json?t=' + Date.now());
+      }
+
       if (response.status === 404) {
-        // File doesn't exist yet, which is fine for first run
+        // Still not found? Just idle (first run case)
         setSyncStatus('idle');
         return;
       }
 
-      if (!response.ok) throw new Error('Fetch failed');
+      if (!response.ok) throw new Error('Sync failed');
       const remotePlans = await response.json();
       
       const merged = mergePlans(plans, remotePlans);
@@ -83,7 +88,7 @@ function App() {
       setSyncStatus('synced');
       setTimeout(() => setSyncStatus('idle'), 3000);
     } catch (err) {
-      console.error(err);
+      console.error('Sync Error:', err);
       setSyncStatus('error');
       alert(t.syncError);
     }
