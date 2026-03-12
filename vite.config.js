@@ -7,19 +7,24 @@ import path from 'path'
 const localSyncPlugin = () => ({
   name: 'local-sync-plugin',
   configureServer(server) {
+    const dataFileName = 'plans.json';
+    const macDataDir = '/Users/muzinan/NanMuZ/Code/day/public/data';
+    const winDataDir = 'D:/Code/day/public/data';
+    const fallbackDataDir = path.resolve(__dirname, 'public/data');
+
     const getTargetFileInfo = () => {
+      const isMac = process.platform === 'darwin';
       const isWin = process.platform === 'win32';
-      const macPath = '/Users/muzinan/NanMuZ/Code/day/public/data/plans.json';
-      const winPath = 'D:/Code/day/public/data/plans.json';
-      const preferredPath = isWin ? winPath : macPath;
-      const relativePath = path.resolve(__dirname, 'public/data/plans.json');
-      
-      // Use preferred path if it exists or we can create it in its parent dir
-      const preferredDir = path.dirname(preferredPath);
-      if (fs.existsSync(preferredDir)) {
-        return preferredPath;
+
+      if (isMac && fs.existsSync(macDataDir)) {
+        return path.join(macDataDir, dataFileName);
       }
-      return relativePath;
+
+      if (isWin) {
+        return path.join(winDataDir, dataFileName);
+      }
+
+      return path.join(fallbackDataDir, dataFileName);
     };
 
     server.middlewares.use((req, res, next) => {

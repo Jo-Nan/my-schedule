@@ -15,14 +15,15 @@ const SyncModal = ({ isOpen, onClose, t }) => {
           <p style={styles.info}>{t.fileSyncInfo}</p>
           <div style={styles.steps}>
             <ol>
-              <li>点击 <b>{t.upload}</b> 将当前数据保存到您的电脑里。</li>
-              <li>应用会自动尝试保存到：
+              <li>点击 <b>{t.upload}</b> 后，应用会先判断系统和默认目录，再自动导出 <code>plans.json</code>。</li>
+              <li>点击 <b>{t.sync}</b> 前，也会按同样规则自动查找导入位置。</li>
+              <li>默认目录规则如下：
                 <ul style={{ paddingLeft: '1.2rem', marginTop: '0.4rem' }}>
-                  <li><b>Mac</b>: <code>/Users/muzinan/NanMuZ/Code/day/public/data/plans.json</code></li>
-                  <li><b>Win</b>: <code>D:/Code/day/public/data/plans.json</code></li>
+                  <li><b>macOS</b>: 若 <code>/Users/muzinan/NanMuZ/Code/day/public/data</code> 存在，则读写其中的 <code>plans.json</code></li>
+                  <li><b>Windows</b>: 使用 <code>D:/Code/day/public/data/plans.json</code></li>
+                  <li><b>其他情况</b>: 回退到项目内的 <code>public/data/plans.json</code></li>
                 </ul>
               </li>
-              <li>点击 <b>{t.sync}</b> 即可直接从上述位置读回最新数据。</li>
             </ol>
           </div>
         </div>
