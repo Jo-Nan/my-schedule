@@ -1,6 +1,6 @@
 import React from 'react';
 
-const Header = ({ viewMode, setViewMode, theme, toggleTheme, language, toggleLanguage, t }) => {
+const Header = ({ viewMode, setViewMode, theme, toggleTheme, language, toggleLanguage, t, onSync, onUpload, setSyncModalOpen }) => {
   return (
     <header className="glass-panel" style={styles.header}>
       <div style={styles.brand}>
@@ -9,6 +9,29 @@ const Header = ({ viewMode, setViewMode, theme, toggleTheme, language, toggleLan
       </div>
       
       <div style={styles.controls}>
+        <button 
+          className="glass-button" 
+          onClick={() => setSyncModalOpen(true)}
+          style={styles.themeBtn}
+          title={t.syncSettings}
+        >
+          ⚙️
+        </button>
+        <button 
+          className="glass-button" 
+          onClick={onSync}
+          style={styles.themeBtn}
+        >
+          🔄 {t.sync}
+        </button>
+        <button 
+          className="glass-button" 
+          onClick={onUpload}
+          style={styles.themeBtn}
+        >
+          📤 {t.upload}
+        </button>
+        <div style={styles.divider}></div>
         <button 
           className="glass-button" 
           onClick={toggleLanguage}
@@ -97,6 +120,13 @@ const styles = {
   },
   btn: {
     padding: '0.5rem 1.2rem',
+  },
+  divider: {
+    width: '1px',
+    height: '24px',
+    background: 'var(--border-color)',
+    margin: '0 0.5rem',
+    opacity: 0.5,
   },
   activeBtn: {
     background: 'rgba(99, 102, 241, 0.2)',

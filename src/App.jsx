@@ -1,10 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import AuthOverlay from './components/AuthOverlay';
-import Header from './components/Header';
-import WeeklyView from './components/WeeklyView';
-import MonthlyView from './components/MonthlyView';
 import DailyView from './components/DailyView';
 import YearlyView from './components/YearlyView';
+import SyncModal from './components/SyncModal';
 import { fetchWeeklyWeather } from './utils/weatherApi';
 import { translations } from './utils/translations';
 import './index.css';
@@ -14,6 +10,12 @@ function App() {
   const [viewMode, setViewMode] = useState('daily'); // 'daily', 'weekly', 'monthly', 'yearly'
   const [theme, setTheme] = useState('light'); // 'light' or 'dark'
   const [language, setLanguage] = useState(() => localStorage.getItem('nanmuz_lang') || 'en');
+  const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
+  const [syncConfig, setSyncConfig] = useState(() => {
+    const saved = localStorage.getItem('nanmuz_sync_config');
+    return saved ? JSON.parse(saved) : { token: '', gistId: '' };
+  });
+
   const t = translations[language];
   
   // Synchronous initialization prevents overwriting saved data on hard reloads
@@ -44,6 +46,79 @@ function App() {
   useEffect(() => {
     localStorage.setItem('nanmuz_plans', JSON.stringify(plans));
   }, [plans]);
+
+  // Sync Logic
+  const mergePlans = (local, remote) => {
+    const merged = [...local];
+    remote.forEach(remotePlan => {
+      const existingIdx = merged.findIndex(p => p.id === remotePlan.id);
+      if (existingIdx > -1) {
+        if ((remotePlan.updatedAt || 0) > (merged[existingIdx].updatedAt || 0)) {
+          merged[existingIdx] = remotePlan;
+        }
+      } else {
+        merged.push(remotePlan);
+      }
+    });
+    return merged;
+  };
+
+  const handleSync = async () => {
+    if (!syncConfig.token || !syncConfig.gistId) {
+      setIsSyncModalOpen(true);
+      return;
+    }
+
+    try {
+      const response = await fetch(`https://api.github.com/gists/${syncConfig.gistId}`, {
+        headers: { Authorization: `token ${syncConfig.token}` }
+      });
+      if (!response.ok) throw new Error('Fetch failed');
+      const gist = await response.json();
+      const remotePlans = JSON.parse(gist.files['plans.json'].content);
+      
+      const merged = mergePlans(plans, remotePlans);
+      setPlans(merged);
+      alert(t.syncSuccess);
+    } catch (err) {
+      console.error(err);
+      alert(t.syncError);
+    }
+  };
+
+  const handleUpload = async () => {
+    if (!syncConfig.token || !syncConfig.gistId) {
+      setIsSyncModalOpen(true);
+      return;
+    }
+
+    try {
+      const response = await fetch(`https://api.github.com/gists/${syncConfig.gistId}`, {
+        method: 'PATCH',
+        headers: {
+          Authorization: `token ${syncConfig.token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          files: {
+            'plans.json': {
+              content: JSON.stringify(plans, null, 2)
+            }
+          }
+        })
+      });
+      if (!response.ok) throw new Error('Upload failed');
+      alert(t.uploadSuccess);
+    } catch (err) {
+      console.error(err);
+      alert(t.syncError);
+    }
+  };
+
+  const saveSyncConfig = (config) => {
+    setSyncConfig(config);
+    localStorage.setItem('nanmuz_sync_config', JSON.stringify(config));
+  };
 
   // Global Keyboard Shortcuts
   useEffect(() => {
@@ -77,11 +152,11 @@ function App() {
   }, [isAuthenticated]);
 
   const updatePlan = (id, updates) => {
-    setPlans(prev => prev.map(p => p.id === id ? { ...p, ...updates } : p));
+    setPlans(prev => prev.map(p => p.id === id ? { ...p, ...updates, updatedAt: Date.now() } : p));
   };
 
   const addPlan = (newPlan) => {
-    setPlans(prev => [...prev, newPlan]);
+    setPlans(prev => [...prev, { ...newPlan, updatedAt: Date.now() }]);
   };
 
   const deletePlan = (id) => {
@@ -101,6 +176,17 @@ function App() {
         toggleTheme={toggleTheme} 
         language={language}
         toggleLanguage={toggleLanguage}
+        t={t}
+        onSync={handleSync}
+        onUpload={handleUpload}
+        setSyncModalOpen={setIsSyncModalOpen}
+      />
+      
+      <SyncModal 
+        isOpen={isSyncModalOpen} 
+        onClose={() => setIsSyncModalOpen(false)} 
+        onSave={saveSyncConfig}
+        config={syncConfig}
         t={t}
       />
       
