@@ -312,7 +312,6 @@ code {
   .daily-date-headline {
     align-items: center !important;
     justify-content: center !important;
-    gap: 0.5rem !important;
   }
 
   .daily-insight-bar {
@@ -340,6 +339,25 @@ code {
     justify-content: space-between;
     align-items: center !important;
   }
+
+  .monthly-shell {
+    padding: 1.25rem !important;
+  }
+
+  .monthly-header {
+    justify-content: center !important;
+    padding: 0 !important;
+  }
+
+  .monthly-nav-controls {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .monthly-title {
+    order: -1;
+    width: 100%;
+  }
 }
 
 @media (max-width: 640px) {
@@ -360,6 +378,48 @@ code {
     align-items: flex-start !important;
   }
 
+  .monthly-shell {
+    padding: 1rem !important;
+  }
+
+  .monthly-grid {
+    gap: 0.35rem !important;
+  }
+
+  .monthly-weekday-header {
+    font-size: 0.72rem;
+    padding-bottom: 0.25rem !important;
+  }
+
+  .monthly-empty-cell,
+  .monthly-day-cell {
+    min-height: 96px !important;
+  }
+
+  .monthly-day-cell {
+    padding: 0.45rem !important;
+    border-radius: 10px !important;
+  }
+
+  .monthly-day-top {
+    margin-bottom: 0.35rem !important;
+    gap: 0.25rem !important;
+  }
+
+  .monthly-holiday-badge {
+    font-size: 0.52rem !important;
+    padding: 1px 4px !important;
+  }
+
+  .monthly-task-label {
+    font-size: 0.64rem !important;
+    padding: 2px 5px !important;
+  }
+
+  .monthly-more-text {
+    font-size: 0.62rem !important;
+  }
+
   .daily-focus-header {
     gap: 1.25rem !important;
   }
@@ -370,7 +430,6 @@ code {
   }
 
   .daily-date-headline h1,
-  .daily-date-headline p,
   .daily-date-headline span {
     font-size: 1rem !important;
     text-align: center;

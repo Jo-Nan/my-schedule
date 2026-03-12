@@ -66,41 +66,41 @@ const MonthlyView = ({ plans, t }) => {
     : ['日', '一', '二', '三', '四', '五', '六'];
 
   return (
-    <div className="glass-panel animate-fade-in" style={styles.container}>
-      <div style={styles.header}>
-        <div style={styles.navControls}>
+    <div className="glass-panel animate-fade-in monthly-shell" style={styles.container}>
+      <div className="monthly-header" style={styles.header}>
+        <div className="monthly-nav-controls" style={styles.navControls}>
           <button className="glass-button" style={styles.navBtn} onClick={prevMonth}>← {isEn ? 'Prev' : '上个月'}</button>
         </div>
         
-        <h2 style={styles.title} onClick={resetToToday} title={isEn ? "Back to current month" : "回到本月"}>
+        <h2 className="monthly-title" style={styles.title} onClick={resetToToday} title={isEn ? "Back to current month" : "回到本月"}>
           {new Intl.DateTimeFormat(isEn ? 'en-US' : 'zh-CN', { month: 'long', year: 'numeric' }).format(currentDate)}
         </h2>
         
-        <div style={styles.navControls}>
+        <div className="monthly-nav-controls" style={styles.navControls}>
           <button className="glass-button" style={styles.navBtn} onClick={nextMonth}>{isEn ? 'Next' : '下个月'} →</button>
         </div>
       </div>
       
-      <div style={styles.grid}>
+      <div className="monthly-grid" style={styles.grid}>
         {weekdays.map(day => (
-          <div key={day} style={styles.weekdayHeader}>{day}</div>
+          <div key={day} className="monthly-weekday-header" style={styles.weekdayHeader}>{day}</div>
         ))}
         
         {calendarGrid.map((cell, index) => {
           if (!cell) {
-            return <div key={`empty-${index}`} style={styles.emptyCell} />;
+            return <div key={`empty-${index}`} className="monthly-empty-cell" style={styles.emptyCell} />;
           }
           
           const isToday = cell.dateStr === getLocalDateStr();
           
           return (
-            <div key={cell.dateStr} style={{
+            <div key={cell.dateStr} className="monthly-day-cell" style={{
               ...styles.dayCell,
               borderColor: isToday ? 'var(--accent-color)' : 'var(--glass-border)',
               background: isToday ? 'rgba(99, 102, 241, 0.15)' : 'transparent'
             }}>
-              <div style={styles.dayTopRow}>
-                {cell.holiday && <span style={styles.holidayBadge}>🏮 {cell.holiday}</span>}
+              <div className="monthly-day-top" style={styles.dayTopRow}>
+                {cell.holiday && <span className="monthly-holiday-badge" style={styles.holidayBadge}>🏮 {cell.holiday}</span>}
                 <span style={{
                   ...styles.dayNumber,
                   color: isToday ? 'var(--accent-color)' : 'inherit',
@@ -110,7 +110,7 @@ const MonthlyView = ({ plans, t }) => {
                 </span>
               </div>
               
-              <div style={styles.taskListContainer}>
+              <div className="monthly-task-list" style={styles.taskListContainer}>
                 {cell.plans.slice(0, 4).map((plan, i) => (
                   <div key={i} style={{
                     ...styles.taskLabel,
@@ -119,11 +119,11 @@ const MonthlyView = ({ plans, t }) => {
                                      'var(--danger-color)',
                     textDecoration: plan.status === 'completed' ? 'line-through' : 'none',
                     opacity: plan.status === 'completed' ? 0.6 : 1
-                  }} title={plan.event}>
+                  }} className="monthly-task-label" title={plan.event}>
                     {plan.event}
                   </div>
                 ))}
-                {cell.plans.length > 4 && <div style={styles.moreText}>...and {cell.plans.length - 4} more</div>}
+                {cell.plans.length > 4 && <div className="monthly-more-text" style={styles.moreText}>...and {cell.plans.length - 4} more</div>}
               </div>
             </div>
           );
@@ -138,6 +138,7 @@ const styles = {
     padding: '2rem',
     maxWidth: '1000px',
     margin: '0 auto',
+    width: '100%',
   },
   header: {
     display: 'flex',
@@ -145,17 +146,23 @@ const styles = {
     alignItems: 'center',
     marginBottom: '2rem',
     padding: '0 1rem',
+    gap: '1rem',
+    flexWrap: 'wrap',
   },
   title: {
     margin: 0,
     cursor: 'pointer',
     color: 'var(--accent-color)',
-    minWidth: '200px',
+    minWidth: 0,
+    maxWidth: '100%',
     textAlign: 'center',
+    flex: 1,
+    overflowWrap: 'anywhere',
   },
   navControls: {
     display: 'flex',
     gap: '0.5rem',
+    flexShrink: 0,
   },
   navBtn: {
     padding: '0.4rem 1rem',
@@ -165,6 +172,7 @@ const styles = {
     display: 'grid',
     gridTemplateColumns: 'repeat(7, 1fr)',
     gap: '0.5rem',
+    minWidth: 0,
   },
   weekdayHeader: {
     textAlign: 'center',
@@ -176,6 +184,7 @@ const styles = {
     minHeight: '120px',
     background: 'rgba(255,255,255,0.02)',
     borderRadius: '12px',
+    minWidth: 0,
   },
   dayCell: {
     minHeight: '120px',
@@ -185,12 +194,16 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     transition: 'all 0.2s',
+    minWidth: 0,
+    overflow: 'hidden',
   },
   dayTopRow: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     marginBottom: '0.5rem',
+    gap: '0.35rem',
+    minWidth: 0,
   },
   dayNumber: {
     fontSize: '0.9rem',
@@ -203,12 +216,19 @@ const styles = {
     borderRadius: '4px',
     border: '1px solid rgba(239, 68, 68, 0.3)',
     fontWeight: 'bold',
+    maxWidth: '100%',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    flex: 1,
+    minWidth: 0,
   },
   taskListContainer: {
     display: 'flex',
     flexDirection: 'column',
     gap: '4px',
     overflow: 'hidden',
+    minWidth: 0,
   },
   planLabel: {
     fontSize: '0.7rem',
@@ -235,12 +255,16 @@ const styles = {
     boxSizing: 'border-box',
     width: '100%',
     color: 'var(--text-secondary)',
+    minWidth: 0,
   },
   moreText: {
     fontSize: '0.7rem',
     textAlign: 'center',
     color: 'var(--text-tertiary)',
     marginTop: '2px',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
   }
 };
 

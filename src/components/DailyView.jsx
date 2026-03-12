@@ -85,15 +85,20 @@ const DailyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t }) =
           <div className="daily-date-block" style={styles.dateBlock} onClick={handleToday} title={t.languageToggle === '🌐 English' ? 'Back to Today' : '回到今天'}>
             <div className="daily-date-hero" style={styles.dateHeroRow}>
               <div className="daily-date-headline" style={styles.dateHeadline}>
-                <h1 style={styles.weekdayName}>{getDayName(dateStr)}</h1>
-                <p style={styles.fullDate}>{getFullDateDisplay(dateStr)}</p>
+                <h1 style={styles.headerLine}>
+                  <span style={styles.headerToken}>{getDayName(dateStr)}</span>
+                  <span style={styles.headerDivider}>·</span>
+                  <span style={styles.headerToken}>{getFullDateDisplay(dateStr)}</span>
+                  {isToday && (
+                    <>
+                      <span style={styles.headerDivider}>·</span>
+                      <span style={styles.headerToken}>
+                        {String(currentTime.getHours()).padStart(2, '0')}:{String(currentTime.getMinutes()).padStart(2, '0')}
+                      </span>
+                    </>
+                  )}
+                </h1>
               </div>
-
-              {isToday && (
-                <span style={styles.inlineTime}>
-                  {String(currentTime.getHours()).padStart(2, '0')}:{String(currentTime.getMinutes()).padStart(2, '0')}
-                </span>
-              )}
             </div>
 
             {!isToday && (
@@ -236,20 +241,34 @@ const styles = {
   },
   dateHeadline: {
     display: 'flex',
-    alignItems: 'baseline',
-    justifyContent: 'flex-start',
-    gap: '1rem',
-    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'center',
     flex: 1,
     minWidth: 0,
   },
-  inlineTime: {
-    fontSize: '1.2rem',
+  headerLine: {
+    margin: 0,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '0.55rem',
+    flexWrap: 'wrap',
+    width: '100%',
+    color: 'var(--text-primary)',
+    fontSize: '1.08rem',
     fontWeight: '500',
+    lineHeight: 1.35,
+  },
+  headerToken: {
+    fontSize: 'inherit',
+    fontWeight: 'inherit',
     color: 'var(--text-primary)',
     fontVariantNumeric: 'tabular-nums',
-    lineHeight: 1,
     whiteSpace: 'nowrap',
+  },
+  headerDivider: {
+    color: 'var(--text-tertiary)',
+    fontWeight: '400',
   },
   headerTop: {
     display: 'flex',
@@ -263,18 +282,6 @@ const styles = {
     cursor: 'pointer',
     flex: 1,
     minWidth: '280px',
-  },
-  weekdayName: {
-    margin: 0,
-    fontSize: '1.2rem',
-    fontWeight: '500',
-    color: 'var(--text-primary)'
-  },
-  fullDate: {
-    margin: 0,
-    fontSize: '1.2rem',
-    fontWeight: '500',
-    color: 'var(--text-secondary)',
   },
   quickActions: {
     display: 'flex',

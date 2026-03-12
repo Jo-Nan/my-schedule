@@ -102,13 +102,6 @@ const WeeklyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t }) 
               ← {t.languageToggle === '🌐 English' ? 'Prev Day' : '前一天'}
             </button>
 
-            <h3 style={styles.weekTitle}>
-              {t.languageToggle === '🌐 English' ? `Week of ${days[0]}` : `${days[0]} 周`}
-            </h3>
-            <p style={styles.weekRangeText}>
-              {t.languageToggle === '🌐 English' ? `${days[0]} → ${days[days.length - 1]}` : `${days[0]} 至 ${days[days.length - 1]}`}
-            </p>
-
             <button
               className="glass-button"
               onClick={() => setDayOffset(dayOffset + 1)}
@@ -271,17 +264,6 @@ const styles = {
     padding: '0.5rem 1rem',
     fontSize: '0.95rem',
     whiteSpace: 'nowrap',
-  },
-  weekTitle: {
-    margin: 0,
-    fontSize: '1.3rem',
-    color: 'var(--text-primary)',
-    minWidth: '190px',
-  },
-  weekRangeText: {
-    margin: 0,
-    fontSize: '0.82rem',
-    color: 'var(--text-secondary)',
   },
   container: {
     display: 'grid',
