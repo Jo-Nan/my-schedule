@@ -37,9 +37,25 @@ const Header = ({ viewMode, setViewMode, theme, toggleTheme, language, toggleLan
       
       <div style={styles.right}>
         <div style={styles.statusGroup}>
-          <span style={{ ...styles.statusText, color: getStatusColor(syncStatus) }}>
-            {getStatusIcon(syncStatus)} {getStatusLabel(syncStatus, t)}
-          </span>
+          <button 
+            className="glass-button icon-only"
+            onClick={() => setSyncModalOpen(true)}
+            style={{ 
+              background: 'transparent', 
+              border: 'none',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              padding: '0',
+              fontSize: '1rem'
+            }}
+            title={t.syncSettings}
+          >
+            <span style={{ ...styles.statusText, color: getStatusColor(syncStatus) }}>
+              {getStatusIcon(syncStatus)} {getStatusLabel(syncStatus, t)}
+            </span>
+          </button>
         </div>
 
         <div className="button-group">

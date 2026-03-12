@@ -144,15 +144,30 @@ function App() {
   }, [isAuthenticated]);
 
   const updatePlan = (id, updates) => {
-    setPlans(prev => prev.map(p => p.id === id ? { ...p, ...updates, updatedAt: Date.now() } : p));
+    setPlans(prev => {
+      const updated = prev.map(p => p.id === id ? { ...p, ...updates, updatedAt: Date.now() } : p);
+      // Auto-sync after update
+      setTimeout(() => handleExport(), 300);
+      return updated;
+    });
   };
 
   const addPlan = (newPlan) => {
-    setPlans(prev => [...prev, { ...newPlan, updatedAt: Date.now() }]);
+    setPlans(prev => {
+      const updated = [...prev, { ...newPlan, updatedAt: Date.now() }];
+      // Auto-sync after add
+      setTimeout(() => handleExport(), 300);
+      return updated;
+    });
   };
 
   const deletePlan = (id) => {
-    setPlans(prev => prev.filter(p => p.id !== id));
+    setPlans(prev => {
+      const updated = prev.filter(p => p.id !== id);
+      // Auto-sync after delete
+      setTimeout(() => handleExport(), 300);
+      return updated;
+    });
   };
 
   if (!isAuthenticated) {
