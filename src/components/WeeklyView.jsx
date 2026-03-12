@@ -2,6 +2,14 @@ import React, { useState } from 'react';
 import PlanCard from './PlanCard';
 import PlanModal from './PlanModal';
 
+// Helper: Get local date string (handles timezone correctly)
+const getLocalDateStr = (date = new Date()) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 const WeeklyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t }) => {
   // Week navigation state
   const [weekOffset, setWeekOffset] = useState(0);
@@ -14,7 +22,7 @@ const WeeklyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t }) 
   const days = Array.from({ length: 5 }).map((_, i) => {
     const d = new Date(baseDate);
     d.setDate(baseDate.getDate() + i);
-    return d.toISOString().split('T')[0];
+    return getLocalDateStr(d);
   });
 
   const getDayName = (dateStr) => {
@@ -94,11 +102,11 @@ const WeeklyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t }) 
         t={t}
       />
       {days.map(dateStr => {
-        const isToday = dateStr === new Date().toISOString().split('T')[0];
+        const isToday = dateStr === getLocalDateStr(new Date());
         
         const yesterday = new Date();
         yesterday.setDate(new Date().getDate() - 1);
-        const isYesterday = dateStr === yesterday.toISOString().split('T')[0];
+        const isYesterday = dateStr === getLocalDateStr(yesterday);
 
         const dayWeather = weatherData.find(w => w.date === dateStr);
         const dayPlans = plans.filter(p => p.date === dateStr);
@@ -131,7 +139,7 @@ const WeeklyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t }) 
                 {isYesterday && <span style={styles.yesterdayBadge}>{t.languageToggle === '🌐 English' ? 'Yesterday' : '昨天'}</span>}
               </div>
               
-              {new Date(dateStr) >= new Date(new Date().toISOString().split('T')[0]) ? (
+              {new Date(dateStr) >= new Date(getLocalDateStr(new Date())) ? (
                 dayWeather ? (
                   <div style={styles.weatherBlock}>
                     <div style={styles.weatherMain}>

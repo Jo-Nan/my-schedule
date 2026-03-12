@@ -1,5 +1,13 @@
 import React, { useState } from 'react';
 
+// Helper: Get local date string (handles timezone correctly)
+const getLocalDateStr = (date = new Date()) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 // Static Holiday Dictionary for demonstration (Current and adjacent months)
 const HOLIDAYS = {
   '2026-01-01': 'New Year',
@@ -83,7 +91,7 @@ const MonthlyView = ({ plans, t }) => {
             return <div key={`empty-${index}`} style={styles.emptyCell} />;
           }
           
-          const isToday = cell.dateStr === today.toISOString().split('T')[0];
+          const isToday = cell.dateStr === getLocalDateStr();
           
           return (
             <div key={cell.dateStr} style={{

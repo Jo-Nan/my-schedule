@@ -110,7 +110,7 @@ const DailyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t }) =
 
         {/* Weather Sub-panel for Daily Focus */}
         <div style={styles.insightBar}>
-          {new Date(dateStr) >= new Date(new Date().toISOString().split('T')[0]) ? (
+            {new Date(dateStr) >= new Date(getLocalDateStr(new Date())) ? (
             dayWeather ? (
               <div style={styles.weatherWidget}>
                 <div style={styles.wMain}>
