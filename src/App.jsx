@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import AuthOverlay from './components/AuthOverlay';
 import Header from './components/Header';
 import WeeklyView from './components/WeeklyView';
@@ -12,7 +12,7 @@ import './index.css';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [viewMode, setViewMode] = useState('daily'); // 'daily', 'weekly', 'monthly', 'yearly'
+  const [viewMode, setViewMode] = useState('weekly'); // 'daily', 'weekly', 'monthly', 'yearly'
   const [theme, setTheme] = useState('light'); // 'light' or 'dark'
   const [language, setLanguage] = useState(() => localStorage.getItem('nanmuz_lang') || 'en');
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
@@ -27,6 +27,9 @@ function App() {
   });
   
   const [weatherData, setWeatherData] = useState([]);
+  
+  // Debounce timer for auto-sync
+  const autoSyncTimerRef = useRef(null);
 
   // Init Theme
   useEffect(() => {
@@ -143,11 +146,20 @@ function App() {
     }
   }, [isAuthenticated]);
 
+  // Trigger debounced auto-sync (合并多个快速操作为一次同步)
+  const triggerAutoSync = () => {
+    if (autoSyncTimerRef.current) {
+      clearTimeout(autoSyncTimerRef.current);
+    }
+    autoSyncTimerRef.current = setTimeout(() => {
+      handleExport();
+    }, 500);
+  };
+
   const updatePlan = (id, updates) => {
     setPlans(prev => {
       const updated = prev.map(p => p.id === id ? { ...p, ...updates, updatedAt: Date.now() } : p);
-      // Auto-sync after update
-      setTimeout(() => handleExport(), 300);
+      triggerAutoSync();
       return updated;
     });
   };
@@ -155,8 +167,7 @@ function App() {
   const addPlan = (newPlan) => {
     setPlans(prev => {
       const updated = [...prev, { ...newPlan, updatedAt: Date.now() }];
-      // Auto-sync after add
-      setTimeout(() => handleExport(), 300);
+      triggerAutoSync();
       return updated;
     });
   };
@@ -164,8 +175,7 @@ function App() {
   const deletePlan = (id) => {
     setPlans(prev => {
       const updated = prev.filter(p => p.id !== id);
-      // Auto-sync after delete
-      setTimeout(() => handleExport(), 300);
+      triggerAutoSync();
       return updated;
     });
   };
