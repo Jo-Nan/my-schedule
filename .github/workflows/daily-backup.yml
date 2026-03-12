@@ -1,0 +1,46 @@
+name: Daily Backup of Plans Data
+
+on:
+  schedule:
+    # Run every day at 2:00 AM Beijing time (UTC+8) = 18:00 previous day UTC
+    - cron: '0 18 * * *'
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Create backups directory
+        run: mkdir -p backups
+
+      - name: Run backup script
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_OWNER: Jo-Nan
+          GITHUB_REPO: day-data
+          GITHUB_BRANCH: main
+          GITHUB_PLANS_PATH: data/plans.json
+        run: node backup-daily.js
+
+      - name: Commit and push backup
+        run: |
+          git config --global user.name "backup-bot"
+          git config --global user.email "backup-bot@github-actions"
+          git add backups/
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "backup: daily backup of plans.json (${{ github.run_id }})"
+            git push
+          fi
