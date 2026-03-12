@@ -11,13 +11,13 @@ const getLocalDateStr = (date = new Date()) => {
 };
 
 const WeeklyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t }) => {
-  // Week navigation state
-  const [weekOffset, setWeekOffset] = useState(0);
+  // Sliding window navigation state
+  const [dayOffset, setDayOffset] = useState(0);
   
-  // Generate a window of 5 days based on weekOffset
+  // Generate a window of 5 days based on dayOffset
   const today = new Date();
   const baseDate = new Date(today);
-  baseDate.setDate(today.getDate() - 1 + weekOffset * 7); // Monday of that week
+  baseDate.setDate(today.getDate() - 1 + dayOffset);
   
   const days = Array.from({ length: 5 }).map((_, i) => {
     const d = new Date(baseDate);
@@ -67,24 +67,42 @@ const WeeklyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t }) 
   return (
     <div style={styles.weekContainer}>
       {/* Week navigation */}
-      <div className="glass-panel" style={styles.weekNav}>
+      <div className="glass-panel weekly-nav" style={styles.weekNav}>
         <button 
           className="glass-button"
-          onClick={() => setWeekOffset(weekOffset - 1)}
+          onClick={() => setDayOffset(dayOffset - 7)}
           style={styles.navBtn}
         >
           ← {t.languageToggle === '🌐 English' ? 'Prev Week' : '前一周'}
         </button>
         
         <div style={styles.weekLabel}>
-          <h3 style={styles.weekTitle}>
-            {t.languageToggle === '🌐 English' ? `Week of ${days[0]}` : `${days[0]} 周`}
-          </h3>
+          <div style={styles.dayJumpBar}>
+            <button
+              className="glass-button"
+              onClick={() => setDayOffset(dayOffset - 1)}
+              style={styles.dayNavBtn}
+            >
+              ← {t.languageToggle === '🌐 English' ? 'Prev Day' : '前一天'}
+            </button>
+
+            <h3 style={styles.weekTitle}>
+              {t.languageToggle === '🌐 English' ? `Week of ${days[0]}` : `${days[0]} 周`}
+            </h3>
+
+            <button
+              className="glass-button"
+              onClick={() => setDayOffset(dayOffset + 1)}
+              style={styles.dayNavBtn}
+            >
+              {t.languageToggle === '🌐 English' ? 'Next Day' : '后一天'} →
+            </button>
+          </div>
         </div>
         
         <button 
           className="glass-button"
-          onClick={() => setWeekOffset(weekOffset + 1)}
+          onClick={() => setDayOffset(dayOffset + 7)}
           style={styles.navBtn}
         >
           {t.languageToggle === '🌐 English' ? 'Next Week' : '后一周'} →
@@ -92,7 +110,7 @@ const WeeklyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t }) 
       </div>
 
       {/* Days grid */}
-      <div style={styles.container}>
+      <div className="weekly-grid" style={styles.container}>
       <PlanModal 
         isOpen={modalState.isOpen} 
         onClose={() => setModalState({ isOpen: false, date: null, editingPlan: null })}
@@ -121,7 +139,7 @@ const WeeklyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t }) 
         return (
           <div 
             key={dateStr} 
-            className="glass-panel" 
+            className="glass-panel weekly-day-column" 
             style={{
               ...styles.dayColumn,
               borderColor: isToday ? 'var(--accent-color)' : 'var(--glass-border)',
@@ -131,7 +149,7 @@ const WeeklyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t }) 
             onDragOver={handleDragOver}
             onDrop={(e) => handleDrop(e, dateStr)}
           >
-            <div style={styles.dayHeader}>
+            <div className="weekly-day-header" style={styles.dayHeader}>
               <div style={styles.dateInfo}>
                 <span style={styles.weekday}>{getDayName(dateStr)}</span>
                 <span style={styles.dateText}>{dateStr.slice(5)}</span>
@@ -141,7 +159,7 @@ const WeeklyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t }) 
               
               {new Date(dateStr) >= new Date(getLocalDateStr(new Date())) ? (
                 dayWeather ? (
-                  <div style={styles.weatherBlock}>
+                  <div className="weekly-weather-block" style={styles.weatherBlock}>
                     <div style={styles.weatherMain}>
                       <span style={styles.icon}>{dayWeather.icon}</span>
                       <span style={styles.temp}>{Math.round(dayWeather.tempMax)}°</span>
@@ -220,10 +238,23 @@ const styles = {
     flex: 1,
     textAlign: 'center',
   },
+  dayJumpBar: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '1rem',
+    flexWrap: 'wrap',
+  },
+  dayNavBtn: {
+    padding: '0.5rem 1rem',
+    fontSize: '0.95rem',
+    whiteSpace: 'nowrap',
+  },
   weekTitle: {
     margin: 0,
     fontSize: '1.3rem',
     color: 'var(--text-primary)',
+    minWidth: '190px',
   },
   container: {
     display: 'grid',

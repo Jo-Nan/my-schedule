@@ -28,7 +28,7 @@ const DailyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t }) =
   useEffect(() => {
     const timer = setInterval(() => {
       setCurrentTime(new Date());
-    }, 1000);
+    }, 30000);
     return () => clearInterval(timer);
   }, []);
 
@@ -82,37 +82,41 @@ const DailyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t }) =
       />
 
       {/* Focus Header */}
-      <div className="glass-panel" style={styles.focusHeader}>
-        <div style={styles.headerTop}>
-          <button className="glass-button" style={styles.navBtn} onClick={handlePrevDay}>← {t.languageToggle === '🌐 English' ? 'Prev Day' : '前一天'}</button>
+      <div className="glass-panel daily-focus-header" style={styles.focusHeader}>
+        <div className="daily-header-top" style={styles.headerTop}>
+          <button className="glass-button daily-nav-btn" style={styles.navBtn} onClick={handlePrevDay}>← {t.languageToggle === '🌐 English' ? 'Prev Day' : '前一天'}</button>
           
-          <div style={styles.dateBlock} onClick={handleToday} title={t.languageToggle === '🌐 English' ? 'Back to Today' : '回到今天'}>
-            <div style={styles.dateTimeRow}>
-              <h1 style={styles.weekdayName}>
-                {getDayName(dateStr)}
-                {isToday && <span style={styles.badgeToday}>{t.languageToggle === '🌐 English' ? 'Today' : '今天'}</span>}
-                {isYesterday && <span style={styles.badgeYesterday}>{t.languageToggle === '🌐 English' ? 'Yesterday' : '昨天'}</span>}
-              </h1>
-              
+          <div className="daily-date-block" style={styles.dateBlock} onClick={handleToday} title={t.languageToggle === '🌐 English' ? 'Back to Today' : '回到今天'}>
+            <div className="daily-date-hero" style={styles.dateHeroRow}>
+              <div className="daily-date-headline" style={styles.dateHeadline}>
+                <h1 style={styles.weekdayName}>{getDayName(dateStr)}</h1>
+                <p style={styles.fullDate}>{getFullDateDisplay(dateStr)}</p>
+              </div>
+
               {isToday && (
-                <div style={styles.clockInline}>
+                <div className="daily-clock-card" style={styles.clockCard}>
+                  <span style={styles.clockLabel}>{t.languageToggle === '🌐 English' ? 'Current Time' : '当前时间'}</span>
                   <span style={styles.clockTimeSmall}>
                     {String(currentTime.getHours()).padStart(2, '0')}:{String(currentTime.getMinutes()).padStart(2, '0')}
                   </span>
                 </div>
               )}
             </div>
-            <p style={styles.fullDate}>{getFullDateDisplay(dateStr)}</p>
+
+            <div className="daily-badge-row" style={styles.badgeRow}>
+              {isToday && <span style={styles.badgeToday}>{t.languageToggle === '🌐 English' ? 'Today' : '今天'}</span>}
+              {isYesterday && <span style={styles.badgeYesterday}>{t.languageToggle === '🌐 English' ? 'Yesterday' : '昨天'}</span>}
+            </div>
           </div>
 
-          <button className="glass-button" style={styles.navBtn} onClick={handleNextDay}>{t.languageToggle === '🌐 English' ? 'Next Day' : '后一天'} →</button>
+          <button className="glass-button daily-nav-btn" style={styles.navBtn} onClick={handleNextDay}>{t.languageToggle === '🌐 English' ? 'Next Day' : '后一天'} →</button>
         </div>
 
         {/* Weather Sub-panel for Daily Focus */}
-        <div style={styles.insightBar}>
+        <div className="daily-insight-bar" style={styles.insightBar}>
             {new Date(dateStr) >= new Date(getLocalDateStr(new Date())) ? (
             dayWeather ? (
-              <div style={styles.weatherWidget}>
+              <div className="daily-weather-widget" style={styles.weatherWidget}>
                 <div style={styles.wMain}>
                   <span style={{ fontSize: '2rem' }}>{dayWeather.icon}</span>
                   <span style={{ fontSize: '1.8rem', fontWeight: 'bold' }}>{Math.round(dayWeather.tempMax)}°</span>
@@ -132,7 +136,7 @@ const DailyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t }) =
           )}
 
           {/* Daily Progress Widget */}
-          <div style={styles.progressWidget}>
+          <div className="daily-progress-widget" style={styles.progressWidget}>
             <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--text-secondary)' }}>{t.languageToggle === '🌐 English' ? 'Daily Mission' : '今日目标'}</h3>
             <div style={styles.progressText}>
               <span style={{ fontSize: '2rem', fontWeight: 'bold', color: progressRatio === 100 ? 'var(--success-color)' : 'var(--text-primary)' }}>
@@ -148,18 +152,18 @@ const DailyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t }) =
       </div>
 
       {/* Timeline Layout */}
-      <div style={styles.timelineContainer}>
+      <div className="daily-timeline-container" style={styles.timelineContainer}>
         {dayPlans.length === 0 ? (
           <div style={styles.emptyState}>
             <p style={{ fontSize: '4rem', margin: 0 }}>☕️</p>
             <h3 style={{ color: 'var(--text-secondary)' }}>{t.languageToggle === '🌐 English' ? 'No plans scheduled for this day yet.' : '今天还没有计划。'}</h3>
           </div>
         ) : (
-          <div style={styles.plansStack}>
+          <div className="daily-plans-stack" style={styles.plansStack}>
             {dayPlans.map(plan => (
-              <div key={plan.id} style={styles.planWrapper}>
+              <div key={plan.id} className="daily-plan-wrapper" style={styles.planWrapper}>
                 {/* Visual Timeline Node */}
-                <div style={styles.timelineNodeBox}>
+                <div className="daily-timeline-node-box" style={styles.timelineNodeBox}>
                   <div style={{
                     ...styles.timelineNode,
                     borderColor: plan.status === 'completed' ? 'var(--success-color)' : 'var(--text-tertiary)',
@@ -215,49 +219,74 @@ const styles = {
     padding: '2rem',
     gap: '2rem'
   },
-  dateTimeRow: {
+  dateHeroRow: {
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
     gap: '1.5rem',
     flexWrap: 'wrap',
   },
-  clockInline: {
+  dateHeadline: {
     display: 'flex',
+    alignItems: 'baseline',
+    justifyContent: 'center',
+    gap: '1rem',
+    flexWrap: 'wrap',
+  },
+  clockCard: {
+    display: 'flex',
+    flexDirection: 'column',
     alignItems: 'center',
-    gap: '0.5rem',
+    gap: '0.35rem',
+    padding: '0.7rem 1rem',
+    borderRadius: '14px',
+    border: '1px solid var(--glass-border)',
+    background: 'rgba(255,255,255,0.08)',
+    minWidth: '120px',
+  },
+  clockLabel: {
+    fontSize: '0.72rem',
+    textTransform: 'uppercase',
+    letterSpacing: '0.08em',
+    color: 'var(--text-secondary)',
   },
   clockTimeSmall: {
-    fontSize: '1.8rem',
+    fontSize: '1.6rem',
     fontWeight: '600',
     fontVariantNumeric: 'tabular-nums',
     color: 'var(--accent-color)',
     fontFamily: '"SF Mono", "Monaco", "Menlo", monospace',
-    animation: 'blink 1s step-start infinite',
   },
   headerTop: {
     display: 'flex',
     justifyContent: 'space-between',
-    alignItems: 'center'
+    alignItems: 'center',
+    gap: '1rem',
+    flexWrap: 'wrap',
   },
   dateBlock: {
     textAlign: 'center',
-    cursor: 'pointer'
+    cursor: 'pointer',
+    flex: 1,
+    minWidth: '280px',
   },
   weekdayName: {
     margin: 0,
     fontSize: '2.5rem',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '1rem',
     color: 'var(--text-primary)'
   },
   fullDate: {
     margin: 0,
-    fontSize: '1.1rem',
+    fontSize: '1.2rem',
     color: 'var(--text-secondary)',
-    marginTop: '0.5rem'
+  },
+  badgeRow: {
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: '0.75rem',
+    marginTop: '0.9rem',
+    minHeight: '34px',
   },
   navBtn: {
     padding: '0.6rem 1.2rem',
