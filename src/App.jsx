@@ -66,7 +66,15 @@ function App() {
   const handleSync = async () => {
     setSyncStatus('loading');
     try {
-      const response = await fetch('./data/plans.json?t=' + Date.now()); // Anti-cache
+      // Use the local load API which handles absolute paths
+      const response = await fetch('/api/load-plans?t=' + Date.now()); 
+      
+      if (response.status === 404) {
+        // File doesn't exist yet, which is fine for first run
+        setSyncStatus('idle');
+        return;
+      }
+
       if (!response.ok) throw new Error('Fetch failed');
       const remotePlans = await response.json();
       

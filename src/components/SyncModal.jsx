@@ -15,9 +15,14 @@ const SyncModal = ({ isOpen, onClose, t }) => {
           <p style={styles.info}>{t.fileSyncInfo}</p>
           <div style={styles.steps}>
             <ol>
-              <li>点击 <b>{t.upload}</b> 将当前数据直接存入项目的 <code>public/data/plans.json</code> 文件夹。</li>
-              <li>点击 <b>{t.sync}</b> 即可从该文件回读最新数据。</li>
-              <li>要多端同步，只需使用 Git 提交并推送该 JSON 文件即可。</li>
+              <li>点击 <b>{t.upload}</b> 将当前数据保存到您的电脑里。</li>
+              <li>应用会自动尝试保存到：
+                <ul style={{ paddingLeft: '1.2rem', marginTop: '0.4rem' }}>
+                  <li><b>Mac</b>: <code>/Users/muzinan/NanMuZ/Code/day/public/data/plans.json</code></li>
+                  <li><b>Win</b>: <code>D:/Code/day/public/data/plans.json</code></li>
+                </ul>
+              </li>
+              <li>点击 <b>{t.sync}</b> 即可直接从上述位置读回最新数据。</li>
             </ol>
           </div>
         </div>
