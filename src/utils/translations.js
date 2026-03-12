@@ -45,6 +45,10 @@ export const translations = {
     uploadSuccess: "Upload Successful!",
     syncError: "Sync Failed",
     howToGist: "How to get Gist ID & Token?",
+    loadHistory: "Load History Versions",
+    restore: "Restore",
+    version: "Version",
+    noHistory: "No history found",
   },
   zh: {
     title: "NanMuZ 的日程表",
@@ -92,5 +96,9 @@ export const translations = {
     uploadSuccess: "上传成功！",
     syncError: "同步失败",
     howToGist: "如何获取 Gist ID 和 Token？",
+    loadHistory: "加载历史版本",
+    restore: "恢复",
+    version: "版本",
+    noHistory: "未找到历史记录",
   }
 };

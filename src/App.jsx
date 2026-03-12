@@ -1,3 +1,8 @@
+import React, { useState, useEffect } from 'react';
+import AuthOverlay from './components/AuthOverlay';
+import Header from './components/Header';
+import WeeklyView from './components/WeeklyView';
+import MonthlyView from './components/MonthlyView';
 import DailyView from './components/DailyView';
 import YearlyView from './components/YearlyView';
 import SyncModal from './components/SyncModal';
@@ -188,6 +193,7 @@ function App() {
         onSave={saveSyncConfig}
         config={syncConfig}
         t={t}
+        onRestore={setPlans}
       />
       
       <main>
