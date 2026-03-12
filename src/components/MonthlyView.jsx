@@ -87,27 +87,29 @@ const MonthlyView = ({ plans, t }) => {
           return (
             <div key={cell.dateStr} className="monthly-day-cell" style={{
               ...styles.dayCell,
-              borderColor: isToday ? 'var(--accent-color)' : 'var(--glass-border)',
-              background: isToday ? 'rgba(99, 102, 241, 0.15)' : 'transparent'
+              borderColor: isToday
+                ? 'var(--accent-color)'
+                : cell.holiday
+                  ? `${cell.holiday.color}55`
+                  : 'var(--glass-border)',
+              background: cell.holiday
+                ? `${cell.holiday.color}18`
+                : isToday
+                  ? 'rgba(99, 102, 241, 0.15)'
+                  : 'transparent'
             }}>
               <div className="monthly-day-top" style={styles.dayTopRow}>
                 <span style={{
                   ...styles.dayNumber,
-                  color: isToday ? 'var(--accent-color)' : 'inherit',
+                  color: cell.holiday
+                    ? cell.holiday.color
+                    : isToday
+                      ? 'var(--accent-color)'
+                      : 'inherit',
                   fontWeight: isToday ? 'bold' : 'normal'
                 }}>
                   {cell.day}
                 </span>
-                {cell.holiday && (
-                  <span
-                    className="monthly-holiday-badge"
-                    style={{ ...styles.holidayBadge, color: cell.holiday.color, borderColor: `${cell.holiday.color}55`, background: `${cell.holiday.color}18` }}
-                    title={cell.holiday.label}
-                    aria-label={cell.holiday.label}
-                  >
-                    🏮
-                  </span>
-                )}
               </div>
               
               <div className="monthly-task-list" style={styles.taskListContainer}>
@@ -207,21 +209,6 @@ const styles = {
   },
   dayNumber: {
     fontSize: '0.9rem',
-  },
-  holidayBadge: {
-    fontSize: '0.6rem',
-    background: 'rgba(239, 68, 68, 0.1)',
-    color: 'var(--danger-color)',
-    padding: '2px 4px',
-    borderRadius: '4px',
-    border: '1px solid rgba(239, 68, 68, 0.3)',
-    fontWeight: 'bold',
-    maxWidth: '100%',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-    flex: 0,
-    minWidth: 0,
   },
   taskListContainer: {
     display: 'flex',
