@@ -30,6 +30,8 @@ function App() {
   
   // Debounce timer for auto-sync
   const autoSyncTimerRef = useRef(null);
+  // Track if we should auto-sync (skip initial load)
+  const isInitializedRef = useRef(false);
 
   // Init Theme
   useEffect(() => {
@@ -48,7 +50,18 @@ function App() {
   // Save plans to local storage whenever they change
   useEffect(() => {
     localStorage.setItem('nanmuz_plans', JSON.stringify(plans));
-  }, [plans]);
+    
+    // Auto-sync with debounce when plans change (but skip initial load)
+    if (isInitializedRef.current && isAuthenticated) {
+      if (autoSyncTimerRef.current) {
+        clearTimeout(autoSyncTimerRef.current);
+      }
+      autoSyncTimerRef.current = setTimeout(() => {
+        console.log('[AutoSync] Syncing updated plans to GitHub');
+        handleExport();
+      }, 500);
+    }
+  }, [plans, isAuthenticated]);
 
   // Sync Logic - 正确处理数据合并
   const mergePlans = (local, remote) => {
@@ -170,6 +183,9 @@ function App() {
   // Auto-sync and fetch weather when authenticated
   useEffect(() => {
     if (isAuthenticated) {
+      // Mark as initialized after first load
+      isInitializedRef.current = false;
+      
       // Auto-load plans from GitHub on page load/refresh
       // 使用智能合并：优先保留本地较新的数据
       const loadAndMergePlans = async () => {
@@ -181,10 +197,16 @@ function App() {
           if (result.status === 'success') {
             const remotePlans = result.data || [];
             // 使用 mergePlans 确保本地更新的数据不会被覆盖
-            setPlans(prev => mergePlans(prev, remotePlans));
+            setPlans(prev => {
+              const merged = mergePlans(prev, remotePlans);
+              // 初始化完成后，后续改动会自动 sync
+              isInitializedRef.current = true;
+              return merged;
+            });
           }
         } catch (err) {
           console.error('Auto-sync on load failed:', err);
+          isInitializedRef.current = true;
         }
       };
       
@@ -210,9 +232,9 @@ function App() {
   const updatePlan = (id, updates) => {
     setPlans(prev => {
       const updated = prev.map(p => p.id === id ? { ...p, ...updates, updatedAt: Date.now() } : p);
-      triggerAutoSync();
       return updated;
     });
+    // useEffect 会自动检测 plans 变化并触发 auto-sync
   };
 
   const addPlan = (newPlan) => {
@@ -231,17 +253,17 @@ function App() {
     
     setPlans(prev => {
       const updated = [...prev, completePlan];
-      triggerAutoSync();
       return updated;
     });
+    // useEffect 会自动检测 plans 变化并触发 auto-sync
   };
 
   const deletePlan = (id) => {
     setPlans(prev => {
       const updated = prev.filter(p => p.id !== id);
-      triggerAutoSync();
       return updated;
     });
+    // useEffect 会自动检测 plans 变化并触发 auto-sync
   };
 
   if (!isAuthenticated) {
