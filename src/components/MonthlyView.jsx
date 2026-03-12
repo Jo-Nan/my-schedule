@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { getHolidayInfo } from '../utils/holidays';
 
 // Helper: Get local date string (handles timezone correctly)
 const getLocalDateStr = (date = new Date()) => {
@@ -6,17 +7,6 @@ const getLocalDateStr = (date = new Date()) => {
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
-};
-
-// Static Holiday Dictionary for demonstration (Current and adjacent months)
-const HOLIDAYS = {
-  '2026-01-01': 'New Year',
-  '2026-02-17': 'Spring Festival',
-  '2026-04-05': 'Qingming',
-  '2026-05-01': 'Labor Day',
-  '2026-06-19': 'Dragon Boat',
-  '2026-09-25': 'Mid-Autumn',
-  '2026-10-01': 'National Day'
 };
 
 const MonthlyView = ({ plans, t }) => {
@@ -52,11 +42,12 @@ const MonthlyView = ({ plans, t }) => {
   for (let i = 1; i <= daysInMonth; i++) {
     const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
     const dayPlans = plans.filter(p => p.date === dateStr);
+    const holiday = getHolidayInfo(dateStr);
     calendarGrid.push({ 
       day: i, 
       dateStr, 
       plans: dayPlans,
-      holiday: HOLIDAYS[dateStr] 
+      holiday,
     });
   }
 
@@ -107,7 +98,16 @@ const MonthlyView = ({ plans, t }) => {
                 }}>
                   {cell.day}
                 </span>
-                {cell.holiday && <span className="monthly-holiday-badge" style={styles.holidayBadge}>🏮 {cell.holiday}</span>}
+                {cell.holiday && (
+                  <span
+                    className="monthly-holiday-badge"
+                    style={{ ...styles.holidayBadge, color: cell.holiday.color, borderColor: `${cell.holiday.color}55`, background: `${cell.holiday.color}18` }}
+                    title={cell.holiday.label}
+                    aria-label={cell.holiday.label}
+                  >
+                    🏮
+                  </span>
+                )}
               </div>
               
               <div className="monthly-task-list" style={styles.taskListContainer}>

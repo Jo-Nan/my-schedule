@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import PlanModal from './PlanModal';
+import { getHolidayInfo } from '../utils/holidays';
 
 // Helper: Get local date string (handles timezone correctly)
 const getLocalDateStr = (date = new Date()) => {
@@ -7,16 +8,6 @@ const getLocalDateStr = (date = new Date()) => {
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
-};
-
-const HOLIDAYS = {
-  '2026-01-01': 'New Year',
-  '2026-02-17': 'Spring Festival',
-  '2026-04-05': 'Qingming',
-  '2026-05-01': 'Labor Day',
-  '2026-06-19': 'Dragon Boat',
-  '2026-09-25': 'Mid-Autumn',
-  '2026-10-01': 'National Day'
 };
 
 const YearlyView = ({ plans, addPlan, t }) => {
@@ -53,11 +44,6 @@ const YearlyView = ({ plans, addPlan, t }) => {
     ];
   };
 
-  const getHolidayColor = (dateStr) => {
-    if (!HOLIDAYS[dateStr]) return null;
-    return 'var(--danger-color)';
-  };
-
   const isEn = t.languageToggle === '🌐 English';
 
   return (
@@ -92,7 +78,8 @@ const YearlyView = ({ plans, addPlan, t }) => {
 
                   const dateStr = `${currentYear}-${String(month + 1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
                   const dotColor = getDayStatusDot(dateStr);
-                  const holidayColor = getHolidayColor(dateStr);
+                  const holiday = getHolidayInfo(dateStr);
+                  const holidayColor = holiday?.color || null;
                   const isToday = dateStr === getLocalDateStr();
 
                   return (
@@ -123,8 +110,8 @@ const YearlyView = ({ plans, addPlan, t }) => {
                       </span>
                       <div style={{
                         ...styles.dot,
-                        background: holidayColor || dotColor || 'rgba(0,0,0,0.1)',
-                        opacity: holidayColor || dotColor ? 1 : 0.2
+                        background: holidayColor ? 'transparent' : dotColor || 'rgba(0,0,0,0.1)',
+                        opacity: holidayColor ? 0 : (dotColor ? 1 : 0.2)
                       }} />
                     </div>
                   )
