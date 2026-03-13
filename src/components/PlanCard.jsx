@@ -111,13 +111,6 @@ const PlanCard = ({ plan, updatePlan, deletePlan, onEdit, onDragStart, onDragEnd
         
         <div style={styles.headerActions}>
           <button 
-            className="glass-button drag-handle"
-            style={styles.dragBtn}
-            title="拖拽移动任务"
-          >
-            ⠿
-          </button>
-          <button 
             className="glass-button"
             onClick={() => onEdit(plan)}
             style={styles.editBtn}
@@ -132,6 +125,13 @@ const PlanCard = ({ plan, updatePlan, deletePlan, onEdit, onDragStart, onDragEnd
             title={t.deletePlan}
           >
             🗑️
+          </button>
+          <button 
+            className="glass-button drag-handle"
+            style={styles.dragBtn}
+            title="拖拽移动任务"
+          >
+            ⠿
           </button>
         </div>
       </div>
@@ -216,7 +216,7 @@ const styles = {
     color: 'var(--text-secondary)',
     opacity: 0.6,
     cursor: 'grab',
-    fontSize: '14px',
+    fontSize: '17.5px',
     lineHeight: 1,
     transform: 'rotate(90deg)',
   },
