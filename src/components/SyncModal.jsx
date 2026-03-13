@@ -1,5 +1,3 @@
-import React from 'react';
-
 const SyncModal = ({ isOpen, onClose, t }) => {
   if (!isOpen) return null;
 
@@ -29,8 +27,9 @@ const SyncModal = ({ isOpen, onClose, t }) => {
             <h4 style={styles.sectionTitle}>☁️ 同步说明</h4>
             <div style={styles.steps}>
               <ol>
-                <li>点击 <b>{t.upload}</b> 会保存当前登录用户的计划。</li>
                 <li>点击 <b>{t.sync}</b> 会重新拉取当前登录用户的最新计划数据。</li>
+                <li>点击 <b>{t.upload}</b> 会保存当前登录用户的计划。</li>
+                <li>点击 <b>{t.importButton}</b> 可以导入外部 JSON 计划文件并替换当前工作区内容。</li>
                 <li>计划变更会自动同步，无需每次手动点击。</li>
               </ol>
             </div>

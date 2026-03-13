@@ -33,6 +33,34 @@ const formatBuildTime = (value) => {
   }
 };
 
+const normalizeImportedPlan = (plan, index, fallbackDate) => ({
+  id: typeof plan?.id === 'string' && plan.id.trim() ? plan.id : `${Date.now()}-${index}-${Math.random().toString(36).slice(2, 8)}`,
+  event: typeof plan?.event === 'string' ? plan.event : '',
+  date: typeof plan?.date === 'string' && plan.date ? plan.date : fallbackDate,
+  time: typeof plan?.time === 'string' ? plan.time : '',
+  person: typeof plan?.person === 'string' && plan.person ? plan.person : 'self',
+  ddl: typeof plan?.ddl === 'string' ? plan.ddl : '',
+  progress: Number.isFinite(plan?.progress) ? Math.max(0, Math.min(100, Math.round(plan.progress))) : 0,
+  status: typeof plan?.status === 'string' && plan.status ? plan.status : 'uncompleted',
+  updatedAt: Number.isFinite(plan?.updatedAt) ? plan.updatedAt : Date.now(),
+});
+
+const extractImportedPlans = (payload) => {
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+
+  if (payload && Array.isArray(payload.plans)) {
+    return payload.plans;
+  }
+
+  if (payload && Array.isArray(payload.data)) {
+    return payload.data;
+  }
+
+  return null;
+};
+
 function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [managedUser, setManagedUser] = useState(null);
@@ -248,6 +276,37 @@ function App() {
     await refreshWorkspacePlans();
   };
 
+  const handleImport = async (file) => {
+    if (!file) {
+      return;
+    }
+
+    try {
+      const raw = await file.text();
+      const parsed = JSON.parse(raw);
+      const importedPlans = extractImportedPlans(parsed);
+
+      if (!importedPlans) {
+        throw new Error('Invalid import format');
+      }
+
+      const fallbackDate = getLocalDateStr();
+      const normalizedPlans = importedPlans.map((plan, index) => normalizeImportedPlan(plan, index, fallbackDate));
+
+      if (!window.confirm(`${t.importConfirm || 'Import will replace current plans in this workspace. Continue?'}\n\n${file.name}`)) {
+        return;
+      }
+
+      setPlans(normalizedPlans);
+      setHasUnsavedProgress(false);
+      setPendingSaveType('general');
+      alert(t.importSuccess || 'Import completed. The new plans will be saved automatically.');
+    } catch (error) {
+      console.error('Import error:', error);
+      alert(t.importError || 'Failed to import file');
+    }
+  };
+
   const handleExport = async ({ silent = false } = {}) => {
     if (!activeUser || !currentUser) {
       return;
@@ -379,6 +438,7 @@ function App() {
         t={t}
         onSync={handleSync}
         onUpload={handleExport}
+        onImport={handleImport}
         setSyncModalOpen={setIsSyncModalOpen}
         syncStatus={syncStatus}
         currentUser={currentUser}

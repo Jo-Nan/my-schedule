@@ -10,6 +10,7 @@ const Header = ({
   t,
   onSync,
   onUpload,
+  onImport,
   setSyncModalOpen,
   syncStatus,
   currentUser,
@@ -26,6 +27,7 @@ const Header = ({
   const isAdmin = currentUser?.role === 'admin';
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const settingsRef = useRef(null);
+  const importInputRef = useRef(null);
 
   useEffect(() => {
     const handlePointerDown = (event) => {
@@ -52,6 +54,18 @@ const Header = ({
   const handleSettingsAction = (action) => {
     setIsSettingsOpen(false);
     action();
+  };
+
+  const handleImportClick = () => {
+    importInputRef.current?.click();
+  };
+
+  const handleImportChange = async (event) => {
+    const [file] = event.target.files || [];
+    if (file && onImport) {
+      await onImport(file);
+    }
+    event.target.value = '';
   };
 
   return (
@@ -100,7 +114,14 @@ const Header = ({
 
         <div className="button-group">
           <button className="glass-button icon-only" onClick={onSync} title={t.sync}>🔄</button>
-          <button className="glass-button icon-only" onClick={onUpload} title={t.upload}>📥</button>
+          <button className="glass-button icon-only" onClick={handleImportClick} title={t.importButton}>📂</button>
+          <input
+            ref={importInputRef}
+            type="file"
+            accept="application/json,.json"
+            style={styles.hiddenInput}
+            onChange={handleImportChange}
+          />
         </div>
 
         {isAdmin && (
@@ -196,16 +217,6 @@ const getStatusColor = (status) => {
   }
 };
 
-const getStatusIcon = (status) => {
-  switch (status) {
-    case 'loading': return '📡';
-    case 'uploading': return '⏳';
-    case 'synced': return '✅';
-    case 'error': return '⚠️';
-    default: return '☁️';
-  }
-};
-
 const getStatusLabel = (status, t) => {
   switch (status) {
     case 'loading': return t.syncStatusLoading;
@@ -248,6 +259,9 @@ const styles = {
   settingsWrap: {
     position: 'relative',
     flexShrink: 0,
+  },
+  hiddenInput: {
+    display: 'none',
   },
   logo: {
     width: '36px',
