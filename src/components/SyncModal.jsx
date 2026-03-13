@@ -27,12 +27,14 @@ const SyncModal = ({ isOpen, onClose, t }) => {
             <h4 style={styles.sectionTitle}>☁️ 同步说明</h4>
             <div style={styles.steps}>
               <ol>
+                <li>右上角的状态标签会显示当前状态，比如 <b>{t.syncStatusIdle}</b>、<b>{t.syncStatusUploading}</b> 或 <b>{t.syncStatusSynced}</b>。</li>
+                <li>点击 <b>{t.upload}</b> 会把当前页面里的修改保存到服务端。</li>
                 <li>打开 <b>{t.dataMenu}</b> 下拉菜单，可以看到 <b>{t.sync}</b>、<b>{t.importButton}</b> 和 <b>{t.exportButton}</b>。</li>
-                <li>点击 <b>{t.sync}</b> 会重新拉取当前登录用户的最新计划数据。</li>
-                <li>点击 <b>{t.upload}</b> 会保存当前登录用户的计划。</li>
-                <li>点击 <b>{t.importButton}</b> 可以导入外部 JSON 计划文件，并在“替换当前数据”或“合并当前数据”之间选择。</li>
+                <li>点击 <b>{t.sync}</b> 会重新拉取当前登录用户在服务端的最新计划数据。</li>
+                <li>点击 <b>{t.importButton}</b> 可以导入外部 JSON 文件，并选择“替换当前数据”或“合并当前数据”。</li>
                 <li>点击 <b>{t.exportButton}</b> 会把当前工作区计划下载成 JSON 文件。</li>
-                <li>计划变更会自动同步，无需每次手动点击。</li>
+                <li>在周视图或日视图里，先选中任务后可以使用 <b>Cmd/Ctrl + C</b> 复制，再用 <b>Cmd/Ctrl + V</b> 粘贴到目标日期。</li>
+                <li>普通编辑和导入后的改动会自动保存，进度条改动会延迟保存，减少频繁请求。</li>
               </ol>
             </div>
           </div>

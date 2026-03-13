@@ -540,6 +540,7 @@ const styles = {
     boxShadow: 'none',
     border: '1px solid transparent',
     background: 'transparent',
+    ...sharedHeaderControlText,
   },
   menuItemDanger: {
     color: '#dc2626',
