@@ -1,0 +1,54 @@
+name: Daily Digest Emails (08:05 & 22:05 Shanghai)
+
+on:
+  schedule:
+    # 08:05 Shanghai = 00:05 UTC (北京时间早上 8:05)
+    - cron: '5 0 * * *'
+    # 22:05 Shanghai = 14:05 UTC (北京时间晚上 22:05)
+    - cron: '5 14 * * *'
+  workflow_dispatch:  # 支持手动触发
+
+jobs:
+  send-digest:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Determine digest type
+        id: digest_type
+        run: |
+          # 获取当前 UTC 时间
+          HOUR=$(date -u +%H)
+          
+          # 00:05 UTC = 08:05 Shanghai (今日简报)
+          # 14:05 UTC = 22:05 Shanghai (晚报)
+          if [ "$HOUR" = "00" ]; then
+            echo "type=daily-digest" >> $GITHUB_OUTPUT
+            echo "time=08:05 Shanghai (Morning)" >> $GITHUB_OUTPUT
+          elif [ "$HOUR" = "14" ]; then
+            echo "type=evening-report" >> $GITHUB_OUTPUT
+            echo "time=22:05 Shanghai (Evening)" >> $GITHUB_OUTPUT
+          else
+            echo "type=unknown" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Send Daily Digest (08:05)
+        if: steps.digest_type.outputs.type == 'daily-digest'
+        run: |
+          curl -X POST \
+            -H "Content-Type: application/json" \
+            "${{ secrets.APP_URL }}/api/cron?action=daily-digest" \
+            -d '{"source":"github-actions"}' \
+            --fail --retry 3
+      
+      - name: Send Evening Report (22:05)
+        if: steps.digest_type.outputs.type == 'evening-report'
+        run: |
+          curl -X POST \
+            -H "Content-Type: application/json" \
+            "${{ secrets.APP_URL }}/api/cron?action=evening-report" \
+            -d '{"source":"github-actions"}' \
+            --fail --retry 3
+      
+      - name: Log execution
+        run: |
+          echo "✅ Digests triggered at ${{ steps.digest_type.outputs.time }}"
