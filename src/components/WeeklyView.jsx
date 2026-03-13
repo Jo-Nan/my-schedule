@@ -10,7 +10,7 @@ const getLocalDateStr = (date = new Date()) => {
   return `${year}-${month}-${day}`;
 };
 
-const WeeklyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t }) => {
+const WeeklyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t, onCopyPlan, onPastePlan, hasCopiedPlan }) => {
   // Sliding window navigation state
   const [dayOffset, setDayOffset] = useState(0);
   const gridRef = useRef(null);
@@ -48,6 +48,43 @@ const WeeklyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t }) 
 
   const [modalState, setModalState] = useState({ isOpen: false, date: null, editingPlan: null });
   const [draggedPlan, setDraggedPlan] = useState(null);
+  const [selectedPlanId, setSelectedPlanId] = useState(null);
+  const [selectedDate, setSelectedDate] = useState(getLocalDateStr(new Date()));
+
+  useEffect(() => {
+    if (days.length > 0 && !days.includes(selectedDate)) {
+      setSelectedDate(days[0]);
+    }
+  }, [days, selectedDate]);
+
+  useEffect(() => {
+    const activePlan = selectedPlanId ? plans.find((plan) => plan.id === selectedPlanId) : null;
+
+    const isTypingTarget = (target) => {
+      const tag = target?.tagName;
+      return target?.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+    };
+
+    const handleKeyDown = (event) => {
+      if ((!event.metaKey && !event.ctrlKey) || isTypingTarget(event.target)) {
+        return;
+      }
+
+      const key = event.key.toLowerCase();
+      if (key === 'c' && activePlan) {
+        event.preventDefault();
+        onCopyPlan?.(activePlan);
+      }
+
+      if (key === 'v' && hasCopiedPlan && selectedDate) {
+        event.preventDefault();
+        onPastePlan?.(selectedDate);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [hasCopiedPlan, onCopyPlan, onPastePlan, plans, selectedDate, selectedPlanId]);
 
   const handleAddTask = (date) => {
     setModalState({ isOpen: true, date, editingPlan: null });
@@ -157,10 +194,12 @@ const WeeklyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t }) 
             className="glass-panel weekly-day-column" 
             style={{
               ...styles.dayColumn,
+              ...(selectedDate === dateStr ? styles.dayColumnSelected : {}),
               borderColor: isToday ? 'var(--accent-color)' : 'var(--glass-border)',
               boxShadow: isToday ? 'var(--accent-glow)' : 'var(--glass-shadow)',
               backgroundColor: draggedPlan ? 'rgba(255, 255, 255, 0.5)' : 'rgba(255, 255, 255, 0.4)',
             }}
+            onClick={() => setSelectedDate(dateStr)}
             onDragOver={handleDragOver}
             onDrop={(e) => handleDrop(e, dateStr)}
           >
@@ -211,6 +250,11 @@ const WeeklyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t }) 
                     onDragStart={(e) => handleDragStart(e, plan)}
                     onDragEnd={handleDragEnd}
                     isDragging={draggedPlan?.id === plan.id}
+                    isSelected={selectedPlanId === plan.id}
+                    onSelect={(selectedPlan) => {
+                      setSelectedPlanId(selectedPlan.id);
+                      setSelectedDate(selectedPlan.date);
+                    }}
                     t={t}
                   />
                 </div>
@@ -278,6 +322,10 @@ const styles = {
     padding: '1rem',
     borderRadius: '20px',
     background: 'rgba(255, 255, 255, 0.4)',
+  },
+  dayColumnSelected: {
+    outline: '2px solid rgba(59, 130, 246, 0.2)',
+    outlineOffset: '2px',
   },
   dayHeader: {
     borderBottom: '1px solid var(--glass-border)',

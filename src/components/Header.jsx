@@ -233,7 +233,7 @@ const styles = {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    gap: '1.5rem',
+    gap: '1rem',
     padding: '0.8rem 1.5rem',
     marginBottom: '2rem',
     borderRadius: '24px',
@@ -249,11 +249,15 @@ const styles = {
     flexShrink: 0,
   },
   center: {
-    flexShrink: 0,
+    flex: '1 1 auto',
     minWidth: 0,
+    display: 'flex',
+    justifyContent: 'center',
   },
   tabButton: {
-    minWidth: '72px',
+    minWidth: '66px',
+    padding: '6px 10px',
+    fontSize: '0.84rem',
   },
   tabButtonZh: {
     minWidth: '60px',
@@ -264,10 +268,10 @@ const styles = {
   right: {
     display: 'flex',
     alignItems: 'center',
-    gap: '0.75rem',
+    gap: '0.55rem',
     flexWrap: 'wrap',
     justifyContent: 'flex-end',
-    flex: 1,
+    flex: '0 1 auto',
     minWidth: 0,
   },
   settingsWrap: {
@@ -325,7 +329,7 @@ const styles = {
     border: '1px solid var(--glass-border)',
   },
   statusButton: {
-    minWidth: '132px',
+    minWidth: '118px',
     justifyContent: 'flex-start',
     cursor: 'pointer',
     display: 'flex',
@@ -356,8 +360,8 @@ const styles = {
     transition: 'all 0.3s ease',
   },
   saveButton: {
-    minWidth: '74px',
-    padding: '0.55rem 0.85rem',
+    minWidth: '68px',
+    padding: '0.55rem 0.75rem',
     fontSize: '0.82rem',
     fontWeight: 700,
     boxShadow: 'none',
@@ -394,20 +398,20 @@ const styles = {
     transition: 'all 0.2s ease',
   },
   settingsBtn: {
-    padding: '0.55rem 0.9rem',
+    padding: '0.5rem 0.72rem',
     display: 'flex',
     alignItems: 'center',
-    gap: '0.5rem',
+    gap: '0.42rem',
     borderRadius: '999px',
     whiteSpace: 'nowrap',
     fontWeight: 600,
   },
   settingsIcon: {
-    fontSize: '1rem',
+    fontSize: '1.2rem',
     lineHeight: 1,
   },
   settingsLabel: {
-    fontSize: '0.9rem',
+    fontSize: '0.82rem',
   },
   settingsMenu: {
     position: 'absolute',

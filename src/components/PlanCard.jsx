@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 
-const PlanCard = ({ plan, updatePlan, deletePlan, onEdit, onDragStart, onDragEnd, isDragging: cardIsDragging, t }) => {
+const PlanCard = ({ plan, updatePlan, deletePlan, onEdit, onDragStart, onDragEnd, isDragging: cardIsDragging, isSelected, onSelect, t }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [localProgress, setLocalProgress] = useState(null);
   const sliderRef = useRef(null);
@@ -101,7 +101,11 @@ const PlanCard = ({ plan, updatePlan, deletePlan, onEdit, onDragStart, onDragEnd
       style={{
         ...styles.card,
         ...(cardIsDragging ? styles.cardDragging : {}),
+        ...(isSelected ? styles.cardSelected : {}),
       }}
+      tabIndex={0}
+      onClick={() => onSelect?.(plan)}
+      onFocus={() => onSelect?.(plan)}
       draggable
       onDragStart={(e) => {
         if (isDragging || e.target.closest(interactiveSelector)) {
@@ -215,6 +219,10 @@ const styles = {
   },
   cardDragging: {
     opacity: 0.7,
+  },
+  cardSelected: {
+    borderColor: 'var(--accent-color)',
+    boxShadow: 'var(--accent-glow)',
   },
   header: {
     display: 'flex',

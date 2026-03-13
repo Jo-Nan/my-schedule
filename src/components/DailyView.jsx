@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import PlanCard from './PlanCard';
 import PlanModal from './PlanModal';
 
-const DailyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t }) => {
+const DailyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t, onCopyPlan, onPastePlan, hasCopiedPlan }) => {
   const [modalState, setModalState] = useState({ isOpen: false, date: null, editingPlan: null });
   // Start from Today
   const [currentDateObj, setCurrentDateObj] = useState(new Date());
@@ -10,6 +10,7 @@ const DailyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t }) =
   const [currentTime, setCurrentTime] = useState(new Date());
   // Drag & drop state
   const [draggedPlan, setDraggedPlan] = useState(null);
+  const [selectedPlanId, setSelectedPlanId] = useState(null);
 
   // Get local date string (handles timezone correctly)
   const getLocalDateStr = (date) => {
@@ -90,6 +91,35 @@ const DailyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t }) =
   const completedCount = dayPlans.filter(p => p.status === 'completed').length;
   const totalCount = dayPlans.length;
   const progressRatio = totalCount === 0 ? 0 : Math.round((completedCount / totalCount) * 100);
+
+  useEffect(() => {
+    const activePlan = selectedPlanId ? plans.find((plan) => plan.id === selectedPlanId) : null;
+
+    const isTypingTarget = (target) => {
+      const tag = target?.tagName;
+      return target?.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+    };
+
+    const handleKeyDown = (event) => {
+      if ((!event.metaKey && !event.ctrlKey) || isTypingTarget(event.target)) {
+        return;
+      }
+
+      const key = event.key.toLowerCase();
+      if (key === 'c' && activePlan) {
+        event.preventDefault();
+        onCopyPlan?.(activePlan);
+      }
+
+      if (key === 'v' && hasCopiedPlan) {
+        event.preventDefault();
+        onPastePlan?.(dateStr);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [dateStr, hasCopiedPlan, onCopyPlan, onPastePlan, plans, selectedPlanId]);
 
   return (
     <div className="animate-fade-in" style={styles.container}>
@@ -219,6 +249,8 @@ const DailyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t }) =
                     onDragStart={(e) => handleDragStart(e, plan)}
                     onDragEnd={handleDragEnd}
                     isDragging={draggedPlan?.id === plan.id}
+                    isSelected={selectedPlanId === plan.id}
+                    onSelect={(selectedPlan) => setSelectedPlanId(selectedPlan.id)}
                     t={t}
                   />
                 </div>

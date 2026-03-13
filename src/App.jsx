@@ -87,6 +87,7 @@ function App() {
   const [hasUnsavedProgress, setHasUnsavedProgress] = useState(false);
   const [pendingSaveType, setPendingSaveType] = useState('none');
   const [pendingImport, setPendingImport] = useState(null);
+  const [copiedPlan, setCopiedPlan] = useState(null);
   const buildLabel = useMemo(() => formatBuildTime(APP_BUILD_TIME), []);
 
   const t = translations[language];
@@ -406,6 +407,27 @@ function App() {
     setPendingSaveType('general');
   };
 
+  const copyPlan = (plan) => {
+    if (!plan) {
+      return;
+    }
+    setCopiedPlan({ ...plan });
+  };
+
+  const pastePlanToDate = (targetDate) => {
+    if (!copiedPlan || !targetDate) {
+      return false;
+    }
+
+    addPlan({
+      ...copiedPlan,
+      id: undefined,
+      date: targetDate,
+      updatedAt: Date.now(),
+    });
+    return true;
+  };
+
   const deletePlan = (id) => {
     setPlans((prev) => prev.filter((plan) => plan.id !== id));
     setPendingSaveType('general');
@@ -517,10 +539,30 @@ function App() {
 
       <main>
         {viewMode === 'daily' && (
-          <DailyView plans={plans} updatePlan={updatePlan} addPlan={addPlan} deletePlan={deletePlan} weatherData={weatherData} t={t} />
+          <DailyView
+            plans={plans}
+            updatePlan={updatePlan}
+            addPlan={addPlan}
+            deletePlan={deletePlan}
+            weatherData={weatherData}
+            t={t}
+            onCopyPlan={copyPlan}
+            onPastePlan={pastePlanToDate}
+            hasCopiedPlan={Boolean(copiedPlan)}
+          />
         )}
         {viewMode === 'weekly' && (
-          <WeeklyView plans={plans} updatePlan={updatePlan} addPlan={addPlan} deletePlan={deletePlan} weatherData={weatherData} t={t} />
+          <WeeklyView
+            plans={plans}
+            updatePlan={updatePlan}
+            addPlan={addPlan}
+            deletePlan={deletePlan}
+            weatherData={weatherData}
+            t={t}
+            onCopyPlan={copyPlan}
+            onPastePlan={pastePlanToDate}
+            hasCopiedPlan={Boolean(copiedPlan)}
+          />
         )}
         {viewMode === 'monthly' && <MonthlyView plans={plans} t={t} />}
         {viewMode === 'yearly' && <YearlyView plans={plans} addPlan={addPlan} t={t} />}
