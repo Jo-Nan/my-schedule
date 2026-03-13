@@ -14,13 +14,15 @@ const PlanCard = ({ plan, updatePlan, deletePlan, onEdit, t }) => {
   const isCompleted = plan.status === 'completed';
   const progressText = plan.progress || 0;
 
-  const handlePointerDown = (e) => {
+  const handleMouseDown = (e) => {
     if (isCompleted) return;
     setIsDragging(true);
-    e.target.setPointerCapture(e.pointerId);
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    e.preventDefault(); // Prevent text selection
   };
 
-  const handlePointerMove = (e) => {
+  const handleMouseMove = (e) => {
     if (!isDragging || isCompleted || !sliderRef.current) return;
     const rect = sliderRef.current.getBoundingClientRect();
     let newProgress = ((e.clientX - rect.left) / rect.width) * 100;
@@ -34,9 +36,10 @@ const PlanCard = ({ plan, updatePlan, deletePlan, onEdit, t }) => {
     updatePlan(plan.id, { progress: newProgress, status: newStatus });
   };
 
-  const handlePointerUp = (e) => {
+  const handleMouseUp = () => {
     setIsDragging(false);
-    e.target.releasePointerCapture(e.pointerId);
+    document.removeEventListener('mousemove', handleMouseMove);
+    document.removeEventListener('mouseup', handleMouseUp);
   };
 
   const handleTrackClick = (e) => {
@@ -112,18 +115,17 @@ const PlanCard = ({ plan, updatePlan, deletePlan, onEdit, t }) => {
             ref={sliderRef}
             style={styles.sliderTrack} 
             onClick={handleTrackClick}
-            onPointerDown={handlePointerDown}
-            onPointerMove={handlePointerMove}
-            onPointerUp={handlePointerUp}
-            onPointerCancel={handlePointerUp}
-            onDragStart={(e) => e.preventDefault()} // Prevent card drag when interacting with progress
+            onMouseDown={handleMouseDown}
+            onDragStart={(e) => e.preventDefault()} 
           >
+            <div style={styles.sliderBase} />
             <div style={{...styles.sliderFill, width: `${progressText}%`}} />
             <div 
               style={{
                 ...styles.sliderThumb, 
                 left: `${progressText}%`,
-                cursor: isCompleted ? 'default' : (isDragging ? 'grabbing' : 'grab')
+                cursor: isCompleted ? 'default' : (isDragging ? 'grabbing' : 'grab'),
+                transform: `translate(-50%, -50%) scale(${isDragging ? 1.2 : 1})`,
               }} 
             />
           </div>
@@ -141,7 +143,7 @@ const styles = {
     transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
     display: 'flex',
     flexDirection: 'column',
-    gap: '0.6rem',
+    gap: '0.75rem',
   },
   header: {
     display: 'flex',
@@ -185,7 +187,7 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     gap: '0.8rem',
-    marginTop: '0.2rem',
+    marginTop: '0.4rem',
   },
   checkBtn: {
     width: '20px',
@@ -212,6 +214,8 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     gap: '2px',
+    pointerEvents: 'none', // Prevent tags from blocking slider interaction
+    userSelect: 'none',
   },
   progressContainer: {
     flex: 1, // fill remaining width next to check btn
@@ -219,19 +223,29 @@ const styles = {
     cursor: 'default',
   },
   sliderTrack: {
+    height: '24px', // Invisible larger hit area
+    display: 'flex',
+    alignItems: 'center',
+    position: 'relative',
+    touchAction: 'none',
+    pointerEvents: 'auto',
+    cursor: 'pointer',
+    width: '100%',
+  },
+  sliderBase: {
+    width: '100%',
     height: '6px',
     background: 'rgba(150,150,150,0.2)',
     borderRadius: '3px',
-    position: 'relative',
-    touchAction: 'none', // Prevent scrolling when dragging
-    pointerEvents: 'auto',
-    cursor: 'pointer',
+    position: 'absolute',
   },
   sliderFill: {
-    height: '100%',
+    height: '6px',
     background: 'linear-gradient(90deg, var(--accent-color), #818cf8)',
     borderRadius: '3px',
     transition: 'width 0.1s linear',
+    position: 'absolute',
+    left: 0,
   },
   sliderThumb: {
     position: 'absolute',
@@ -240,9 +254,8 @@ const styles = {
     height: '16px',
     background: '#fff',
     borderRadius: '50%',
-    transform: 'translate(-50%, -50%)',
-    boxShadow: '0 2px 5px rgba(0,0,0,0.3)',
-    transition: 'left 0.1s linear',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+    transition: 'left 0.1s linear, transform 0.2s ease',
     zIndex: 2,
   }
 };
