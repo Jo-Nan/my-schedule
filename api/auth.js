@@ -83,7 +83,8 @@ export default async function handler(req, res) {
 
         const store = await ensureDataStore();
 
-        if (findUserByEmail(store.users, email)) {
+        const existingUser = findUserByEmail(store.users, email);
+        if (existingUser && existingUser.isActive !== false) {
           return res.status(409).json({ status: 'error', message: 'Email is already registered' });
         }
 

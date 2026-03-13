@@ -71,7 +71,8 @@ export default async function handler(req, res) {
         return res.status(400).json({ status: 'error', message: 'Password must be at least 6 characters' });
       }
 
-      if (findUserByEmail(auth.users, email)) {
+      const existingUser = findUserByEmail(auth.users, email);
+      if (existingUser && existingUser.isActive !== false) {
         return res.status(409).json({ status: 'error', message: 'Email is already registered' });
       }
 
