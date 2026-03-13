@@ -321,13 +321,12 @@ const styles = {
   tabButton: {
     minWidth: '66px',
     padding: '6px 10px',
-    fontSize: '0.84rem',
+    ...sharedHeaderControlText,
   },
   tabButtonZh: {
     minWidth: '60px',
     padding: '6px 10px',
-    fontSize: '0.82rem',
-    letterSpacing: '0.01em',
+    ...sharedHeaderControlText,
   },
   right: {
     display: 'flex',

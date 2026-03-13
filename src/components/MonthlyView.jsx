@@ -1,6 +1,13 @@
 import React, { useState } from 'react';
 import { getHolidayInfo } from '../utils/holidays';
 
+const sharedMonthlyControlText = {
+  fontSize: '0.82rem',
+  fontWeight: 600,
+  color: 'var(--text-secondary)',
+  letterSpacing: '0.01em',
+};
+
 // Helper: Get local date string (handles timezone correctly)
 const getLocalDateStr = (date = new Date()) => {
   const year = date.getFullYear();
@@ -60,7 +67,7 @@ const MonthlyView = ({ plans, t }) => {
     <div className="glass-panel animate-fade-in monthly-shell" style={styles.container}>
       <div className="monthly-header" style={styles.header}>
         <div className="monthly-nav-controls" style={styles.navControls}>
-          <button className="glass-button" style={styles.navBtn} onClick={prevMonth}>← {isEn ? 'Prev' : '上个月'}</button>
+          <button className="glass-button" style={styles.navBtn} onClick={prevMonth}>← {t.prevMonth}</button>
         </div>
         
         <h2 className="monthly-title" style={styles.title} onClick={resetToToday} title={isEn ? "Back to current month" : "回到本月"}>
@@ -68,7 +75,7 @@ const MonthlyView = ({ plans, t }) => {
         </h2>
         
         <div className="monthly-nav-controls" style={styles.navControls}>
-          <button className="glass-button" style={styles.navBtn} onClick={nextMonth}>{isEn ? 'Next' : '下个月'} →</button>
+          <button className="glass-button" style={styles.navBtn} onClick={nextMonth}>{t.nextMonth} →</button>
         </div>
       </div>
       
@@ -168,7 +175,7 @@ const styles = {
   },
   navBtn: {
     padding: '0.4rem 1rem',
-    fontSize: '0.9rem',
+    ...sharedMonthlyControlText,
   },
   grid: {
     display: 'grid',
