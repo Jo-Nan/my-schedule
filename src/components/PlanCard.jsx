@@ -16,9 +16,6 @@ const PlanCard = ({ plan, updatePlan, deletePlan, onEdit, t }) => {
 
   const handlePointerDown = (e) => {
     if (isCompleted) return;
-    const rect = sliderRef.current.getBoundingClientRect();
-    // Only start dragging if pointer is in the upper 3/4 of the track
-    if (e.clientY > rect.top + rect.height * (3 / 4)) return;
     setIsDragging(true);
     e.target.setPointerCapture(e.pointerId);
   };
@@ -45,8 +42,6 @@ const PlanCard = ({ plan, updatePlan, deletePlan, onEdit, t }) => {
   const handleTrackClick = (e) => {
     if (isCompleted || !sliderRef.current) return;
     const rect = sliderRef.current.getBoundingClientRect();
-    // Only respond to clicks in the upper 3/4 of the track
-    if (e.clientY > rect.top + rect.height * (3 / 4)) return;
     let newProgress = ((e.clientX - rect.left) / rect.width) * 100;
     newProgress = Math.max(0, Math.min(100, Math.round(newProgress)));
     
@@ -121,6 +116,7 @@ const PlanCard = ({ plan, updatePlan, deletePlan, onEdit, t }) => {
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
             onPointerCancel={handlePointerUp}
+            onDragStart={(e) => e.preventDefault()} // Prevent card drag when interacting with progress
           >
             <div style={{...styles.sliderFill, width: `${progressText}%`}} />
             <div 
