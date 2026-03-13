@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { getHolidayInfo } from '../utils/holidays';
 
 const sharedMonthlyControlText = {
-  fontSize: '0.98rem',
+  fontSize: '0.88rem',
   fontWeight: 600,
   color: 'var(--text-secondary)',
   letterSpacing: '0.01em',
