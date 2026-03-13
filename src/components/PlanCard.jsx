@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 
-const PlanCard = ({ plan, updatePlan, deletePlan, onEdit, t }) => {
+const PlanCard = ({ plan, updatePlan, deletePlan, onEdit, onDragStart, onDragEnd, isDragging: cardIsDragging, t }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [localProgress, setLocalProgress] = useState(null);
   const sliderRef = useRef(null);
@@ -79,6 +79,19 @@ const PlanCard = ({ plan, updatePlan, deletePlan, onEdit, t }) => {
         <h4 style={styles.event}>{plan.event}</h4>
         
         <div style={styles.headerActions}>
+          <button 
+            className="glass-button"
+            draggable
+            onDragStart={onDragStart}
+            onDragEnd={onDragEnd}
+            style={{
+              ...styles.dragBtn,
+              opacity: cardIsDragging ? 0.5 : 1,
+            }}
+            title="拖拽移动任务"
+          >
+            ⋮⋮
+          </button>
           <button 
             className="glass-button"
             onClick={() => onEdit(plan)}
@@ -169,6 +182,17 @@ const styles = {
   headerActions: {
     display: 'flex',
     gap: '0.4rem',
+  },
+  dragBtn: {
+    padding: '0.2rem',
+    background: 'none',
+    border: 'none',
+    boxShadow: 'none',
+    color: 'var(--text-secondary)',
+    opacity: 0.6,
+    cursor: 'grab',
+    fontSize: '12px',
+    lineHeight: 1,
   },
   editBtn: {
     padding: '0.2rem',

@@ -198,12 +198,8 @@ const WeeklyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t }) 
               {dayPlans.map(plan => (
                 <div
                   key={plan.id}
-                  draggable
-                  onDragStart={(e) => handleDragStart(e, plan)}
-                  onDragEnd={handleDragEnd}
                   style={{
                     opacity: draggedPlan?.id === plan.id ? 0.5 : 1,
-                    cursor: 'grab',
                     transition: 'opacity 0.2s ease',
                   }}
                 >
@@ -212,6 +208,9 @@ const WeeklyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t }) 
                     updatePlan={updatePlan} 
                     deletePlan={deletePlan} 
                     onEdit={handleEditTask}
+                    onDragStart={(e) => handleDragStart(e, plan)}
+                    onDragEnd={handleDragEnd}
+                    isDragging={draggedPlan?.id === plan.id}
                     t={t}
                   />
                 </div>
