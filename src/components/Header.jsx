@@ -1,55 +1,56 @@
 import React from 'react';
 
-const Header = ({ viewMode, setViewMode, theme, toggleTheme, language, toggleLanguage, t, onSync, onUpload, setSyncModalOpen, syncStatus }) => {
+const Header = ({
+  viewMode,
+  setViewMode,
+  theme,
+  toggleTheme,
+  toggleLanguage,
+  t,
+  onSync,
+  onUpload,
+  setSyncModalOpen,
+  syncStatus,
+  currentUser,
+  onLogout,
+}) => {
+  const displayName = currentUser?.username || currentUser?.email || '—';
+  const isAdmin = currentUser?.role === 'admin';
+
   return (
     <header className="glass-panel" style={styles.header}>
       <div style={styles.left}>
         <img src="logo.png" alt="Logo" style={styles.logo} />
-        <h1 style={styles.title}>{t.title}</h1>
+        <div>
+          <h1 style={styles.title}>{t.title}</h1>
+          <div style={styles.userLine}>
+            <span>{displayName}</span>
+            {isAdmin && <span style={styles.adminBadge}>{t.adminBadge}</span>}
+          </div>
+        </div>
       </div>
 
       <div className="segmented-control" style={styles.center}>
-        <button 
-          className={`glass-button ${viewMode === 'daily' ? 'active-tab' : ''}`}
-          onClick={() => setViewMode('daily')}
-        >
+        <button className={`glass-button ${viewMode === 'daily' ? 'active-tab' : ''}`} onClick={() => setViewMode('daily')}>
           {t.daily}
         </button>
-        <button 
-          className={`glass-button ${viewMode === 'weekly' ? 'active-tab' : ''}`}
-          onClick={() => setViewMode('weekly')}
-        >
+        <button className={`glass-button ${viewMode === 'weekly' ? 'active-tab' : ''}`} onClick={() => setViewMode('weekly')}>
           {t.weekly}
         </button>
-        <button 
-          className={`glass-button ${viewMode === 'monthly' ? 'active-tab' : ''}`}
-          onClick={() => setViewMode('monthly')}
-        >
+        <button className={`glass-button ${viewMode === 'monthly' ? 'active-tab' : ''}`} onClick={() => setViewMode('monthly')}>
           {t.monthly}
         </button>
-        <button 
-          className={`glass-button ${viewMode === 'yearly' ? 'active-tab' : ''}`}
-          onClick={() => setViewMode('yearly')}
-        >
+        <button className={`glass-button ${viewMode === 'yearly' ? 'active-tab' : ''}`} onClick={() => setViewMode('yearly')}>
           {t.yearly}
         </button>
       </div>
-      
+
       <div style={styles.right}>
         <div style={styles.statusGroup}>
-          <button 
+          <button
             className="glass-button icon-only"
             onClick={() => setSyncModalOpen(true)}
-            style={{ 
-              background: 'transparent', 
-              border: 'none',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-              padding: '0',
-              fontSize: '1rem'
-            }}
+            style={styles.statusButton}
             title={t.syncSettings}
           >
             <span style={{ ...styles.statusText, color: getStatusColor(syncStatus) }}>
@@ -59,38 +60,16 @@ const Header = ({ viewMode, setViewMode, theme, toggleTheme, language, toggleLan
         </div>
 
         <div className="button-group">
-          <button 
-            className="glass-button icon-only" 
-            onClick={onSync}
-            title={t.sync}
-          >
-            🔄
-          </button>
-          <button 
-            className="glass-button icon-only" 
-            onClick={onUpload}
-            title={t.upload}
-          >
-            📥
-          </button>
+          <button className="glass-button icon-only" onClick={onSync} title={t.sync}>🔄</button>
+          <button className="glass-button icon-only" onClick={onUpload} title={t.upload}>📥</button>
         </div>
 
         <div className="button-group">
-          <button 
-            className="glass-button icon-only" 
-            onClick={toggleLanguage}
-            title="Toggle Language (Alt+L)"
-          >
-            🌐
-          </button>
-          <button 
-            className="glass-button" 
-            style={{ padding: '0 0.8rem', fontSize: '1.2rem'}}
-            onClick={toggleTheme}
-            title="Toggle Theme (Alt+T)"
-          >
+          <button className="glass-button icon-only" onClick={toggleLanguage} title="Toggle Language (Alt+L)">🌐</button>
+          <button className="glass-button" style={{ padding: '0 0.8rem', fontSize: '1.2rem' }} onClick={toggleTheme} title="Toggle Theme (Alt+T)">
             {theme === 'light' ? '🌙' : '☀️'}
           </button>
+          <button className="glass-button" onClick={onLogout} title={t.logoutBtn}>{t.logoutBtn}</button>
         </div>
       </div>
     </header>
@@ -100,8 +79,8 @@ const Header = ({ viewMode, setViewMode, theme, toggleTheme, language, toggleLan
 const getStatusColor = (status) => {
   switch (status) {
     case 'loading': return 'var(--accent-color)';
-    case 'uploading': return '#fbbf24'; // Amber
-    case 'synced': return '#10b981'; // Emerald
+    case 'uploading': return '#fbbf24';
+    case 'synced': return '#10b981';
     case 'error': return 'var(--danger-color)';
     default: return 'var(--text-secondary)';
   }
@@ -158,7 +137,7 @@ const styles = {
     width: '36px',
     height: '36px',
     borderRadius: '10px',
-    boxShadow: '0 4px 12px rgba(0,0,0,0.2)'
+    boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
   },
   title: {
     margin: 0,
@@ -168,6 +147,21 @@ const styles = {
     WebkitTextFillColor: 'transparent',
     whiteSpace: 'nowrap',
   },
+  userLine: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.5rem',
+    fontSize: '0.82rem',
+    color: 'var(--text-secondary)',
+    marginTop: '0.25rem',
+  },
+  adminBadge: {
+    padding: '0.1rem 0.45rem',
+    borderRadius: '999px',
+    background: 'rgba(16, 185, 129, 0.15)',
+    color: '#10b981',
+    fontWeight: 600,
+  },
   statusGroup: {
     display: 'flex',
     alignItems: 'center',
@@ -175,6 +169,16 @@ const styles = {
     padding: '0.4rem 0.8rem',
     background: 'rgba(255,255,255,0.05)',
     borderRadius: '10px',
+  },
+  statusButton: {
+    background: 'transparent',
+    border: 'none',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.5rem',
+    padding: 0,
+    fontSize: '1rem',
   },
   statusText: {
     fontSize: '0.75rem',

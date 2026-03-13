@@ -1,100 +1,126 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 
 const AuthOverlay = ({ onAuthenticated, t }) => {
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState(false);
-  const [attempts, setAttempts] = useState(0);
-  const [lockoutUntil, setLockoutUntil] = useState(null);
-  
-  // SHA-256 hash of '571428'
-  const HASHED_PASSWORD = 'be7983a25dcc8f7a3f12704e1714b44abd46f041c11984ea637b14aa69a5c869'; 
-  const MAX_ATTEMPTS = 5;
-  const LOCKOUT_MINUTES = 5;
+  const [mode, setMode] = useState('login');
+  const [form, setForm] = useState({ email: '', password: '', username: '' });
+  const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  useEffect(() => {
-    // Check local storage for persistent authentication
-    const isAuth = localStorage.getItem('nanmuz_auth');
-    if (isAuth === 'true') {
-      onAuthenticated();
-    }
-    
-    // Check for existing lockout
-    const savedLockout = localStorage.getItem('nanmuz_lockout');
-    if (savedLockout && new Date(savedLockout) > new Date()) {
-      setLockoutUntil(new Date(savedLockout));
-    }
-  }, [onAuthenticated]);
-
-  const hashPassword = async (pwd) => {
-    const encoder = new TextEncoder();
-    const data = encoder.encode(pwd);
-    const hashBuffer = await window.crypto.subtle.digest('SHA-256', data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  const updateField = (key, value) => {
+    setForm((prev) => ({ ...prev, [key]: value }));
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    
-    if (lockoutUntil && new Date() < lockoutUntil) {
-      return;
-    }
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    setError('');
+    setIsSubmitting(true);
 
-    const hashedInput = await hashPassword(password);
-    
-    if (hashedInput === HASHED_PASSWORD) {
-      localStorage.setItem('nanmuz_auth', 'true');
-      localStorage.removeItem('nanmuz_lockout');
-      setError(false);
-      onAuthenticated();
-    } else {
-      const newAttempts = attempts + 1;
-      setAttempts(newAttempts);
-      setError(true);
-      
-      if (newAttempts >= MAX_ATTEMPTS) {
-        const until = new Date(new Date().getTime() + LOCKOUT_MINUTES * 60000);
-        setLockoutUntil(until);
-        localStorage.setItem('nanmuz_lockout', until.toISOString());
-        setAttempts(0);
+    try {
+      const endpoint = mode === 'login' ? '/api/auth/login' : '/api/auth/register';
+      const payload = {
+        email: form.email.trim(),
+        password: form.password,
+      };
+
+      if (mode === 'register') {
+        payload.username = form.username.trim();
       }
-      
-      setTimeout(() => setError(false), 2000);
+
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify(payload),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || result.status !== 'success') {
+        throw new Error(result.message || t.authUnknownError);
+      }
+
+      onAuthenticated(result.user);
+    } catch (submitError) {
+      setError(submitError.message || t.authUnknownError);
+    } finally {
+      setIsSubmitting(false);
     }
   };
-
-  const isLocked = lockoutUntil && new Date() < lockoutUntil;
-  const minutesLeft = isLocked ? Math.ceil((lockoutUntil - new Date()) / 60000) : 0;
 
   return (
     <div className="auth-container" style={styles.container}>
       <div className="glass-panel" style={styles.panel}>
         <img src="logo.png" alt="NanMuZ Logo" style={styles.logo} />
         <h2>{t.title}</h2>
-        <p style={styles.subtitle}>{t.subtitle}</p>
-        
+        <p style={styles.subtitle}>
+          {mode === 'login' ? t.loginSubtitle : t.registerSubtitle}
+        </p>
+
+        <div style={styles.modeSwitcher}>
+          <button
+            type="button"
+            className={`glass-button ${mode === 'login' ? 'active-tab' : ''}`}
+            style={styles.modeButton}
+            onClick={() => {
+              setMode('login');
+              setError('');
+            }}
+          >
+            {t.loginBtn}
+          </button>
+          <button
+            type="button"
+            className={`glass-button ${mode === 'register' ? 'active-tab' : ''}`}
+            style={styles.modeButton}
+            onClick={() => {
+              setMode('register');
+              setError('');
+            }}
+          >
+            {t.registerBtn}
+          </button>
+        </div>
+
         <form onSubmit={handleSubmit} style={styles.form}>
+          <input
+            type="email"
+            className="glass-input"
+            placeholder={t.emailPlaceholder}
+            value={form.email}
+            onChange={(e) => updateField('email', e.target.value)}
+            autoFocus
+            required
+          />
+
+          {mode === 'register' && (
+            <input
+              type="text"
+              className="glass-input"
+              placeholder={t.usernamePlaceholder}
+              value={form.username}
+              onChange={(e) => updateField('username', e.target.value)}
+            />
+          )}
+
           <input
             type="password"
             className="glass-input"
             placeholder={t.passwordPlaceholder}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            style={error ? { ...styles.inputError } : {}}
-            disabled={isLocked}
-            autoFocus
+            value={form.password}
+            onChange={(e) => updateField('password', e.target.value)}
+            required
           />
-          <button 
-            type="submit" 
-            className="glass-button" 
-            style={styles.button}
-            disabled={isLocked}
-          >
-            {isLocked ? t.lockoutMessage(minutesLeft) : t.unlockBtn}
+
+          <button type="submit" className="glass-button" style={styles.button} disabled={isSubmitting}>
+            {isSubmitting
+              ? t.submitting
+              : mode === 'login'
+                ? t.loginBtn
+                : t.registerBtn}
           </button>
         </form>
-        {error && !isLocked && <p className="animate-fade-in" style={styles.errorText}>{t.accessDenied}</p>}
-        {isLocked && <p className="animate-fade-in" style={styles.errorText}>{t.lockoutMessage(minutesLeft)}</p>}
+
+        {error && <p style={styles.errorText}>{error}</p>}
       </div>
     </div>
   );
@@ -103,8 +129,7 @@ const AuthOverlay = ({ onAuthenticated, t }) => {
 const styles = {
   container: {
     position: 'fixed',
-    top: 0,
-    left: 0,
+    inset: 0,
     width: '100%',
     height: '100vh',
     display: 'flex',
@@ -118,20 +143,29 @@ const styles = {
     flexDirection: 'column',
     alignItems: 'center',
     textAlign: 'center',
-    maxWidth: '400px',
-    width: '90%',
+    maxWidth: '420px',
+    width: '92%',
   },
   logo: {
     width: '90px',
     height: '90px',
     borderRadius: '20px',
     marginBottom: '1.5rem',
-    boxShadow: '0 0 20px rgba(0,0,0,0.5)'
+    boxShadow: '0 0 20px rgba(0,0,0,0.5)',
   },
   subtitle: {
     color: 'var(--text-secondary)',
-    marginBottom: '2rem',
-    fontSize: '0.95rem'
+    marginBottom: '1.5rem',
+    fontSize: '0.95rem',
+  },
+  modeSwitcher: {
+    display: 'flex',
+    gap: '0.75rem',
+    width: '100%',
+    marginBottom: '1rem',
+  },
+  modeButton: {
+    flex: 1,
   },
   form: {
     display: 'flex',
@@ -143,15 +177,11 @@ const styles = {
     padding: '0.8em',
     marginTop: '0.5rem',
   },
-  inputError: {
-    borderColor: 'var(--danger-color)',
-    boxShadow: '0 0 10px rgba(239, 68, 68, 0.4)',
-  },
   errorText: {
     color: 'var(--danger-color)',
     marginTop: '1rem',
     fontSize: '0.9rem',
-  }
+  },
 };
 
 export default AuthOverlay;

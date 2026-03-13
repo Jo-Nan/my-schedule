@@ -187,7 +187,7 @@ const WeeklyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t }) 
                     </div>
                   </div>
                 ) : (
-                  <div style={{minHeight: '66px', opacity: 0.5}}>{t.languageToggle === '🌐 English' ? 'Fetching weather...' : '获取天气中...'}</div>
+                  <div style={{minHeight: '66px'}}></div>
                 )
               ) : (
                 <div style={{minHeight: '66px'}}></div>

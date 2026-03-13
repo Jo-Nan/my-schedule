@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import AuthOverlay from './components/AuthOverlay';
 import Header from './components/Header';
 import WeeklyView from './components/WeeklyView';
@@ -11,36 +11,140 @@ import { translations } from './utils/translations';
 import './index.css';
 
 function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [viewMode, setViewMode] = useState('weekly'); // 'daily', 'weekly', 'monthly', 'yearly'
-  const [theme, setTheme] = useState('light'); // 'light' or 'dark'
+  const [currentUser, setCurrentUser] = useState(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [viewMode, setViewMode] = useState('weekly');
+  const [theme, setTheme] = useState('light');
   const [language, setLanguage] = useState(() => localStorage.getItem('nanmuz_lang') || 'en');
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
-  const [syncStatus, setSyncStatus] = useState('idle'); // 'idle', 'loading', 'uploading', 'synced', 'error'
+  const [syncStatus, setSyncStatus] = useState('idle');
+  const [plans, setPlans] = useState([]);
+  const [weatherData, setWeatherData] = useState([]);
 
   const t = translations[language];
-  
-  // Synchronous initialization prevents overwriting saved data on hard reloads
-  const [plans, setPlans] = useState(() => {
-    const savedPlans = localStorage.getItem('nanmuz_plans');
-    return savedPlans ? JSON.parse(savedPlans) : [];
-  });
-  
-  const [weatherData, setWeatherData] = useState([]);
-  
-  // Debounce timer for auto-sync
+  const cacheKey = useMemo(() => (currentUser ? `nanmuz_plans_${currentUser.id}` : null), [currentUser]);
   const autoSyncTimerRef = useRef(null);
-  // Track if we should auto-sync (skip initial load)
   const isInitializedRef = useRef(false);
-  // Track last synced plans hash to prevent infinite loops
   const lastSyncedHashRef = useRef(null);
 
-  // Init Theme
   useEffect(() => {
     const savedTheme = localStorage.getItem('nanmuz_theme') || 'light';
     setTheme(savedTheme);
     document.documentElement.setAttribute('data-theme', savedTheme);
   }, []);
+
+  useEffect(() => {
+    const restoreSession = async () => {
+      try {
+        const response = await fetch('/api/auth/me', { credentials: 'same-origin' });
+        if (!response.ok) {
+          setCurrentUser(null);
+          return;
+        }
+        const result = await response.json();
+        if (result.status === 'success') {
+          setCurrentUser(result.user);
+        }
+      } catch {
+        setCurrentUser(null);
+      } finally {
+        setAuthReady(true);
+      }
+    };
+
+    restoreSession();
+  }, []);
+
+  useEffect(() => {
+    if (!cacheKey) {
+      setPlans([]);
+      return;
+    }
+
+    const savedPlans = localStorage.getItem(cacheKey);
+    const parsedPlans = savedPlans ? JSON.parse(savedPlans) : [];
+    setPlans(parsedPlans);
+    lastSyncedHashRef.current = JSON.stringify(parsedPlans);
+    isInitializedRef.current = false;
+  }, [cacheKey]);
+
+  useEffect(() => {
+    if (cacheKey) {
+      localStorage.setItem(cacheKey, JSON.stringify(plans));
+    }
+
+    if (isInitializedRef.current && currentUser) {
+      const currentHash = JSON.stringify(plans);
+      if (currentHash === lastSyncedHashRef.current) {
+        return;
+      }
+
+      if (autoSyncTimerRef.current) {
+        clearTimeout(autoSyncTimerRef.current);
+      }
+
+      autoSyncTimerRef.current = setTimeout(() => {
+        handleExport();
+      }, 500);
+    }
+  }, [plans, cacheKey, currentUser]);
+
+  useEffect(() => {
+    if (!currentUser) {
+      return;
+    }
+
+    const loadAndMergePlans = async () => {
+      setSyncStatus('loading');
+      try {
+        const response = await fetch(`/api/load-plans?t=${Date.now()}`, { credentials: 'same-origin' });
+        if (response.status === 401) {
+          setCurrentUser(null);
+          setPlans([]);
+          return;
+        }
+        if (!response.ok) {
+          throw new Error('Sync failed');
+        }
+
+        const result = await response.json();
+        if (result.status !== 'success') {
+          throw new Error(result.message || 'Failed to load plans');
+        }
+
+        setPlans((prev) => {
+          const merged = mergePlans(prev, result.data || []);
+          const hash = JSON.stringify(merged);
+          lastSyncedHashRef.current = hash;
+          isInitializedRef.current = true;
+          return merged;
+        });
+        setSyncStatus('synced');
+        setTimeout(() => setSyncStatus('idle'), 3000);
+      } catch (error) {
+        console.error('Auto-sync on load failed:', error);
+        isInitializedRef.current = true;
+        setSyncStatus('error');
+      }
+    };
+
+    loadAndMergePlans();
+    fetchWeeklyWeather().then((data) => setWeatherData(Array.isArray(data) ? data : []));
+  }, [currentUser]);
+
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (event.altKey && event.key.toLowerCase() === 't') {
+        toggleTheme();
+      }
+      if (event.altKey && event.key.toLowerCase() === 'l') {
+        toggleLanguage();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [theme, language]);
 
   const toggleTheme = () => {
     const newTheme = theme === 'light' ? 'dark' : 'light';
@@ -49,84 +153,59 @@ function App() {
     document.documentElement.setAttribute('data-theme', newTheme);
   };
 
-  // Save plans to local storage whenever they change
-  useEffect(() => {
-    localStorage.setItem('nanmuz_plans', JSON.stringify(plans));
-    
-    // Auto-sync with debounce when plans change (but skip initial load and duplicate syncs)
-    if (isInitializedRef.current && isAuthenticated) {
-      // Create a simple hash to detect actual changes
-      const currentHash = JSON.stringify(plans);
-      
-      // Skip if we just synced this exact data
-      if (currentHash === lastSyncedHashRef.current) {
-        console.log('[AutoSync] Skipping sync - data unchanged');
-        return;
-      }
-      
-      if (autoSyncTimerRef.current) {
-        clearTimeout(autoSyncTimerRef.current);
-      }
-      
-      autoSyncTimerRef.current = setTimeout(() => {
-        console.log('[AutoSync] Syncing updated plans to GitHub');
-        handleExport();
-      }, 500);
-    }
-  }, [plans, isAuthenticated]);
+  const toggleLanguage = () => {
+    const newLang = language === 'en' ? 'zh' : 'en';
+    setLanguage(newLang);
+    localStorage.setItem('nanmuz_lang', newLang);
+  };
 
-  // Sync Logic - 正确处理数据合并
-  const mergePlans = (local, remote) => {
-    // 基于远程数据构建最终结果（远程是真实来源）
+  const mergePlans = (localPlans, remotePlans) => {
     const merged = [];
-    const remoteIds = new Set(remote.map(p => p.id));
-    
-    // 1. 遍历本地数据，如果在远程存在则比较时间戳
-    local.forEach(localPlan => {
-      const remoteIndex = remote.findIndex(p => p.id === localPlan.id);
-      if (remoteIndex > -1) {
-        // 本地和远程都有 - 保留更新的版本
-        const remotePlan = remote[remoteIndex];
-        if ((remotePlan.updatedAt || 0) > (localPlan.updatedAt || 0)) {
-          merged.push(remotePlan);
-        } else {
-          merged.push(localPlan);
-        }
+
+    localPlans.forEach((localPlan) => {
+      const remotePlan = remotePlans.find((plan) => plan.id === localPlan.id);
+      if (remotePlan) {
+        merged.push((remotePlan.updatedAt || 0) > (localPlan.updatedAt || 0) ? remotePlan : localPlan);
       } else {
-        // 本地有但远程没有 - 可能被其他浏览器删除，不要加回
-        console.log(`[Sync] Skipping locally deleted item: ${localPlan.id}`);
+        merged.push(localPlan);
       }
     });
-    
-    // 2. 添加远程独有的项目（其他浏览器新增的）
-    remote.forEach(remotePlan => {
-      if (!local.some(p => p.id === remotePlan.id)) {
+
+    remotePlans.forEach((remotePlan) => {
+      if (!localPlans.some((plan) => plan.id === remotePlan.id)) {
         merged.push(remotePlan);
       }
     });
-    
+
     return merged;
   };
 
   const handleSync = async () => {
     setSyncStatus('loading');
     try {
-      const response = await fetch('/api/load-plans?t=' + Date.now());
-
-      if (!response.ok) throw new Error('Sync failed');
-      const result = await response.json();
-      
-      if (result.status !== 'success') {
-        throw new Error(result.message || 'Failed to load plans from GitHub');
+      const response = await fetch(`/api/load-plans?t=${Date.now()}`, { credentials: 'same-origin' });
+      if (response.status === 401) {
+        setCurrentUser(null);
+        setPlans([]);
+        return;
+      }
+      if (!response.ok) {
+        throw new Error('Sync failed');
       }
 
-      const remotePlans = result.data || [];
-      const merged = mergePlans(plans, remotePlans);
+      const result = await response.json();
+      if (result.status !== 'success') {
+        throw new Error(result.message || 'Failed to load plans');
+      }
+
+      const merged = mergePlans(plans, result.data || []);
+      const hash = JSON.stringify(merged);
+      lastSyncedHashRef.current = hash;
       setPlans(merged);
       setSyncStatus('synced');
       setTimeout(() => setSyncStatus('idle'), 3000);
-    } catch (err) {
-      console.error('Sync Error:', err);
+    } catch (error) {
+      console.error('Sync error:', error);
       setSyncStatus('error');
       alert(t.syncError || 'Sync failed');
     }
@@ -138,66 +217,34 @@ function App() {
       const response = await fetch('/api/save-plans', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(plans)
+        credentials: 'same-origin',
+        body: JSON.stringify(plans),
       });
 
-      if (!response.ok) throw new Error('Save failed');
+      if (response.status === 401) {
+        setCurrentUser(null);
+        setPlans([]);
+        return;
+      }
+      if (!response.ok) {
+        throw new Error('Save failed');
+      }
+
       const result = await response.json();
-
       if (result.status !== 'success') {
-        throw new Error(result.message || 'Failed to save plans to GitHub');
+        throw new Error(result.message || 'Failed to save plans');
       }
 
-      // 保存成功后，立即重新同步确保所有浏览器数据一致
-      await new Promise(resolve => setTimeout(resolve, 300));
-      
-      const syncResponse = await fetch('/api/load-plans?t=' + Date.now());
-      if (!syncResponse.ok) throw new Error('Sync after save failed');
-      
-      const syncResult = await syncResponse.json();
-      if (syncResult.status === 'success') {
-        const remotePlans = syncResult.data || [];
-        const planHash = JSON.stringify(remotePlans);
-        
-        // 更新 hash，标记已同步的状态（防止无限循环）
-        lastSyncedHashRef.current = planHash;
-        
-        // 直接使用远程数据作为真实来源（避免再次合并）
-        setPlans(remotePlans);
-      }
-
+      lastSyncedHashRef.current = JSON.stringify(plans);
       setSyncStatus('synced');
       setTimeout(() => setSyncStatus('idle'), 3000);
-    } catch (err) {
-      console.error('Export error:', err);
+    } catch (error) {
+      console.error('Export error:', error);
       setSyncStatus('error');
       alert((t.uploadError || t.syncError) || 'Save failed');
     }
   };
 
-  // Global Keyboard Shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      // Alt+T: Toggle Theme
-      if (e.altKey && e.key.toLowerCase() === 't') {
-        toggleTheme();
-      }
-      // Alt+L: Toggle Language
-      if (e.altKey && e.key.toLowerCase() === 'l') {
-        toggleLanguage();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [theme, language]);
-
-  const toggleLanguage = () => {
-    const newLang = language === 'en' ? 'zh' : 'en';
-    setLanguage(newLang);
-    localStorage.setItem('nanmuz_lang', newLang);
-  };
-
-  // Helper: Get local date string (handles timezone correctly)
   const getLocalDateStr = (date = new Date()) => {
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -205,70 +252,15 @@ function App() {
     return `${year}-${month}-${day}`;
   };
 
-  // Auto-sync and fetch weather when authenticated
-  useEffect(() => {
-    if (isAuthenticated) {
-      // Mark as initialized after first load
-      isInitializedRef.current = false;
-      
-      // Auto-load plans from GitHub on page load/refresh
-      // 使用智能合并：优先保留本地较新的数据
-      const loadAndMergePlans = async () => {
-        try {
-          const response = await fetch('/api/load-plans?t=' + Date.now());
-          if (!response.ok) return;
-          
-          const result = await response.json();
-          if (result.status === 'success') {
-            const remotePlans = result.data || [];
-            // 使用 mergePlans 确保本地更新的数据不会被覆盖
-            setPlans(prev => {
-              const merged = mergePlans(prev, remotePlans);
-              const mergedHash = JSON.stringify(merged);
-              
-              // 记录初始化完成后的状态 hash，防止立即触发 auto-sync
-              lastSyncedHashRef.current = mergedHash;
-              isInitializedRef.current = true;
-              return merged;
-            });
-          }
-        } catch (err) {
-          console.error('Auto-sync on load failed:', err);
-          isInitializedRef.current = true;
-        }
-      };
-      
-      loadAndMergePlans();
-      
-      // Fetch weather data
-      fetchWeeklyWeather().then(data => {
-        setWeatherData(data);
-      });
-    }
-  }, [isAuthenticated]);
-
-  // Trigger debounced auto-sync (合并多个快速操作为一次同步)
-  const triggerAutoSync = () => {
-    if (autoSyncTimerRef.current) {
-      clearTimeout(autoSyncTimerRef.current);
-    }
-    autoSyncTimerRef.current = setTimeout(() => {
-      handleExport();
-    }, 500);
-  };
-
   const updatePlan = (id, updates) => {
-    setPlans(prev => {
-      const updated = prev.map(p => p.id === id ? { ...p, ...updates, updatedAt: Date.now() } : p);
-      return updated;
-    });
-    // useEffect 会自动检测 plans 变化并触发 auto-sync
+    setPlans((prev) => prev.map((plan) => (
+      plan.id === id ? { ...plan, ...updates, updatedAt: Date.now() } : plan
+    )));
   };
 
   const addPlan = (newPlan) => {
-    // 确保新计划有所有必需的字段
     const completePlan = {
-      id: newPlan.id || `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+      id: newPlan.id || `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
       event: newPlan.event || '',
       date: newPlan.date || getLocalDateStr(),
       time: newPlan.time || '',
@@ -276,80 +268,88 @@ function App() {
       ddl: newPlan.ddl || '',
       progress: newPlan.progress || 0,
       status: newPlan.status || 'uncompleted',
-      updatedAt: Date.now()
+      updatedAt: Date.now(),
     };
-    
-    setPlans(prev => {
-      const updated = [...prev, completePlan];
-      return updated;
-    });
-    // useEffect 会自动检测 plans 变化并触发 auto-sync
+
+    setPlans((prev) => [...prev, completePlan]);
   };
 
   const deletePlan = (id) => {
-    setPlans(prev => {
-      const updated = prev.filter(p => p.id !== id);
-      return updated;
-    });
-    // useEffect 会自动检测 plans 变化并触发 auto-sync
+    setPlans((prev) => prev.filter((plan) => plan.id !== id));
   };
 
-  if (!isAuthenticated) {
-    return <AuthOverlay onAuthenticated={() => setIsAuthenticated(true)} t={t} />;
+  const handleAuthenticated = (user) => {
+    setCurrentUser(user);
+    setAuthReady(true);
+    setSyncStatus('idle');
+  };
+
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'same-origin',
+      });
+    } finally {
+      setCurrentUser(null);
+      setPlans([]);
+      setWeatherData([]);
+      setSyncStatus('idle');
+      isInitializedRef.current = false;
+      lastSyncedHashRef.current = null;
+    }
+  };
+
+  if (!authReady) {
+    return <div style={styles.loading}>{t.authChecking}</div>;
+  }
+
+  if (!currentUser) {
+    return <AuthOverlay onAuthenticated={handleAuthenticated} t={t} />;
   }
 
   return (
     <div className="animate-fade-in" style={{ width: '100%' }}>
-      <Header 
-        viewMode={viewMode} 
-        setViewMode={setViewMode} 
-        theme={theme} 
-        toggleTheme={toggleTheme} 
-        language={language}
+      <Header
+        viewMode={viewMode}
+        setViewMode={setViewMode}
+        theme={theme}
+        toggleTheme={toggleTheme}
         toggleLanguage={toggleLanguage}
         t={t}
-        onSync={() => handleSync()}
-        onUpload={() => handleExport()}
+        onSync={handleSync}
+        onUpload={handleExport}
         setSyncModalOpen={setIsSyncModalOpen}
         syncStatus={syncStatus}
+        currentUser={currentUser}
+        onLogout={handleLogout}
       />
-      
-      <SyncModal 
-        isOpen={isSyncModalOpen} 
-        onClose={() => setIsSyncModalOpen(false)} 
-        t={t}
-      />
-      
+
+      <SyncModal isOpen={isSyncModalOpen} onClose={() => setIsSyncModalOpen(false)} t={t} />
+
       <main>
         {viewMode === 'daily' && (
-          <DailyView 
-            plans={plans} 
-            updatePlan={updatePlan} 
-            addPlan={addPlan} 
-            deletePlan={deletePlan}
-            weatherData={weatherData} 
-            t={t}
-          />
+          <DailyView plans={plans} updatePlan={updatePlan} addPlan={addPlan} deletePlan={deletePlan} weatherData={weatherData} t={t} />
         )}
         {viewMode === 'weekly' && (
-          <WeeklyView 
-            plans={plans} 
-            updatePlan={updatePlan} 
-            addPlan={addPlan} 
-            deletePlan={deletePlan}
-            weatherData={weatherData} 
-            t={t}
-          />
+          <WeeklyView plans={plans} updatePlan={updatePlan} addPlan={addPlan} deletePlan={deletePlan} weatherData={weatherData} t={t} />
         )}
-        {viewMode === 'monthly' && (
-          <MonthlyView plans={plans} t={t} />
-        )}
-        {viewMode === 'yearly' && (
-          <YearlyView plans={plans} addPlan={addPlan} t={t} />
-        )}
+        {viewMode === 'monthly' && <MonthlyView plans={plans} t={t} />}
+        {viewMode === 'yearly' && <YearlyView plans={plans} addPlan={addPlan} t={t} />}
       </main>
     </div>
   );
 }
+
+const styles = {
+  loading: {
+    minHeight: '100vh',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    color: 'var(--text-secondary)',
+    fontSize: '1rem',
+  },
+};
 
 export default App;
