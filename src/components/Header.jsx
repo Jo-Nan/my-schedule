@@ -1,3 +1,5 @@
+import { useEffect, useRef, useState } from 'react';
+
 const Header = ({
   viewMode,
   setViewMode,
@@ -22,6 +24,35 @@ const Header = ({
 }) => {
   const displayName = activeUser?.username || activeUser?.email || '—';
   const isAdmin = currentUser?.role === 'admin';
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const settingsRef = useRef(null);
+
+  useEffect(() => {
+    const handlePointerDown = (event) => {
+      if (settingsRef.current && !settingsRef.current.contains(event.target)) {
+        setIsSettingsOpen(false);
+      }
+    };
+
+    const handleEscape = (event) => {
+      if (event.key === 'Escape') {
+        setIsSettingsOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleEscape);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, []);
+
+  const handleSettingsAction = (action) => {
+    setIsSettingsOpen(false);
+    action();
+  };
 
   return (
     <header className="glass-panel" style={styles.header}>
@@ -72,11 +103,6 @@ const Header = ({
           <button className="glass-button icon-only" onClick={onUpload} title={t.upload}>📥</button>
         </div>
 
-        <div className="button-group">
-          <button className="glass-button" onClick={onOpenProfile} title={t.profileTitle}>{t.profileButton}</button>
-          <button className="glass-button" onClick={onOpenMessage} title={t.messageAdminTitle}>{t.messageButton}</button>
-        </div>
-
         {isAdmin && (
           <div className="button-group">
             <button className="glass-button" onClick={onOpenAdmin} title={t.adminPanelTitle}>{t.adminButton}</button>
@@ -104,14 +130,56 @@ const Header = ({
           >
             {theme === 'light' ? '🌙' : '☀️'}
           </button>
-          <button 
+        </div>
+
+        <div style={styles.settingsWrap} ref={settingsRef}>
+          <button
             className="glass-button"
-            style={styles.logoutBtn}
-            onClick={onLogout} 
-            title={t.logoutBtn}
+            style={styles.settingsBtn}
+            onClick={() => setIsSettingsOpen((prev) => !prev)}
+            title={t.settingsMenu}
+            aria-expanded={isSettingsOpen}
+            aria-haspopup="menu"
+            type="button"
           >
-            {t.logoutBtn}
+            <span style={styles.settingsIcon}>⚙</span>
+            <span style={styles.settingsLabel}>{t.settingsMenu}</span>
           </button>
+
+          {isSettingsOpen && (
+            <div style={styles.settingsMenu} role="menu">
+              <button
+                className="glass-button"
+                style={styles.menuItem}
+                onClick={() => handleSettingsAction(onOpenProfile)}
+                title={t.profileTitle}
+                type="button"
+              >
+                <span style={styles.menuIcon}>👤</span>
+                <span>{t.profileButton}</span>
+              </button>
+              <button
+                className="glass-button"
+                style={styles.menuItem}
+                onClick={() => handleSettingsAction(onOpenMessage)}
+                title={t.messageAdminTitle}
+                type="button"
+              >
+                <span style={styles.menuIcon}>✉️</span>
+                <span>{t.messageButton}</span>
+              </button>
+              <button
+                className="glass-button"
+                style={{ ...styles.menuItem, ...styles.menuItemDanger }}
+                onClick={() => handleSettingsAction(onLogout)}
+                title={t.logoutBtn}
+                type="button"
+              >
+                <span style={styles.menuIcon}>⇠</span>
+                <span>{t.logoutBtn}</span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </header>
@@ -176,6 +244,10 @@ const styles = {
     justifyContent: 'flex-end',
     flex: 1,
     minWidth: 0,
+  },
+  settingsWrap: {
+    position: 'relative',
+    flexShrink: 0,
   },
   logo: {
     width: '36px',
@@ -292,15 +364,63 @@ const styles = {
     border: '1px solid rgba(150, 150, 150, 0.2)',
     transition: 'all 0.2s ease',
   },
-  logoutBtn: {
-    padding: '0.55rem 1rem',
-    fontSize: '0.95rem',
-    fontWeight: 600,
-    background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.16), rgba(248, 113, 113, 0.24))',
-    border: '1px solid rgba(239, 68, 68, 0.28)',
-    color: '#dc2626',
+  settingsBtn: {
+    padding: '0.55rem 0.9rem',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.5rem',
     borderRadius: '999px',
-    boxShadow: '0 10px 24px -18px rgba(239, 68, 68, 0.9)',
+    whiteSpace: 'nowrap',
+    fontWeight: 600,
+  },
+  settingsIcon: {
+    fontSize: '1rem',
+    lineHeight: 1,
+  },
+  settingsLabel: {
+    fontSize: '0.9rem',
+  },
+  settingsMenu: {
+    position: 'absolute',
+    top: 'calc(100% + 0.55rem)',
+    right: 0,
+    minWidth: '180px',
+    padding: '0.4rem',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.25rem',
+    borderRadius: '16px',
+    background: 'var(--glass-bg)',
+    backdropFilter: 'blur(18px)',
+    border: '1px solid var(--glass-border)',
+    boxShadow: '0 18px 40px rgba(15, 23, 42, 0.18)',
+    zIndex: 20,
+  },
+  menuItem: {
+    width: '100%',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    gap: '0.6rem',
+    padding: '0.7rem 0.85rem',
+    borderRadius: '12px',
+    boxShadow: 'none',
+    border: '1px solid transparent',
+    background: 'transparent',
+  },
+  menuItemDanger: {
+    color: '#dc2626',
+    background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.08), rgba(248, 113, 113, 0.14))',
+    borderColor: 'rgba(239, 68, 68, 0.16)',
+  },
+  menuIcon: {
+    width: '1rem',
+    textAlign: 'center',
+    flexShrink: 0,
+    fontSize: '0.95rem',
+    lineHeight: 1,
+  },
+  menuItemText: {
     transition: 'all 0.2s ease',
   },
 };

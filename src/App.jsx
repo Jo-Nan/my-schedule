@@ -13,6 +13,26 @@ import { fetchWeeklyWeather } from './utils/weatherApi';
 import { translations } from './utils/translations';
 import './index.css';
 
+const APP_VERSION = __APP_VERSION__;
+const APP_BUILD_TIME = __APP_BUILD_TIME__;
+
+const formatBuildTime = (value) => {
+  try {
+    return new Intl.DateTimeFormat('zh-CN', {
+      timeZone: 'Asia/Shanghai',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    }).format(new Date(value));
+  } catch {
+    return value;
+  }
+};
+
 function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [managedUser, setManagedUser] = useState(null);
@@ -29,6 +49,7 @@ function App() {
   const [weatherData, setWeatherData] = useState([]);
   const [hasUnsavedProgress, setHasUnsavedProgress] = useState(false);
   const [pendingSaveType, setPendingSaveType] = useState('none');
+  const buildLabel = useMemo(() => formatBuildTime(APP_BUILD_TIME), []);
 
   const t = translations[language];
   const activeUser = managedUser || currentUser;
@@ -413,6 +434,12 @@ function App() {
         {viewMode === 'monthly' && <MonthlyView plans={plans} t={t} />}
         {viewMode === 'yearly' && <YearlyView plans={plans} addPlan={addPlan} t={t} />}
       </main>
+
+      <footer style={styles.footer}>
+        <span style={styles.footerLabel}>Version {APP_VERSION}</span>
+        <span style={styles.footerDivider}>·</span>
+        <span style={styles.footerLabel}>Deploy Time {buildLabel} (Shanghai)</span>
+      </footer>
     </div>
   );
 }
@@ -425,6 +452,24 @@ const styles = {
     justifyContent: 'center',
     color: 'var(--text-secondary)',
     fontSize: '1rem',
+  },
+  footer: {
+    marginTop: '2.5rem',
+    padding: '1rem 0 0.25rem',
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: '0.5rem',
+    flexWrap: 'wrap',
+    color: 'var(--text-tertiary)',
+    fontSize: '0.8rem',
+    letterSpacing: '0.02em',
+  },
+  footerLabel: {
+    whiteSpace: 'nowrap',
+  },
+  footerDivider: {
+    opacity: 0.5,
   },
 };
 
