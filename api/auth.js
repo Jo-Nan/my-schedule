@@ -2,6 +2,7 @@ import { parseJsonBody, setSessionCookie, clearSessionCookie, requireAuth, getAu
 import {
   ensureDataStore,
   findUserByEmail,
+  findActiveUserByEmail,
   findUserById,
   createUserRecord,
   publicUser,
@@ -47,9 +48,9 @@ export default async function handler(req, res) {
         const email = (body.email || '').trim();
         const password = body.password || '';
         const store = await ensureDataStore();
-        const user = findUserByEmail(store.users, email);
+        const user = findActiveUserByEmail(store.users, email);
 
-        if (!user || user.isActive === false || !verifyPassword(password, user.passwordHash)) {
+        if (!user || !verifyPassword(password, user.passwordHash)) {
           return res.status(401).json({ status: 'error', message: 'Invalid email or password' });
         }
 
@@ -83,8 +84,8 @@ export default async function handler(req, res) {
 
         const store = await ensureDataStore();
 
-        const existingUser = findUserByEmail(store.users, email);
-        if (existingUser && existingUser.isActive !== false) {
+        const existingUser = findActiveUserByEmail(store.users, email);
+        if (existingUser) {
           return res.status(409).json({ status: 'error', message: 'Email is already registered' });
         }
 
@@ -108,9 +109,9 @@ export default async function handler(req, res) {
         const body = await parseJsonBody(req);
         const email = (body.email || '').trim();
         const store = await ensureDataStore();
-        const user = findUserByEmail(store.users, email);
+        const user = findActiveUserByEmail(store.users, email);
 
-        if (!user || user.isActive === false) {
+        if (!user) {
           return res.status(200).json({ status: 'success' });
         }
 
@@ -144,9 +145,9 @@ export default async function handler(req, res) {
         }
 
         const store = await ensureDataStore();
-        const user = findUserByEmail(store.users, email);
+        const user = findActiveUserByEmail(store.users, email);
 
-        if (!user || user.isActive === false) {
+        if (!user) {
           return res.status(400).json({ status: 'error', message: 'Invalid reset request' });
         }
 

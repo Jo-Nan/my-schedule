@@ -331,6 +331,10 @@ export const ensureDataStore = async () => {
     snapshotsByUser[user.id] = sanitizeSnapshots(snapshotsByUser[user.id]);
   }
 
+  if (enforceSingleActiveUserPerEmail(users)) {
+    changed = true;
+  }
+
   withUserMaps({ users, plansByUser, snapshotsByUser });
 
   if (!snapshotsByUser[admin.id]?.length && plansByUser[admin.id]?.length) {
@@ -372,6 +376,12 @@ export const saveMessages = async (config, messages) => {
 };
 
 export const findUserByEmail = (users, email) => users.find((user) => normalizeEmail(user.email) === normalizeEmail(email));
+
+export const findUsersByEmail = (users, email) => users.filter((user) => normalizeEmail(user.email) === normalizeEmail(email));
+
+export const findActiveUserByEmail = (users, email) => (
+  findUsersByEmail(users, email).find((user) => user.isActive !== false) || null
+);
 
 export const findUserById = (users, userId) => users.find((user) => user.id === userId);
 
@@ -441,3 +451,45 @@ export const createMessageRecord = ({ userId, userEmail, username = '', content,
 });
 
 export const getMessages = (messages) => sanitizeMessages(messages).sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+
+export const enforceSingleActiveUserPerEmail = (users) => {
+  const byEmail = new Map();
+  let changed = false;
+
+  for (const user of users) {
+    const email = normalizeEmail(user.email);
+    if (!email) {
+      continue;
+    }
+    if (!byEmail.has(email)) {
+      byEmail.set(email, []);
+    }
+    byEmail.get(email).push(user);
+  }
+
+  for (const groupedUsers of byEmail.values()) {
+    const activeUsers = groupedUsers.filter((user) => user.isActive !== false);
+    if (activeUsers.length <= 1) {
+      continue;
+    }
+
+    activeUsers.sort((left, right) => {
+      const leftStamp = new Date(left.updatedAt || left.createdAt || 0).getTime();
+      const rightStamp = new Date(right.updatedAt || right.createdAt || 0).getTime();
+      return rightStamp - leftStamp;
+    });
+
+    const [keeper, ...duplicates] = activeUsers;
+    keeper.isActive = true;
+
+    for (const duplicate of duplicates) {
+      if (duplicate.isActive !== false) {
+        duplicate.isActive = false;
+        duplicate.updatedAt = new Date().toISOString();
+        changed = true;
+      }
+    }
+  }
+
+  return changed;
+};

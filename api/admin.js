@@ -2,6 +2,7 @@ import { parseJsonBody, requireAdmin } from './_lib/auth.js';
 import {
   findUserById,
   findUserByEmail,
+  findActiveUserByEmail,
   getUserPlans,
   getUserSnapshots,
   createUserRecord,
@@ -71,8 +72,8 @@ export default async function handler(req, res) {
         return res.status(400).json({ status: 'error', message: 'Password must be at least 6 characters' });
       }
 
-      const existingUser = findUserByEmail(auth.users, email);
-      if (existingUser && existingUser.isActive !== false) {
+      const existingUser = findActiveUserByEmail(auth.users, email);
+      if (existingUser) {
         return res.status(409).json({ status: 'error', message: 'Email is already registered' });
       }
 
@@ -117,6 +118,14 @@ export default async function handler(req, res) {
 
       if (targetUser.isActive !== false) {
         return res.status(400).json({ status: 'error', message: 'User is already active' });
+      }
+
+      const activeDuplicate = findActiveUserByEmail(auth.users, targetUser.email);
+      if (activeDuplicate && activeDuplicate.id !== targetUser.id) {
+        return res.status(409).json({
+          status: 'error',
+          message: 'Another active user already uses this email. Deactivate or delete that active account before restoring this user.',
+        });
       }
 
       targetUser.isActive = true;
