@@ -2,6 +2,13 @@ import React, { useState } from 'react';
 import PlanModal from './PlanModal';
 import { getHolidayInfo } from '../utils/holidays';
 
+const sharedCalendarNavText = {
+  fontSize: '0.98rem',
+  fontWeight: 600,
+  color: 'var(--text-secondary)',
+  letterSpacing: '0.01em',
+};
+
 // Helper: Get local date string (handles timezone correctly)
 const getLocalDateStr = (date = new Date()) => {
   const year = date.getFullYear();
@@ -147,7 +154,8 @@ const styles = {
     color: 'var(--text-primary)'
   },
   navBtn: {
-    padding: '0.6rem 1.2rem'
+    padding: '0.58rem 1.12rem',
+    ...sharedCalendarNavText,
   },
   yearGrid: {
     display: 'grid',

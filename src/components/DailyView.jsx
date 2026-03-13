@@ -2,6 +2,13 @@ import React, { useState, useEffect } from 'react';
 import PlanCard from './PlanCard';
 import PlanModal from './PlanModal';
 
+const sharedCalendarNavText = {
+  fontSize: '0.98rem',
+  fontWeight: 600,
+  color: 'var(--text-secondary)',
+  letterSpacing: '0.01em',
+};
+
 const DailyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t, onCopyPlan, onPastePlan, hasCopiedPlan }) => {
   const [modalState, setModalState] = useState({ isOpen: false, date: null, editingPlan: null });
   // Start from Today
@@ -355,8 +362,8 @@ const styles = {
     marginTop: '0.9rem',
   },
   navBtn: {
-    padding: '0.6rem 1.2rem',
-    fontSize: '1rem'
+    padding: '0.58rem 1.12rem',
+    ...sharedCalendarNavText,
   },
   todayShortcutBtn: {
     padding: '0.55rem 1rem',

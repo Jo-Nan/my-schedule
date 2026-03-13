@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { getHolidayInfo } from '../utils/holidays';
 
 const sharedMonthlyControlText = {
-  fontSize: '1.15rem',
+  fontSize: '0.98rem',
   fontWeight: 600,
   color: 'var(--text-secondary)',
   letterSpacing: '0.01em',
@@ -174,8 +174,7 @@ const styles = {
     flexShrink: 0,
   },
   navBtn: {
-    minHeight: '42px',
-    padding: '0.55rem 1.15rem',
+    padding: '0.58rem 1.12rem',
     ...sharedMonthlyControlText,
   },
   grid: {

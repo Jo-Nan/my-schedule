@@ -2,6 +2,13 @@ import React, { useEffect, useRef, useState } from 'react';
 import PlanCard from './PlanCard';
 import PlanModal from './PlanModal';
 
+const sharedCalendarNavText = {
+  fontSize: '0.98rem',
+  fontWeight: 600,
+  color: 'var(--text-secondary)',
+  letterSpacing: '0.01em',
+};
+
 // Helper: Get local date string (handles timezone correctly)
 const getLocalDateStr = (date = new Date()) => {
   const year = date.getFullYear();
@@ -290,7 +297,8 @@ const styles = {
     gap: '1rem',
   },
   navBtn: {
-    padding: '0.6rem 1.2rem',
+    padding: '0.58rem 1.12rem',
+    ...sharedCalendarNavText,
   },
   weekLabel: {
     flex: 1,
@@ -304,8 +312,8 @@ const styles = {
     flexWrap: 'wrap',
   },
   dayNavBtn: {
-    padding: '0.5rem 1rem',
-    fontSize: '0.95rem',
+    padding: '0.58rem 1.12rem',
+    ...sharedCalendarNavText,
     whiteSpace: 'nowrap',
   },
   container: {
