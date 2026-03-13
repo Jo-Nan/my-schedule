@@ -16,6 +16,9 @@ const PlanCard = ({ plan, updatePlan, deletePlan, onEdit, t }) => {
 
   const handlePointerDown = (e) => {
     if (isCompleted) return;
+    const rect = sliderRef.current.getBoundingClientRect();
+    // Only start dragging if pointer is in the upper 2/3 of the track
+    if (e.clientY > rect.top + rect.height * (2 / 3)) return;
     setIsDragging(true);
     e.target.setPointerCapture(e.pointerId);
   };
@@ -42,6 +45,8 @@ const PlanCard = ({ plan, updatePlan, deletePlan, onEdit, t }) => {
   const handleTrackClick = (e) => {
     if (isCompleted || !sliderRef.current) return;
     const rect = sliderRef.current.getBoundingClientRect();
+    // Only respond to clicks in the upper 2/3 of the track
+    if (e.clientY > rect.top + rect.height * (2 / 3)) return;
     let newProgress = ((e.clientX - rect.left) / rect.width) * 100;
     newProgress = Math.max(0, Math.min(100, Math.round(newProgress)));
     
@@ -214,6 +219,8 @@ const styles = {
   },
   progressContainer: {
     flex: 1, // fill remaining width next to check btn
+    pointerEvents: 'auto',
+    cursor: 'default',
   },
   sliderTrack: {
     height: '6px',
@@ -221,6 +228,8 @@ const styles = {
     borderRadius: '3px',
     position: 'relative',
     touchAction: 'none', // Prevent scrolling when dragging
+    pointerEvents: 'auto',
+    cursor: 'pointer',
   },
   sliderFill: {
     height: '100%',
