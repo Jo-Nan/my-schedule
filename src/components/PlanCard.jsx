@@ -37,6 +37,7 @@ const PlanCard = ({ plan, updatePlan, deletePlan, onEdit, onDragStart, onDragEnd
     if (rafRef.current) return; // Throttle with RAF
     
     rafRef.current = requestAnimationFrame(() => {
+      if (!sliderRef.current) return; // Safety check
       const rect = sliderRef.current.getBoundingClientRect();
       let newProgress = ((e.clientX - rect.left) / rect.width) * 100;
       newProgress = Math.max(0, Math.min(100, Math.round(newProgress)));
@@ -63,6 +64,17 @@ const PlanCard = ({ plan, updatePlan, deletePlan, onEdit, onDragStart, onDragEnd
     document.removeEventListener('mousemove', handleMouseMove);
     document.removeEventListener('mouseup', handleMouseUp);
   };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+      }
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, []);
 
   const handleTrackClick = (e) => {
     if (isCompleted || !sliderRef.current) return;

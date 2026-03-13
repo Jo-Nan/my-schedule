@@ -8,6 +8,8 @@ const DailyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t }) =
   const [currentDateObj, setCurrentDateObj] = useState(new Date());
   // Current time display
   const [currentTime, setCurrentTime] = useState(new Date());
+  // Drag & drop state
+  const [draggedPlan, setDraggedPlan] = useState(null);
 
   // Get local date string (handles timezone correctly)
   const getLocalDateStr = (date) => {
@@ -60,6 +62,29 @@ const DailyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t }) =
 
   const handleEdit = (plan) => {
     setModalState({ isOpen: true, date: plan.date, editingPlan: plan });
+  };
+
+  // Drag & drop handlers
+  const handleDragStart = (e, plan) => {
+    setDraggedPlan(plan);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleDrop = (e, targetDate) => {
+    e.preventDefault();
+    if (draggedPlan && draggedPlan.date !== targetDate) {
+      updatePlan(draggedPlan.id, { date: targetDate });
+    }
+    setDraggedPlan(null);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedPlan(null);
   };
 
   const completedCount = dayPlans.filter(p => p.status === 'completed').length;
@@ -156,7 +181,12 @@ const DailyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t }) =
       </div>
 
       {/* Timeline Layout */}
-      <div className="daily-timeline-container" style={styles.timelineContainer}>
+      <div 
+        className="daily-timeline-container" 
+        style={styles.timelineContainer}
+        onDragOver={handleDragOver}
+        onDrop={(e) => handleDrop(e, dateStr)}
+      >
         {dayPlans.length === 0 ? (
           <div style={styles.emptyState}>
             <p style={{ fontSize: '4rem', margin: 0 }}>☕️</p>
@@ -186,6 +216,9 @@ const DailyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t }) =
                     updatePlan={updatePlan} 
                     deletePlan={deletePlan} 
                     onEdit={handleEdit}
+                    onDragStart={(e) => handleDragStart(e, plan)}
+                    onDragEnd={handleDragEnd}
+                    isDragging={draggedPlan?.id === plan.id}
                     t={t}
                   />
                 </div>
@@ -252,12 +285,13 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'center',
     gap: '0.55rem',
-    flexWrap: 'wrap',
+    flexWrap: 'nowrap',
     width: '100%',
     color: 'var(--text-primary)',
     fontSize: '1.08rem',
     fontWeight: '500',
     lineHeight: 1.35,
+    minWidth: 0,
   },
   headerToken: {
     fontSize: 'inherit',
