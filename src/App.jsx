@@ -9,6 +9,7 @@ import SyncModal from './components/SyncModal';
 import AdminPanel from './components/AdminPanel';
 import MessageModal from './components/MessageModal';
 import ProfileModal from './components/ProfileModal';
+import ImportModal from './components/ImportModal';
 import { fetchWeeklyWeather } from './utils/weatherApi';
 import { translations } from './utils/translations';
 import './index.css';
@@ -61,6 +62,14 @@ const extractImportedPlans = (payload) => {
   return null;
 };
 
+const mergeImportedPlans = (currentPlans, importedPlans) => {
+  const importedById = new Map(importedPlans.map((plan) => [plan.id, plan]));
+  const merged = currentPlans.map((plan) => importedById.get(plan.id) || plan);
+  const existingIds = new Set(currentPlans.map((plan) => plan.id));
+  const appended = importedPlans.filter((plan) => !existingIds.has(plan.id));
+  return [...merged, ...appended];
+};
+
 function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [managedUser, setManagedUser] = useState(null);
@@ -77,6 +86,7 @@ function App() {
   const [weatherData, setWeatherData] = useState([]);
   const [hasUnsavedProgress, setHasUnsavedProgress] = useState(false);
   const [pendingSaveType, setPendingSaveType] = useState('none');
+  const [pendingImport, setPendingImport] = useState(null);
   const buildLabel = useMemo(() => formatBuildTime(APP_BUILD_TIME), []);
 
   const t = translations[language];
@@ -292,19 +302,31 @@ function App() {
 
       const fallbackDate = getLocalDateStr();
       const normalizedPlans = importedPlans.map((plan, index) => normalizeImportedPlan(plan, index, fallbackDate));
-
-      if (!window.confirm(`${t.importConfirm || 'Import will replace current plans in this workspace. Continue?'}\n\n${file.name}`)) {
-        return;
-      }
-
-      setPlans(normalizedPlans);
-      setHasUnsavedProgress(false);
-      setPendingSaveType('general');
-      alert(t.importSuccess || 'Import completed. The new plans will be saved automatically.');
+      setPendingImport({
+        fileName: file.name,
+        plans: normalizedPlans,
+      });
     } catch (error) {
       console.error('Import error:', error);
       alert(t.importError || 'Failed to import file');
     }
+  };
+
+  const finalizeImport = (mode) => {
+    if (!pendingImport) {
+      return;
+    }
+
+    if (mode === 'replace') {
+      setPlans(pendingImport.plans);
+    } else {
+      setPlans((prev) => mergeImportedPlans(prev, pendingImport.plans));
+    }
+
+    setHasUnsavedProgress(false);
+    setPendingSaveType('general');
+    setPendingImport(null);
+    alert(t.importSuccess || 'Import completed. Plans will be saved automatically.');
   };
 
   const handleExport = async ({ silent = false } = {}) => {
@@ -453,6 +475,15 @@ function App() {
       />
 
       <SyncModal isOpen={isSyncModalOpen} onClose={() => setIsSyncModalOpen(false)} t={t} />
+      <ImportModal
+        isOpen={Boolean(pendingImport)}
+        fileName={pendingImport?.fileName || ''}
+        itemCount={pendingImport?.plans?.length || 0}
+        onReplace={() => finalizeImport('replace')}
+        onMerge={() => finalizeImport('merge')}
+        onClose={() => setPendingImport(null)}
+        t={t}
+      />
       <MessageModal isOpen={isMessageModalOpen} onClose={() => setIsMessageModalOpen(false)} t={t} />
       <ProfileModal
         isOpen={isProfileModalOpen}

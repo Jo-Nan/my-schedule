@@ -189,7 +189,14 @@ const PlanCard = ({ plan, updatePlan, deletePlan, onEdit, onDragStart, onDragEnd
           title="拖拽移动任务"
           type="button"
         >
-          ⇅
+          <span style={styles.dragGrip} aria-hidden="true">
+            <span style={styles.dragDot} />
+            <span style={styles.dragDot} />
+            <span style={styles.dragDot} />
+            <span style={styles.dragDot} />
+            <span style={styles.dragDot} />
+            <span style={styles.dragDot} />
+          </span>
         </button>
       </div>
     </div>
@@ -228,17 +235,33 @@ const styles = {
     flexShrink: 0,
   },
   dragBtn: {
-    padding: '0.25rem 0.45rem',
-    background: 'rgba(255,255,255,0.06)',
-    border: '1px solid var(--glass-border)',
-    boxShadow: 'none',
+    width: '34px',
+    height: '30px',
+    padding: 0,
+    background: 'linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.03))',
+    border: '1px solid rgba(255,255,255,0.14)',
+    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.16)',
     color: 'var(--text-secondary)',
-    opacity: 0.9,
+    opacity: 0.95,
     cursor: 'grab',
-    fontSize: '12px',
-    lineHeight: 1,
-    borderRadius: '999px',
+    borderRadius: '10px',
     flexShrink: 0,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dragGrip: {
+    width: '14px',
+    display: 'grid',
+    gridTemplateColumns: 'repeat(2, 1fr)',
+    gap: '2px 3px',
+  },
+  dragDot: {
+    width: '4px',
+    height: '4px',
+    borderRadius: '999px',
+    background: 'currentColor',
+    opacity: 0.78,
   },
   editBtn: {
     padding: '0.2rem',

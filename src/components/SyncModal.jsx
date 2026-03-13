@@ -29,7 +29,7 @@ const SyncModal = ({ isOpen, onClose, t }) => {
               <ol>
                 <li>点击 <b>{t.sync}</b> 会重新拉取当前登录用户的最新计划数据。</li>
                 <li>点击 <b>{t.upload}</b> 会保存当前登录用户的计划。</li>
-                <li>点击 <b>{t.importButton}</b> 可以导入外部 JSON 计划文件并替换当前工作区内容。</li>
+                <li>点击 <b>{t.importButton}</b> 可以导入外部 JSON 计划文件，并在“替换当前数据”或“合并当前数据”之间选择。</li>
                 <li>计划变更会自动同步，无需每次手动点击。</li>
               </ol>
             </div>
