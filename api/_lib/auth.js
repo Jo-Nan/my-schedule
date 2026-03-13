@@ -139,3 +139,15 @@ export const parseJsonBody = async (req) => {
   const raw = Buffer.concat(chunks).toString('utf-8');
   return raw ? JSON.parse(raw) : {};
 };
+
+export const requireAdmin = async (req, res) => {
+  const auth = await requireAuth(req, res);
+  if (!auth) {
+    return null;
+  }
+  if (auth.user.role !== 'admin') {
+    res.status(403).json({ status: 'error', message: 'Admin access required' });
+    return null;
+  }
+  return auth;
+};

@@ -6,6 +6,7 @@ import MonthlyView from './components/MonthlyView';
 import DailyView from './components/DailyView';
 import YearlyView from './components/YearlyView';
 import SyncModal from './components/SyncModal';
+import AdminPanel from './components/AdminPanel';
 import { fetchWeeklyWeather } from './utils/weatherApi';
 import { translations } from './utils/translations';
 import './index.css';
@@ -17,6 +18,7 @@ function App() {
   const [theme, setTheme] = useState('light');
   const [language, setLanguage] = useState(() => localStorage.getItem('nanmuz_lang') || 'en');
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
+  const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
   const [syncStatus, setSyncStatus] = useState('idle');
   const [plans, setPlans] = useState([]);
   const [weatherData, setWeatherData] = useState([]);
@@ -26,6 +28,72 @@ function App() {
   const autoSyncTimerRef = useRef(null);
   const isInitializedRef = useRef(false);
   const lastSyncedHashRef = useRef(null);
+
+  const mergePlans = (localPlans, remotePlans) => {
+    const merged = [];
+
+    localPlans.forEach((localPlan) => {
+      const remotePlan = remotePlans.find((plan) => plan.id === localPlan.id);
+      if (remotePlan) {
+        merged.push((remotePlan.updatedAt || 0) > (localPlan.updatedAt || 0) ? remotePlan : localPlan);
+      } else {
+        merged.push(localPlan);
+      }
+    });
+
+    remotePlans.forEach((remotePlan) => {
+      if (!localPlans.some((plan) => plan.id === remotePlan.id)) {
+        merged.push(remotePlan);
+      }
+    });
+
+    return merged;
+  };
+
+  const refreshCurrentUserPlans = async ({ silent = false } = {}) => {
+    if (!currentUser) {
+      return;
+    }
+
+    if (!silent) {
+      setSyncStatus('loading');
+    }
+
+    try {
+      const response = await fetch(`/api/load-plans?t=${Date.now()}`, { credentials: 'same-origin' });
+      if (response.status === 401) {
+        setCurrentUser(null);
+        setPlans([]);
+        return;
+      }
+      if (!response.ok) {
+        throw new Error('Sync failed');
+      }
+
+      const result = await response.json();
+      if (result.status !== 'success') {
+        throw new Error(result.message || 'Failed to load plans');
+      }
+
+      setPlans((prev) => {
+        const merged = mergePlans(prev, result.data || []);
+        const hash = JSON.stringify(merged);
+        lastSyncedHashRef.current = hash;
+        isInitializedRef.current = true;
+        return merged;
+      });
+
+      setSyncStatus('synced');
+      setTimeout(() => setSyncStatus('idle'), 3000);
+    } catch (error) {
+      console.error('Load plans failed:', error);
+      isInitializedRef.current = true;
+      setSyncStatus('error');
+      if (!silent) {
+        alert(t.syncError || 'Sync failed');
+      }
+    }
+  };
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('nanmuz_theme') || 'light';
@@ -94,41 +162,7 @@ function App() {
       return;
     }
 
-    const loadAndMergePlans = async () => {
-      setSyncStatus('loading');
-      try {
-        const response = await fetch(`/api/load-plans?t=${Date.now()}`, { credentials: 'same-origin' });
-        if (response.status === 401) {
-          setCurrentUser(null);
-          setPlans([]);
-          return;
-        }
-        if (!response.ok) {
-          throw new Error('Sync failed');
-        }
-
-        const result = await response.json();
-        if (result.status !== 'success') {
-          throw new Error(result.message || 'Failed to load plans');
-        }
-
-        setPlans((prev) => {
-          const merged = mergePlans(prev, result.data || []);
-          const hash = JSON.stringify(merged);
-          lastSyncedHashRef.current = hash;
-          isInitializedRef.current = true;
-          return merged;
-        });
-        setSyncStatus('synced');
-        setTimeout(() => setSyncStatus('idle'), 3000);
-      } catch (error) {
-        console.error('Auto-sync on load failed:', error);
-        isInitializedRef.current = true;
-        setSyncStatus('error');
-      }
-    };
-
-    loadAndMergePlans();
+    refreshCurrentUserPlans({ silent: true });
     fetchWeeklyWeather().then((data) => setWeatherData(Array.isArray(data) ? data : []));
   }, [currentUser]);
 
@@ -159,56 +193,8 @@ function App() {
     localStorage.setItem('nanmuz_lang', newLang);
   };
 
-  const mergePlans = (localPlans, remotePlans) => {
-    const merged = [];
-
-    localPlans.forEach((localPlan) => {
-      const remotePlan = remotePlans.find((plan) => plan.id === localPlan.id);
-      if (remotePlan) {
-        merged.push((remotePlan.updatedAt || 0) > (localPlan.updatedAt || 0) ? remotePlan : localPlan);
-      } else {
-        merged.push(localPlan);
-      }
-    });
-
-    remotePlans.forEach((remotePlan) => {
-      if (!localPlans.some((plan) => plan.id === remotePlan.id)) {
-        merged.push(remotePlan);
-      }
-    });
-
-    return merged;
-  };
-
   const handleSync = async () => {
-    setSyncStatus('loading');
-    try {
-      const response = await fetch(`/api/load-plans?t=${Date.now()}`, { credentials: 'same-origin' });
-      if (response.status === 401) {
-        setCurrentUser(null);
-        setPlans([]);
-        return;
-      }
-      if (!response.ok) {
-        throw new Error('Sync failed');
-      }
-
-      const result = await response.json();
-      if (result.status !== 'success') {
-        throw new Error(result.message || 'Failed to load plans');
-      }
-
-      const merged = mergePlans(plans, result.data || []);
-      const hash = JSON.stringify(merged);
-      lastSyncedHashRef.current = hash;
-      setPlans(merged);
-      setSyncStatus('synced');
-      setTimeout(() => setSyncStatus('idle'), 3000);
-    } catch (error) {
-      console.error('Sync error:', error);
-      setSyncStatus('error');
-      alert(t.syncError || 'Sync failed');
-    }
+    await refreshCurrentUserPlans();
   };
 
   const handleExport = async () => {
@@ -295,6 +281,7 @@ function App() {
       setPlans([]);
       setWeatherData([]);
       setSyncStatus('idle');
+      setIsAdminPanelOpen(false);
       isInitializedRef.current = false;
       lastSyncedHashRef.current = null;
     }
@@ -323,9 +310,22 @@ function App() {
         syncStatus={syncStatus}
         currentUser={currentUser}
         onLogout={handleLogout}
+        onOpenAdmin={() => setIsAdminPanelOpen(true)}
       />
 
       <SyncModal isOpen={isSyncModalOpen} onClose={() => setIsSyncModalOpen(false)} t={t} />
+      <AdminPanel
+        isOpen={isAdminPanelOpen && currentUser.role === 'admin'}
+        onClose={() => setIsAdminPanelOpen(false)}
+        currentUser={currentUser}
+        t={t}
+        onAdminDataChanged={() => {
+          if (currentUser?.role === 'admin') {
+            refreshCurrentUserPlans({ silent: true });
+          }
+        }}
+        onRefreshCurrentUser={() => refreshCurrentUserPlans({ silent: true })}
+      />
 
       <main>
         {viewMode === 'daily' && (

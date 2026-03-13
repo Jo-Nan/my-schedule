@@ -68,6 +68,26 @@ const sanitizePlan = (plan = {}) => ({
 
 const sanitizePlans = (plans) => (Array.isArray(plans) ? plans.map(sanitizePlan) : []);
 
+const sanitizeSnapshot = (snapshot = {}) => ({
+  id: String(snapshot.id || `snapshot_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`),
+  snapshotDate: typeof snapshot.snapshotDate === 'string' ? snapshot.snapshotDate : getShanghaiDateString(),
+  createdAt: typeof snapshot.createdAt === 'string' ? snapshot.createdAt : new Date().toISOString(),
+  source: typeof snapshot.source === 'string' ? snapshot.source : 'manual',
+  plans: sanitizePlans(snapshot.plans),
+});
+
+const sanitizeSnapshots = (snapshots) => (Array.isArray(snapshots) ? snapshots.map(sanitizeSnapshot) : []);
+
+export const getShanghaiDateString = (date = new Date()) => {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  return formatter.format(date);
+};
+
 const getStorageConfig = () => {
   const token = process.env.GITHUB_TOKEN;
   const owner = process.env.GITHUB_OWNER;
@@ -82,6 +102,7 @@ const getStorageConfig = () => {
       branch: process.env.GITHUB_BRANCH || 'main',
       usersPath: process.env.GITHUB_USERS_PATH || 'data/users.json',
       userPlansPath: process.env.GITHUB_USER_PLANS_PATH || 'data/plans-by-user.json',
+      snapshotsPath: process.env.GITHUB_SNAPSHOTS_PATH || 'data/plan-snapshots.json',
       legacyPlansPath: process.env.GITHUB_PLANS_PATH || 'data/plans.json',
     };
   }
@@ -90,6 +111,7 @@ const getStorageConfig = () => {
     mode: 'local',
     usersPath: path.join(LOCAL_DATA_DIR, 'users.json'),
     userPlansPath: path.join(LOCAL_DATA_DIR, 'plans-by-user.json'),
+    snapshotsPath: path.join(LOCAL_DATA_DIR, 'plan-snapshots.json'),
     legacyPlansPath: path.join(PROJECT_ROOT, 'public', 'data', 'plans.json'),
   };
 };
@@ -199,8 +221,19 @@ const readLegacyPlans = async (config) => {
   try {
     const result = await readJson(config, config.legacyPlansPath, []);
     return sanitizePlans(result.data);
-  } catch (error) {
+  } catch {
     return [];
+  }
+};
+
+const withUserMaps = (store) => {
+  for (const user of store.users) {
+    if (!Array.isArray(store.plansByUser[user.id])) {
+      store.plansByUser[user.id] = [];
+    }
+    if (!Array.isArray(store.snapshotsByUser[user.id])) {
+      store.snapshotsByUser[user.id] = [];
+    }
   }
 };
 
@@ -208,10 +241,14 @@ export const ensureDataStore = async () => {
   const config = getStorageConfig();
   const usersResult = await readJson(config, config.usersPath, []);
   const plansResult = await readJson(config, config.userPlansPath, {});
+  const snapshotsResult = await readJson(config, config.snapshotsPath, {});
 
   const users = Array.isArray(usersResult.data) ? usersResult.data : [];
   const plansByUser = plansResult.data && typeof plansResult.data === 'object' && !Array.isArray(plansResult.data)
     ? plansResult.data
+    : {};
+  const snapshotsByUser = snapshotsResult.data && typeof snapshotsResult.data === 'object' && !Array.isArray(snapshotsResult.data)
+    ? snapshotsResult.data
     : {};
 
   let changed = false;
@@ -236,25 +273,34 @@ export const ensureDataStore = async () => {
     const hasAnyPlans = Object.values(plansByUser).some((value) => Array.isArray(value) && value.length > 0);
     plansByUser[admin.id] = hasAnyPlans ? [] : await readLegacyPlans(config);
     changed = true;
-  } else {
-    plansByUser[admin.id] = sanitizePlans(plansByUser[admin.id]);
   }
 
   for (const user of users) {
-    if (!Array.isArray(plansByUser[user.id])) {
-      plansByUser[user.id] = [];
-      changed = true;
-    } else {
-      plansByUser[user.id] = sanitizePlans(plansByUser[user.id]);
-    }
+    plansByUser[user.id] = sanitizePlans(plansByUser[user.id]);
+    snapshotsByUser[user.id] = sanitizeSnapshots(snapshotsByUser[user.id]);
+  }
+
+  withUserMaps({ users, plansByUser, snapshotsByUser });
+
+  if (!snapshotsByUser[admin.id]?.length && plansByUser[admin.id]?.length) {
+    snapshotsByUser[admin.id] = [
+      sanitizeSnapshot({
+        snapshotDate: getShanghaiDateString(),
+        createdAt: new Date().toISOString(),
+        source: 'migration',
+        plans: plansByUser[admin.id],
+      }),
+    ];
+    changed = true;
   }
 
   if (changed) {
     await writeJson(config, config.usersPath, users, 'Initialize day users');
     await writeJson(config, config.userPlansPath, plansByUser, 'Initialize day user plans');
+    await writeJson(config, config.snapshotsPath, snapshotsByUser, 'Initialize day user snapshots');
   }
 
-  return { config, users, plansByUser };
+  return { config, users, plansByUser, snapshotsByUser };
 };
 
 export const saveUsers = async (config, users) => {
@@ -263,6 +309,10 @@ export const saveUsers = async (config, users) => {
 
 export const savePlansByUser = async (config, plansByUser) => {
   await writeJson(config, config.userPlansPath, plansByUser, 'Update day user plans');
+};
+
+export const saveSnapshotsByUser = async (config, snapshotsByUser) => {
+  await writeJson(config, config.snapshotsPath, snapshotsByUser, 'Update day user snapshots');
 };
 
 export const findUserByEmail = (users, email) => users.find((user) => normalizeEmail(user.email) === normalizeEmail(email));
@@ -288,4 +338,29 @@ export const getUserPlans = (plansByUser, userId) => sanitizePlans(plansByUser[u
 export const setUserPlans = (plansByUser, userId, plans) => {
   plansByUser[userId] = sanitizePlans(plans);
   return plansByUser[userId];
+};
+
+export const getUserSnapshots = (snapshotsByUser, userId) => sanitizeSnapshots(snapshotsByUser[userId] || []);
+
+export const upsertUserSnapshot = (snapshotsByUser, userId, plans, source = 'save') => {
+  const snapshotDate = getShanghaiDateString();
+  const snapshot = sanitizeSnapshot({
+    snapshotDate,
+    createdAt: new Date().toISOString(),
+    source,
+    plans,
+  });
+  const current = getUserSnapshots(snapshotsByUser, userId).filter((item) => item.snapshotDate !== snapshotDate);
+  snapshotsByUser[userId] = [snapshot, ...current].sort((left, right) => right.snapshotDate.localeCompare(left.snapshotDate));
+  return snapshot;
+};
+
+export const restoreUserSnapshot = (plansByUser, snapshotsByUser, userId, snapshotId) => {
+  const snapshots = getUserSnapshots(snapshotsByUser, userId);
+  const snapshot = snapshots.find((item) => item.id === snapshotId);
+  if (!snapshot) {
+    return null;
+  }
+  plansByUser[userId] = sanitizePlans(snapshot.plans);
+  return snapshot;
 };

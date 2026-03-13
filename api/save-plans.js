@@ -1,5 +1,5 @@
 import { requireAuth, parseJsonBody } from './_lib/auth.js';
-import { savePlansByUser, setUserPlans } from './_lib/store.js';
+import { savePlansByUser, saveSnapshotsByUser, setUserPlans, upsertUserSnapshot } from './_lib/store.js';
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
@@ -25,7 +25,9 @@ export default async function handler(req, res) {
     }
 
     const savedPlans = setUserPlans(auth.plansByUser, auth.user.id, plans);
+    upsertUserSnapshot(auth.snapshotsByUser, auth.user.id, savedPlans, 'save');
     await savePlansByUser(auth.config, auth.plansByUser);
+    await saveSnapshotsByUser(auth.config, auth.snapshotsByUser);
 
     return res.status(200).json({
       status: 'success',

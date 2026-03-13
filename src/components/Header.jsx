@@ -13,6 +13,7 @@ const Header = ({
   syncStatus,
   currentUser,
   onLogout,
+  onOpenAdmin,
 }) => {
   const displayName = currentUser?.username || currentUser?.email || '—';
   const isAdmin = currentUser?.role === 'admin';
@@ -31,28 +32,15 @@ const Header = ({
       </div>
 
       <div className="segmented-control" style={styles.center}>
-        <button className={`glass-button ${viewMode === 'daily' ? 'active-tab' : ''}`} onClick={() => setViewMode('daily')}>
-          {t.daily}
-        </button>
-        <button className={`glass-button ${viewMode === 'weekly' ? 'active-tab' : ''}`} onClick={() => setViewMode('weekly')}>
-          {t.weekly}
-        </button>
-        <button className={`glass-button ${viewMode === 'monthly' ? 'active-tab' : ''}`} onClick={() => setViewMode('monthly')}>
-          {t.monthly}
-        </button>
-        <button className={`glass-button ${viewMode === 'yearly' ? 'active-tab' : ''}`} onClick={() => setViewMode('yearly')}>
-          {t.yearly}
-        </button>
+        <button className={`glass-button ${viewMode === 'daily' ? 'active-tab' : ''}`} onClick={() => setViewMode('daily')}>{t.daily}</button>
+        <button className={`glass-button ${viewMode === 'weekly' ? 'active-tab' : ''}`} onClick={() => setViewMode('weekly')}>{t.weekly}</button>
+        <button className={`glass-button ${viewMode === 'monthly' ? 'active-tab' : ''}`} onClick={() => setViewMode('monthly')}>{t.monthly}</button>
+        <button className={`glass-button ${viewMode === 'yearly' ? 'active-tab' : ''}`} onClick={() => setViewMode('yearly')}>{t.yearly}</button>
       </div>
 
       <div style={styles.right}>
         <div style={styles.statusGroup}>
-          <button
-            className="glass-button icon-only"
-            onClick={() => setSyncModalOpen(true)}
-            style={styles.statusButton}
-            title={t.syncSettings}
-          >
+          <button className="glass-button icon-only" onClick={() => setSyncModalOpen(true)} style={styles.statusButton} title={t.syncSettings}>
             <span style={{ ...styles.statusText, color: getStatusColor(syncStatus) }}>
               {getStatusIcon(syncStatus)} {getStatusLabel(syncStatus, t)}
             </span>
@@ -63,6 +51,12 @@ const Header = ({
           <button className="glass-button icon-only" onClick={onSync} title={t.sync}>🔄</button>
           <button className="glass-button icon-only" onClick={onUpload} title={t.upload}>📥</button>
         </div>
+
+        {isAdmin && (
+          <div className="button-group">
+            <button className="glass-button" onClick={onOpenAdmin} title={t.adminPanelTitle}>{t.adminButton}</button>
+          </div>
+        )}
 
         <div className="button-group">
           <button className="glass-button icon-only" onClick={toggleLanguage} title="Toggle Language (Alt+L)">🌐</button>
