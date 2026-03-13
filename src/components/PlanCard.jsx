@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 
 const PlanCard = ({ plan, updatePlan, deletePlan, onEdit, t }) => {
   const [isDragging, setIsDragging] = useState(false);
+  const [localProgress, setLocalProgress] = useState(null);
   const sliderRef = useRef(null);
 
   const handleDelete = () => {
@@ -12,7 +13,7 @@ const PlanCard = ({ plan, updatePlan, deletePlan, onEdit, t }) => {
 
   // Status mapping: 'uncompleted', 'in-progress', 'completed'
   const isCompleted = plan.status === 'completed';
-  const progressText = plan.progress || 0;
+  const progressText = isDragging && localProgress !== null ? localProgress : (plan.progress || 0);
 
   const handleMouseDown = (e) => {
     if (isCompleted) return;
@@ -30,17 +31,20 @@ const PlanCard = ({ plan, updatePlan, deletePlan, onEdit, t }) => {
     const rect = sliderRef.current.getBoundingClientRect();
     let newProgress = ((e.clientX - rect.left) / rect.width) * 100;
     newProgress = Math.max(0, Math.min(100, Math.round(newProgress)));
-    
-    let newStatus = plan.status;
-    if (newProgress === 100) newStatus = 'completed';
-    else if (newProgress > 0) newStatus = 'in-progress';
-    else newStatus = 'uncompleted';
-
-    updatePlan(plan.id, { progress: newProgress, status: newStatus });
+    setLocalProgress(newProgress);
   };
 
   const handleMouseUp = () => {
+    if (isDragging && localProgress !== null) {
+      let newStatus = plan.status;
+      if (localProgress === 100) newStatus = 'completed';
+      else if (localProgress > 0) newStatus = 'in-progress';
+      else newStatus = 'uncompleted';
+
+      updatePlan(plan.id, { progress: localProgress, status: newStatus });
+    }
     setIsDragging(false);
+    setLocalProgress(null);
     document.removeEventListener('mousemove', handleMouseMove);
     document.removeEventListener('mouseup', handleMouseUp);
   };
