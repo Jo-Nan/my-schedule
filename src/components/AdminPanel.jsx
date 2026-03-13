@@ -41,7 +41,7 @@ const AdminPanel = ({
     setLoading(true);
     setError('');
     try {
-      const response = await fetch('/api/admin/users', { credentials: 'same-origin' });
+      const response = await fetch('/api/admin?action=users', { credentials: 'same-origin' });
       const result = await response.json();
       if (!response.ok || result.status !== 'success') {
         throw new Error(result.message || t.adminLoadError);
@@ -57,7 +57,7 @@ const AdminPanel = ({
 
   const loadMessages = async () => {
     try {
-      const response = await fetch('/api/admin/messages', { credentials: 'same-origin' });
+      const response = await fetch('/api/admin?action=messages', { credentials: 'same-origin' });
       const result = await response.json();
       if (!response.ok || result.status !== 'success') {
         throw new Error(result.message || t.adminLoadError);
@@ -70,7 +70,7 @@ const AdminPanel = ({
 
   const loadUserPlans = async (userId) => {
     try {
-      const response = await fetch(`/api/admin/user-plans?id=${encodeURIComponent(userId)}`, { credentials: 'same-origin' });
+      const response = await fetch(`/api/admin?action=user-plans&userId=${encodeURIComponent(userId)}`, { credentials: 'same-origin' });
       const result = await response.json();
       if (!response.ok || result.status !== 'success') {
         throw new Error(result.message || t.adminLoadError);
@@ -83,7 +83,7 @@ const AdminPanel = ({
 
   const loadUserSnapshots = async (userId) => {
     try {
-      const response = await fetch(`/api/admin/user-snapshots?id=${encodeURIComponent(userId)}`, { credentials: 'same-origin' });
+      const response = await fetch(`/api/admin?action=user-snapshots&id=${encodeURIComponent(userId)}`, { credentials: 'same-origin' });
       const result = await response.json();
       if (!response.ok || result.status !== 'success') {
         throw new Error(result.message || t.adminLoadError);
@@ -99,7 +99,7 @@ const AdminPanel = ({
     setError('');
     setMessage('');
     try {
-      const response = await fetch('/api/admin/users', {
+      const response = await fetch('/api/admin?action=users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
@@ -129,7 +129,7 @@ const AdminPanel = ({
     setError('');
     setMessage('');
     try {
-      const response = await fetch(`/api/admin/users?id=${encodeURIComponent(user.id)}`, {
+      const response = await fetch(`/api/admin?action=users&id=${encodeURIComponent(user.id)}`, {
         method: 'DELETE',
         credentials: 'same-origin',
       });
@@ -158,7 +158,7 @@ const AdminPanel = ({
     setError('');
     setMessage('');
     try {
-      const response = await fetch('/api/admin/restore-user-snapshot', {
+      const response = await fetch('/api/admin?action=restore-snapshot', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',

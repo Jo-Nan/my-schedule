@@ -63,8 +63,8 @@ function App() {
     }
 
     const endpoint = isViewingManagedUser
-      ? `/api/admin/manage-user-plans?userId=${encodeURIComponent(activeUser.id)}`
-      : `/api/load-plans?t=${Date.now()}`;
+      ? `/api/admin?action=user-plans&userId=${encodeURIComponent(activeUser.id)}`
+      : `/api/plans?t=${Date.now()}`;
 
     const response = await fetch(endpoint, { credentials: 'same-origin' });
     if (response.status === 401) {
@@ -130,7 +130,7 @@ function App() {
   useEffect(() => {
     const restoreSession = async () => {
       try {
-        const response = await fetch('/api/auth/me', { credentials: 'same-origin' });
+        const response = await fetch('/api/auth', { credentials: 'same-origin' });
         if (!response.ok) {
           setCurrentUser(null);
           return;
@@ -231,7 +231,7 @@ function App() {
 
     setSyncStatus('uploading');
     try {
-      const endpoint = isViewingManagedUser ? '/api/admin/manage-user-plans' : '/api/save-plans';
+      const endpoint = isViewingManagedUser ? '/api/admin?action=user-plans' : '/api/plans';
       const payload = isViewingManagedUser ? { userId: activeUser.id, plans } : plans;
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -303,7 +303,7 @@ function App() {
 
   const handleLogout = async () => {
     try {
-      await fetch('/api/auth/logout', {
+      await fetch('/api/auth?action=logout', {
         method: 'POST',
         credentials: 'same-origin',
       });

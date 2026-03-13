@@ -25,7 +25,7 @@ const AuthOverlay = ({ onAuthenticated, t }) => {
 
     try {
       if (mode === 'forgot') {
-        const response = await fetch('/api/auth/request-password-reset', {
+        const response = await fetch('/api/auth?action=request-password-reset', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'same-origin',
@@ -37,7 +37,7 @@ const AuthOverlay = ({ onAuthenticated, t }) => {
         }
         setSuccess(t.resetCodeSent);
       } else if (mode === 'reset') {
-        const response = await fetch('/api/auth/reset-password', {
+        const response = await fetch('/api/auth?action=reset-password', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'same-origin',
@@ -55,7 +55,7 @@ const AuthOverlay = ({ onAuthenticated, t }) => {
         setMode('login');
         setForm((prev) => ({ ...prev, password: '', code: '', newPassword: '' }));
       } else {
-        const endpoint = mode === 'login' ? '/api/auth/login' : '/api/auth/register';
+        const endpoint = mode === 'login' ? '/api/auth?action=login' : '/api/auth?action=register';
         const payload = {
           email: form.email.trim(),
           password: form.password,
