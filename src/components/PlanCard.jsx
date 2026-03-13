@@ -19,10 +19,6 @@ const PlanCard = ({ plan, updatePlan, deletePlan, onEdit, onDragStart, onDragEnd
   const handleMouseDown = (e) => {
     if (isCompleted) return;
     const rect = sliderRef.current.getBoundingClientRect();
-    // Allow dragging from thumb or upper half of track
-    const isOnThumb = e.target === sliderRef.current.querySelector('[style*="sliderThumb"]') || 
-                     e.target.closest('[style*="sliderThumb"]');
-    if (!isOnThumb && e.clientY > rect.top + rect.height / 2) return;
     setIsDragging(true);
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
@@ -79,8 +75,6 @@ const PlanCard = ({ plan, updatePlan, deletePlan, onEdit, onDragStart, onDragEnd
   const handleTrackClick = (e) => {
     if (isCompleted || !sliderRef.current) return;
     const rect = sliderRef.current.getBoundingClientRect();
-    // Only respond to clicks in the upper half of the track
-    if (e.clientY > rect.top + rect.height / 2) return;
     let newProgress = ((e.clientX - rect.left) / rect.width) * 100;
     newProgress = Math.max(0, Math.min(100, Math.round(newProgress)));
     

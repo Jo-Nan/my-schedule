@@ -79,14 +79,31 @@ const Header = ({
         )}
 
         <div className="button-group">
-          <div className="segmented-control" style={{ marginRight: '0.5rem' }}>
-            <button className={`glass-button ${language === 'en' ? 'active-tab' : ''}`} onClick={() => setLanguage('en')}>English</button>
-            <button className={`glass-button ${language === 'zh' ? 'active-tab' : ''}`} onClick={() => setLanguage('zh')}>中文</button>
-          </div>
-          <button className="glass-button" style={{ padding: '0 0.8rem', fontSize: '1.2rem' }} onClick={toggleTheme} title="Toggle Theme (Alt+T)">
+          <select 
+            value={language} 
+            onChange={(e) => setLanguage(e.target.value)}
+            style={styles.languageSelect}
+            title="Select Language"
+          >
+            <option value="en">English</option>
+            <option value="zh">中文</option>
+          </select>
+          <button 
+            className="glass-button" 
+            style={styles.themeBtn}
+            onClick={toggleTheme} 
+            title="Toggle Theme (Alt+T)"
+          >
             {theme === 'light' ? '🌙' : '☀️'}
           </button>
-          <button className="glass-button" onClick={onLogout} title={t.logoutBtn}>{t.logoutBtn}</button>
+          <button 
+            className="glass-button"
+            style={styles.logoutBtn}
+            onClick={onLogout} 
+            title={t.logoutBtn}
+          >
+            {t.logoutBtn}
+          </button>
         </div>
       </div>
     </header>
@@ -211,6 +228,38 @@ const styles = {
     whiteSpace: 'nowrap',
     transition: 'all 0.3s ease',
   },
-};
+  languageSelect: {
+    padding: '0.55rem 0.8rem',
+    borderRadius: '10px',
+    border: '1px solid var(--glass-border)',
+    background: 'rgba(255,255,255,0.1)',
+    color: 'var(--text-primary)',
+    fontSize: '0.95rem',
+    cursor: 'pointer',
+    fontWeight: 500,
+    transition: 'all 0.2s ease',
+    backdropFilter: 'blur(10px)',
+  },
+  themeBtn: {
+    padding: '0.5rem 0.65rem',
+    fontSize: '1.3rem',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: '40px',
+    minHeight: '40px',
+    background: 'rgba(150, 150, 150, 0.1)',
+    border: '1px solid rgba(150, 150, 150, 0.2)',
+    transition: 'all 0.2s ease',
+  },
+  logoutBtn: {
+    padding: '0.55rem 1.2rem',
+    fontSize: '0.95rem',
+    fontWeight: 500,
+    background: 'rgba(239, 68, 68, 0.15)',
+    border: '1.5px solid rgba(239, 68, 68, 0.4)',
+    color: '#ef4444',
+    transition: 'all 0.2s ease',
+  },
 
 export default Header;
