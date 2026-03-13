@@ -16,6 +16,9 @@ const PlanCard = ({ plan, updatePlan, deletePlan, onEdit, t }) => {
 
   const handleMouseDown = (e) => {
     if (isCompleted) return;
+    const rect = sliderRef.current.getBoundingClientRect();
+    // Only start dragging if mouse is in the upper half of the track
+    if (e.clientY > rect.top + rect.height / 2) return;
     setIsDragging(true);
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
@@ -45,6 +48,8 @@ const PlanCard = ({ plan, updatePlan, deletePlan, onEdit, t }) => {
   const handleTrackClick = (e) => {
     if (isCompleted || !sliderRef.current) return;
     const rect = sliderRef.current.getBoundingClientRect();
+    // Only respond to clicks in the upper half of the track
+    if (e.clientY > rect.top + rect.height / 2) return;
     let newProgress = ((e.clientX - rect.left) / rect.width) * 100;
     newProgress = Math.max(0, Math.min(100, Math.round(newProgress)));
     
@@ -116,7 +121,6 @@ const PlanCard = ({ plan, updatePlan, deletePlan, onEdit, t }) => {
             style={styles.sliderTrack} 
             onClick={handleTrackClick}
             onMouseDown={handleMouseDown}
-            onDragStart={(e) => e.preventDefault()} 
           >
             <div style={styles.sliderBase} />
             <div style={{...styles.sliderFill, width: `${progressText}%`}} />
