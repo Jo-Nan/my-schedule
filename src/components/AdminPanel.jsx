@@ -102,6 +102,30 @@ const AdminPanel = ({
     }
   };
 
+  const handleTestEmailTrigger = async (testAction) => {
+    setError('');
+    setMessage('');
+    try {
+      const response = await fetch(`/api/cron?action=${testAction}`, {
+        method: 'POST',
+        credentials: 'same-origin',
+      });
+      const result = await response.json();
+      if (!response.ok || result.status !== 'success') {
+        throw new Error(result.message || `Failed to trigger ${testAction}`);
+      }
+      const actionLabel = {
+        'test-daily-digest': '📋 Daily Digest',
+        'test-evening-report': '📊 Evening Report',
+        'test-birthday-greetings': '🎂 Birthday Greeting',
+      }[testAction] || testAction;
+      setMessage(`✅ ${actionLabel} test email sent! Check your inbox.`);
+      await loadCronTasks();
+    } catch (triggerError) {
+      setError(triggerError.message || 'Failed to send test email');
+    }
+  };
+
   const loadUserPlans = async (userId) => {
     try {
       const response = await fetch(`/api/admin?action=user-plans&userId=${encodeURIComponent(userId)}`, { credentials: 'same-origin' });
@@ -356,15 +380,53 @@ const AdminPanel = ({
                         </>
                       )}
                     </div>
-                    <button 
-                      className="glass-button" 
-                      style={styles.triggerBtn}
-                      onClick={() => handleTriggerCronTask(task.id)}
-                    >
-                      {t.adminCronTrigger}
-                    </button>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      <button 
+                        className="glass-button" 
+                        style={styles.triggerBtn}
+                        onClick={() => handleTriggerCronTask(task.id)}
+                      >
+                        {t.adminCronTrigger}
+                      </button>
+                      {task.id === 'birthday-greetings' && (
+                        <button 
+                          className="glass-button" 
+                          style={{ ...styles.triggerBtn, fontSize: '12px', padding: '4px 8px' }}
+                          onClick={() => handleTestEmailTrigger('test-birthday-greetings')}
+                        >
+                          🧪 Test
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )) : <div style={styles.empty}>No scheduled tasks</div>}
+              </div>
+            </div>
+
+            <div className="glass-panel" style={styles.card}>
+              <div style={styles.sectionHeader}>📧 Email Testing</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '8px' }}>
+                <button 
+                  className="glass-button" 
+                  style={styles.triggerBtn}
+                  onClick={() => handleTestEmailTrigger('test-daily-digest')}
+                >
+                  📋 Test Daily Digest
+                </button>
+                <button 
+                  className="glass-button" 
+                  style={styles.triggerBtn}
+                  onClick={() => handleTestEmailTrigger('test-evening-report')}
+                >
+                  📊 Test Evening Report
+                </button>
+                <button 
+                  className="glass-button" 
+                  style={styles.triggerBtn}
+                  onClick={() => handleTestEmailTrigger('test-birthday-greetings')}
+                >
+                  🎂 Test Birthday
+                </button>
               </div>
             </div>
           </div>
