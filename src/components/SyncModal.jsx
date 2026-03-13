@@ -27,9 +27,11 @@ const SyncModal = ({ isOpen, onClose, t }) => {
             <h4 style={styles.sectionTitle}>☁️ 同步说明</h4>
             <div style={styles.steps}>
               <ol>
+                <li>打开 <b>{t.dataMenu}</b> 下拉菜单，可以看到 <b>{t.sync}</b>、<b>{t.importButton}</b> 和 <b>{t.exportButton}</b>。</li>
                 <li>点击 <b>{t.sync}</b> 会重新拉取当前登录用户的最新计划数据。</li>
                 <li>点击 <b>{t.upload}</b> 会保存当前登录用户的计划。</li>
                 <li>点击 <b>{t.importButton}</b> 可以导入外部 JSON 计划文件，并在“替换当前数据”或“合并当前数据”之间选择。</li>
+                <li>点击 <b>{t.exportButton}</b> 会把当前工作区计划下载成 JSON 文件。</li>
                 <li>计划变更会自动同步，无需每次手动点击。</li>
               </ol>
             </div>

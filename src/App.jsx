@@ -414,6 +414,30 @@ function App() {
     setCopiedPlan({ ...plan });
   };
 
+  const exportPlans = () => {
+    if (!activeUser) {
+      return;
+    }
+
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      userId: activeUser.id,
+      username: activeUser.username || '',
+      plans,
+    };
+
+    const blob = new Blob([`${JSON.stringify(payload, null, 2)}\n`], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    link.href = url;
+    link.download = `plans-${activeUser.username || activeUser.id}-${stamp}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
+
   const pastePlanToDate = (targetDate) => {
     if (!copiedPlan || !targetDate) {
       return false;
@@ -483,6 +507,7 @@ function App() {
         onSync={handleSync}
         onUpload={handleExport}
         onImport={handleImport}
+        onExport={exportPlans}
         setSyncModalOpen={setIsSyncModalOpen}
         syncStatus={syncStatus}
         currentUser={currentUser}

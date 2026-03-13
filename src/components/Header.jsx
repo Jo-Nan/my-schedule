@@ -11,6 +11,7 @@ const Header = ({
   onSync,
   onUpload,
   onImport,
+  onExport,
   setSyncModalOpen,
   syncStatus,
   currentUser,
@@ -27,7 +28,9 @@ const Header = ({
   const isAdmin = currentUser?.role === 'admin';
   const isChinese = language === 'zh';
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isDataOpen, setIsDataOpen] = useState(false);
   const settingsRef = useRef(null);
+  const dataRef = useRef(null);
   const importInputRef = useRef(null);
 
   useEffect(() => {
@@ -35,11 +38,15 @@ const Header = ({
       if (settingsRef.current && !settingsRef.current.contains(event.target)) {
         setIsSettingsOpen(false);
       }
+      if (dataRef.current && !dataRef.current.contains(event.target)) {
+        setIsDataOpen(false);
+      }
     };
 
     const handleEscape = (event) => {
       if (event.key === 'Escape') {
         setIsSettingsOpen(false);
+        setIsDataOpen(false);
       }
     };
 
@@ -57,6 +64,11 @@ const Header = ({
     action();
   };
 
+  const handleDataAction = (action) => {
+    setIsDataOpen(false);
+    action();
+  };
+
   const handleImportClick = () => {
     importInputRef.current?.click();
   };
@@ -66,6 +78,7 @@ const Header = ({
     if (file && onImport) {
       await onImport(file);
     }
+    setIsDataOpen(false);
     event.target.value = '';
   };
 
@@ -113,9 +126,19 @@ const Header = ({
           </button>
         </div>
 
-        <div className="button-group">
-          <button className="glass-button icon-only" onClick={onSync} title={t.sync}>🔄</button>
-          <button className="glass-button icon-only" onClick={handleImportClick} title={t.importButton}>📂</button>
+        <div style={styles.dataWrap} ref={dataRef}>
+          <button
+            className="glass-button"
+            style={styles.dataBtn}
+            onClick={() => setIsDataOpen((prev) => !prev)}
+            title={t.dataMenu}
+            aria-expanded={isDataOpen}
+            aria-haspopup="menu"
+            type="button"
+          >
+            <span style={styles.dataIcon}>⇅</span>
+            <span style={styles.dataLabel}>{t.dataMenu}</span>
+          </button>
           <input
             ref={importInputRef}
             type="file"
@@ -123,6 +146,40 @@ const Header = ({
             style={styles.hiddenInput}
             onChange={handleImportChange}
           />
+          {isDataOpen && (
+            <div style={styles.dataMenu} role="menu">
+              <button
+                className="glass-button"
+                style={styles.menuItem}
+                onClick={() => handleDataAction(onSync)}
+                title={t.sync}
+                type="button"
+              >
+                <span style={styles.menuIcon}>🔄</span>
+                <span>{t.sync}</span>
+              </button>
+              <button
+                className="glass-button"
+                style={styles.menuItem}
+                onClick={handleImportClick}
+                title={t.importButton}
+                type="button"
+              >
+                <span style={styles.menuIcon}>📂</span>
+                <span>{t.importButton}</span>
+              </button>
+              <button
+                className="glass-button"
+                style={styles.menuItem}
+                onClick={() => handleDataAction(onExport)}
+                title={t.exportButton}
+                type="button"
+              >
+                <span style={styles.menuIcon}>⤓</span>
+                <span>{t.exportButton}</span>
+              </button>
+            </div>
+          )}
         </div>
 
         {isAdmin && (
@@ -228,6 +285,13 @@ const getStatusLabel = (status, t) => {
   }
 };
 
+const sharedHeaderControlText = {
+  fontSize: '0.82rem',
+  fontWeight: 600,
+  color: 'var(--text-secondary)',
+  letterSpacing: '0.01em',
+};
+
 const styles = {
   header: {
     display: 'flex',
@@ -275,6 +339,11 @@ const styles = {
     minWidth: 0,
   },
   settingsWrap: {
+    position: 'relative',
+    flexShrink: 0,
+    zIndex: 60,
+  },
+  dataWrap: {
     position: 'relative',
     flexShrink: 0,
     zIndex: 60,
@@ -354,19 +423,49 @@ const styles = {
     boxShadow: '0 0 0 4px rgba(255,255,255,0.08)',
   },
   statusText: {
-    fontSize: '0.82rem',
-    fontWeight: 600,
+    ...sharedHeaderControlText,
     whiteSpace: 'nowrap',
     transition: 'all 0.3s ease',
   },
   saveButton: {
     minWidth: '68px',
     padding: '0.55rem 0.75rem',
-    fontSize: '0.82rem',
-    fontWeight: 700,
+    ...sharedHeaderControlText,
     boxShadow: 'none',
     whiteSpace: 'nowrap',
-    color: 'var(--text-secondary)',
+    justifyContent: 'center',
+  },
+  dataBtn: {
+    padding: '0.5rem 0.8rem',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.45rem',
+    borderRadius: '999px',
+    whiteSpace: 'nowrap',
+    ...sharedHeaderControlText,
+  },
+  dataIcon: {
+    fontSize: '1rem',
+    lineHeight: 1,
+  },
+  dataLabel: {
+    ...sharedHeaderControlText,
+  },
+  dataMenu: {
+    position: 'absolute',
+    top: 'calc(100% + 0.55rem)',
+    right: 0,
+    minWidth: '170px',
+    padding: '0.4rem',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.25rem',
+    borderRadius: '16px',
+    background: 'var(--glass-bg)',
+    backdropFilter: 'blur(18px)',
+    border: '1px solid var(--glass-border)',
+    boxShadow: '0 18px 40px rgba(15, 23, 42, 0.18)',
+    zIndex: 80,
   },
   saveButtonPending: {
     color: '#fff',
@@ -378,12 +477,13 @@ const styles = {
     borderRadius: '10px',
     border: '1px solid var(--glass-border)',
     background: 'rgba(255,255,255,0.1)',
-    color: 'var(--text-primary)',
-    fontSize: '0.95rem',
+    ...sharedHeaderControlText,
     cursor: 'pointer',
-    fontWeight: 500,
     transition: 'all 0.2s ease',
     backdropFilter: 'blur(10px)',
+    appearance: 'none',
+    WebkitAppearance: 'none',
+    MozAppearance: 'none',
   },
   themeBtn: {
     padding: '0.5rem 0.65rem',
@@ -404,14 +504,14 @@ const styles = {
     gap: '0.42rem',
     borderRadius: '999px',
     whiteSpace: 'nowrap',
-    fontWeight: 600,
+    ...sharedHeaderControlText,
   },
   settingsIcon: {
     fontSize: '1.2rem',
     lineHeight: 1,
   },
   settingsLabel: {
-    fontSize: '0.82rem',
+    ...sharedHeaderControlText,
   },
   settingsMenu: {
     position: 'absolute',
