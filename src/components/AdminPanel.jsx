@@ -1,7 +1,17 @@
 import React, { useEffect, useMemo, useState } from 'react';
 
-const AdminPanel = ({ isOpen, onClose, currentUser, t, onAdminDataChanged, onRefreshCurrentUser }) => {
+const AdminPanel = ({
+  isOpen,
+  onClose,
+  currentUser,
+  t,
+  onAdminDataChanged,
+  onRefreshCurrentUser,
+  onOpenUserSchedule,
+  viewedUserId,
+}) => {
   const [users, setUsers] = useState([]);
+  const [messages, setMessages] = useState([]);
   const [selectedUserId, setSelectedUserId] = useState('');
   const [selectedUserPlans, setSelectedUserPlans] = useState([]);
   const [selectedUserSnapshots, setSelectedUserSnapshots] = useState([]);
@@ -10,16 +20,14 @@ const AdminPanel = ({ isOpen, onClose, currentUser, t, onAdminDataChanged, onRef
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
 
-  const selectedUser = useMemo(
-    () => users.find((user) => user.id === selectedUserId) || null,
-    [users, selectedUserId],
-  );
+  const selectedUser = useMemo(() => users.find((user) => user.id === selectedUserId) || null, [users, selectedUserId]);
 
   useEffect(() => {
     if (!isOpen) {
       return;
     }
     loadUsers();
+    loadMessages();
   }, [isOpen]);
 
   useEffect(() => {
@@ -44,6 +52,19 @@ const AdminPanel = ({ isOpen, onClose, currentUser, t, onAdminDataChanged, onRef
       setError(loadError.message || t.adminLoadError);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadMessages = async () => {
+    try {
+      const response = await fetch('/api/admin/messages', { credentials: 'same-origin' });
+      const result = await response.json();
+      if (!response.ok || result.status !== 'success') {
+        throw new Error(result.message || t.adminLoadError);
+      }
+      setMessages(result.messages || []);
+    } catch (loadError) {
+      setError(loadError.message || t.adminLoadError);
     }
   };
 
@@ -91,6 +112,7 @@ const AdminPanel = ({ isOpen, onClose, currentUser, t, onAdminDataChanged, onRef
       setCreateForm({ email: '', password: '', username: '' });
       setMessage(t.adminCreateSuccess);
       await loadUsers();
+      await loadMessages();
       if (result.user?.id) {
         setSelectedUserId(result.user.id);
       }
@@ -195,6 +217,7 @@ const AdminPanel = ({ isOpen, onClose, currentUser, t, onAdminDataChanged, onRef
                   <div style={styles.userPrimary}>{user.username || user.email}</div>
                   <div style={styles.userMeta}>{user.email}</div>
                   <div style={styles.userMeta}>{t.adminPlanCount}: {user.planCount || 0}</div>
+                  {viewedUserId === user.id && <div style={styles.viewingFlag}>{t.adminViewingNow}</div>}
                 </button>
               ))}
             </div>
@@ -223,11 +246,16 @@ const AdminPanel = ({ isOpen, onClose, currentUser, t, onAdminDataChanged, onRef
                     <div><b>{t.adminRole}:</b> {selectedUser.role}</div>
                     <div><b>{t.adminPlanCount}:</b> {selectedUserPlans.length}</div>
                   </div>
-                  {selectedUser.role !== 'admin' && (
-                    <button className="glass-button" style={styles.dangerBtn} onClick={() => handleDeleteUser(selectedUser)}>
-                      {t.adminDeleteUser}
+                  <div style={styles.actionRow}>
+                    <button className="glass-button active-tab" onClick={() => onOpenUserSchedule?.(selectedUser)}>
+                      {t.adminOpenSchedule}
                     </button>
-                  )}
+                    {selectedUser.role !== 'admin' && (
+                      <button className="glass-button" style={styles.dangerBtn} onClick={() => handleDeleteUser(selectedUser)}>
+                        {t.adminDeleteUser}
+                      </button>
+                    )}
+                  </div>
                 </>
               ) : (
                 <div style={styles.empty}>{t.adminNoUserSelected}</div>
@@ -263,6 +291,20 @@ const AdminPanel = ({ isOpen, onClose, currentUser, t, onAdminDataChanged, onRef
                 </div>
               </div>
             </div>
+
+            <div className="glass-panel" style={styles.card}>
+              <div style={styles.sectionHeader}>{t.adminMessages}</div>
+              <div style={styles.scrollAreaLarge}>
+                {messages.length > 0 ? messages.map((item) => (
+                  <div key={item.id} style={styles.messageItem}>
+                    <div style={styles.planTitle}>{item.username || item.userEmail}</div>
+                    <div style={styles.planMeta}>{item.userEmail} · {item.createdAt}</div>
+                    <div style={styles.messageContent}>{item.content}</div>
+                    <div style={styles.planMeta}>{t.adminEmailStatus}: {item.emailStatus}</div>
+                  </div>
+                )) : <div style={styles.empty}>{t.adminNoMessages}</div>}
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -283,7 +325,7 @@ const styles = {
     backdropFilter: 'blur(8px)',
   },
   modal: {
-    width: 'min(1200px, 96vw)',
+    width: 'min(1240px, 96vw)',
     maxHeight: '92vh',
     overflow: 'hidden',
     padding: '1.25rem',
@@ -348,6 +390,11 @@ const styles = {
     fontSize: '0.78rem',
     color: 'var(--text-secondary)',
   },
+  viewingFlag: {
+    fontSize: '0.72rem',
+    color: '#10b981',
+    fontWeight: 600,
+  },
   main: {
     display: 'flex',
     flexDirection: 'column',
@@ -377,8 +424,12 @@ const styles = {
     gap: '0.5rem 1rem',
     fontSize: '0.92rem',
   },
+  actionRow: {
+    display: 'flex',
+    gap: '0.75rem',
+    flexWrap: 'wrap',
+  },
   dangerBtn: {
-    alignSelf: 'flex-start',
     borderColor: 'var(--danger-color)',
     color: 'var(--danger-color)',
   },
@@ -389,6 +440,13 @@ const styles = {
   },
   scrollArea: {
     maxHeight: '300px',
+    overflow: 'auto',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.75rem',
+  },
+  scrollAreaLarge: {
+    maxHeight: '260px',
     overflow: 'auto',
     display: 'flex',
     flexDirection: 'column',
@@ -409,6 +467,19 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: '0.75rem',
+  },
+  messageItem: {
+    border: '1px solid var(--glass-border)',
+    borderRadius: '12px',
+    padding: '0.75rem',
+    background: 'rgba(255,255,255,0.04)',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.4rem',
+  },
+  messageContent: {
+    whiteSpace: 'pre-wrap',
+    lineHeight: 1.5,
   },
   planTitle: {
     fontWeight: 600,

@@ -12,10 +12,15 @@ const Header = ({
   setSyncModalOpen,
   syncStatus,
   currentUser,
+  activeUser,
+  isViewingManagedUser,
+  onExitManagedView,
+  onOpenMessage,
+  onOpenProfile,
   onLogout,
   onOpenAdmin,
 }) => {
-  const displayName = currentUser?.username || currentUser?.email || '—';
+  const displayName = activeUser?.username || activeUser?.email || '—';
   const isAdmin = currentUser?.role === 'admin';
 
   return (
@@ -27,6 +32,7 @@ const Header = ({
           <div style={styles.userLine}>
             <span>{displayName}</span>
             {isAdmin && <span style={styles.adminBadge}>{t.adminBadge}</span>}
+            {isViewingManagedUser && <span style={styles.viewBadge}>{t.adminViewingUser}</span>}
           </div>
         </div>
       </div>
@@ -52,9 +58,17 @@ const Header = ({
           <button className="glass-button icon-only" onClick={onUpload} title={t.upload}>📥</button>
         </div>
 
+        <div className="button-group">
+          <button className="glass-button" onClick={onOpenProfile} title={t.profileTitle}>{t.profileButton}</button>
+          <button className="glass-button" onClick={onOpenMessage} title={t.messageAdminTitle}>{t.messageButton}</button>
+        </div>
+
         {isAdmin && (
           <div className="button-group">
             <button className="glass-button" onClick={onOpenAdmin} title={t.adminPanelTitle}>{t.adminButton}</button>
+            {isViewingManagedUser && (
+              <button className="glass-button" onClick={onExitManagedView} title={t.adminExitView}>{t.adminExitView}</button>
+            )}
           </div>
         )}
 
@@ -148,12 +162,20 @@ const styles = {
     fontSize: '0.82rem',
     color: 'var(--text-secondary)',
     marginTop: '0.25rem',
+    flexWrap: 'wrap',
   },
   adminBadge: {
     padding: '0.1rem 0.45rem',
     borderRadius: '999px',
     background: 'rgba(16, 185, 129, 0.15)',
     color: '#10b981',
+    fontWeight: 600,
+  },
+  viewBadge: {
+    padding: '0.1rem 0.45rem',
+    borderRadius: '999px',
+    background: 'rgba(59, 130, 246, 0.15)',
+    color: 'var(--accent-color)',
     fontWeight: 600,
   },
   statusGroup: {

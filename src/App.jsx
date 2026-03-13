@@ -7,24 +7,31 @@ import DailyView from './components/DailyView';
 import YearlyView from './components/YearlyView';
 import SyncModal from './components/SyncModal';
 import AdminPanel from './components/AdminPanel';
+import MessageModal from './components/MessageModal';
+import ProfileModal from './components/ProfileModal';
 import { fetchWeeklyWeather } from './utils/weatherApi';
 import { translations } from './utils/translations';
 import './index.css';
 
 function App() {
   const [currentUser, setCurrentUser] = useState(null);
+  const [managedUser, setManagedUser] = useState(null);
   const [authReady, setAuthReady] = useState(false);
   const [viewMode, setViewMode] = useState('weekly');
   const [theme, setTheme] = useState('light');
   const [language, setLanguage] = useState(() => localStorage.getItem('nanmuz_lang') || 'en');
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
   const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
+  const [isMessageModalOpen, setIsMessageModalOpen] = useState(false);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [syncStatus, setSyncStatus] = useState('idle');
   const [plans, setPlans] = useState([]);
   const [weatherData, setWeatherData] = useState([]);
 
   const t = translations[language];
-  const cacheKey = useMemo(() => (currentUser ? `nanmuz_plans_${currentUser.id}` : null), [currentUser]);
+  const activeUser = managedUser || currentUser;
+  const isViewingManagedUser = Boolean(currentUser && managedUser && currentUser.id !== managedUser.id);
+  const cacheKey = useMemo(() => (activeUser ? `nanmuz_plans_${activeUser.id}` : null), [activeUser]);
   const autoSyncTimerRef = useRef(null);
   const isInitializedRef = useRef(false);
   const lastSyncedHashRef = useRef(null);
@@ -50,8 +57,37 @@ function App() {
     return merged;
   };
 
-  const refreshCurrentUserPlans = async ({ silent = false } = {}) => {
-    if (!currentUser) {
+  const fetchWorkspacePlans = async () => {
+    if (!activeUser || !currentUser) {
+      return [];
+    }
+
+    const endpoint = isViewingManagedUser
+      ? `/api/admin/manage-user-plans?userId=${encodeURIComponent(activeUser.id)}`
+      : `/api/load-plans?t=${Date.now()}`;
+
+    const response = await fetch(endpoint, { credentials: 'same-origin' });
+    if (response.status === 401) {
+      setCurrentUser(null);
+      setManagedUser(null);
+      setPlans([]);
+      return null;
+    }
+
+    const result = await response.json();
+    if (!response.ok || result.status !== 'success') {
+      throw new Error(result.message || 'Failed to load plans');
+    }
+
+    if (isViewingManagedUser && result.user) {
+      setManagedUser(result.user);
+    }
+
+    return result.plans || result.data || [];
+  };
+
+  const refreshWorkspacePlans = async ({ silent = false } = {}) => {
+    if (!activeUser || !currentUser) {
       return;
     }
 
@@ -60,23 +96,13 @@ function App() {
     }
 
     try {
-      const response = await fetch(`/api/load-plans?t=${Date.now()}`, { credentials: 'same-origin' });
-      if (response.status === 401) {
-        setCurrentUser(null);
-        setPlans([]);
+      const remotePlans = await fetchWorkspacePlans();
+      if (!remotePlans) {
         return;
-      }
-      if (!response.ok) {
-        throw new Error('Sync failed');
-      }
-
-      const result = await response.json();
-      if (result.status !== 'success') {
-        throw new Error(result.message || 'Failed to load plans');
       }
 
       setPlans((prev) => {
-        const merged = mergePlans(prev, result.data || []);
+        const merged = mergePlans(prev, remotePlans);
         const hash = JSON.stringify(merged);
         lastSyncedHashRef.current = hash;
         isInitializedRef.current = true;
@@ -112,6 +138,7 @@ function App() {
         const result = await response.json();
         if (result.status === 'success') {
           setCurrentUser(result.user);
+          setManagedUser(null);
         }
       } catch {
         setCurrentUser(null);
@@ -141,7 +168,7 @@ function App() {
       localStorage.setItem(cacheKey, JSON.stringify(plans));
     }
 
-    if (isInitializedRef.current && currentUser) {
+    if (isInitializedRef.current && activeUser && currentUser) {
       const currentHash = JSON.stringify(plans);
       if (currentHash === lastSyncedHashRef.current) {
         return;
@@ -155,16 +182,16 @@ function App() {
         handleExport();
       }, 500);
     }
-  }, [plans, cacheKey, currentUser]);
+  }, [plans, cacheKey, currentUser, activeUser]);
 
   useEffect(() => {
-    if (!currentUser) {
+    if (!activeUser || !currentUser) {
       return;
     }
 
-    refreshCurrentUserPlans({ silent: true });
+    refreshWorkspacePlans({ silent: true });
     fetchWeeklyWeather().then((data) => setWeatherData(Array.isArray(data) ? data : []));
-  }, [currentUser]);
+  }, [activeUser?.id, currentUser?.id]);
 
   useEffect(() => {
     const handleKeyDown = (event) => {
@@ -194,30 +221,33 @@ function App() {
   };
 
   const handleSync = async () => {
-    await refreshCurrentUserPlans();
+    await refreshWorkspacePlans();
   };
 
   const handleExport = async () => {
+    if (!activeUser || !currentUser) {
+      return;
+    }
+
     setSyncStatus('uploading');
     try {
-      const response = await fetch('/api/save-plans', {
+      const endpoint = isViewingManagedUser ? '/api/admin/manage-user-plans' : '/api/save-plans';
+      const payload = isViewingManagedUser ? { userId: activeUser.id, plans } : plans;
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify(plans),
+        body: JSON.stringify(payload),
       });
 
       if (response.status === 401) {
         setCurrentUser(null);
+        setManagedUser(null);
         setPlans([]);
         return;
       }
-      if (!response.ok) {
-        throw new Error('Save failed');
-      }
-
       const result = await response.json();
-      if (result.status !== 'success') {
+      if (!response.ok || result.status !== 'success') {
         throw new Error(result.message || 'Failed to save plans');
       }
 
@@ -266,6 +296,7 @@ function App() {
 
   const handleAuthenticated = (user) => {
     setCurrentUser(user);
+    setManagedUser(null);
     setAuthReady(true);
     setSyncStatus('idle');
   };
@@ -278,10 +309,13 @@ function App() {
       });
     } finally {
       setCurrentUser(null);
+      setManagedUser(null);
       setPlans([]);
       setWeatherData([]);
       setSyncStatus('idle');
       setIsAdminPanelOpen(false);
+      setIsMessageModalOpen(false);
+      setIsProfileModalOpen(false);
       isInitializedRef.current = false;
       lastSyncedHashRef.current = null;
     }
@@ -309,22 +343,45 @@ function App() {
         setSyncModalOpen={setIsSyncModalOpen}
         syncStatus={syncStatus}
         currentUser={currentUser}
+        activeUser={activeUser}
+        isViewingManagedUser={isViewingManagedUser}
+        onExitManagedView={() => setManagedUser(null)}
+        onOpenMessage={() => setIsMessageModalOpen(true)}
+        onOpenProfile={() => setIsProfileModalOpen(true)}
         onLogout={handleLogout}
         onOpenAdmin={() => setIsAdminPanelOpen(true)}
       />
 
       <SyncModal isOpen={isSyncModalOpen} onClose={() => setIsSyncModalOpen(false)} t={t} />
+      <MessageModal isOpen={isMessageModalOpen} onClose={() => setIsMessageModalOpen(false)} t={t} />
+      <ProfileModal
+        isOpen={isProfileModalOpen}
+        onClose={() => setIsProfileModalOpen(false)}
+        currentUser={currentUser}
+        t={t}
+        onProfileUpdated={(user) => {
+          setCurrentUser(user);
+          if (!managedUser) {
+            setManagedUser(null);
+          }
+        }}
+      />
       <AdminPanel
         isOpen={isAdminPanelOpen && currentUser.role === 'admin'}
         onClose={() => setIsAdminPanelOpen(false)}
         currentUser={currentUser}
         t={t}
+        viewedUserId={activeUser?.id}
+        onOpenUserSchedule={(user) => {
+          setManagedUser(user.id === currentUser.id ? null : user);
+          setIsAdminPanelOpen(false);
+        }}
         onAdminDataChanged={() => {
-          if (currentUser?.role === 'admin') {
-            refreshCurrentUserPlans({ silent: true });
+          if (activeUser) {
+            refreshWorkspacePlans({ silent: true });
           }
         }}
-        onRefreshCurrentUser={() => refreshCurrentUserPlans({ silent: true })}
+        onRefreshCurrentUser={() => refreshWorkspacePlans({ silent: true })}
       />
 
       <main>

@@ -13,7 +13,7 @@ const ADMIN_SEED = {
   id: 'admin-nanmuz',
   username: 'NanMuZ',
   email: 'nanqiao.ai@gmail.com',
-  password: '571428',
+  password: 'u7P#m2S9',
   role: 'admin',
 };
 
@@ -24,6 +24,7 @@ export const publicUser = (user) => ({
   email: user.email,
   username: user.username || '',
   role: user.role || 'user',
+  birthday: user.birthday || '',
   isActive: user.isActive !== false,
   createdAt: user.createdAt || null,
   updatedAt: user.updatedAt || null,
@@ -54,6 +55,10 @@ export const verifyPassword = (password, passwordHash = '') => {
   return crypto.timingSafeEqual(derived, expected);
 };
 
+export const hashResetCode = (code) => crypto.createHash('sha256').update(String(code)).digest('hex');
+
+export const generateResetCode = () => String(Math.floor(100000 + Math.random() * 900000));
+
 const sanitizePlan = (plan = {}) => ({
   id: String(plan.id || `${Date.now()}-${crypto.randomBytes(4).toString('hex')}`),
   event: typeof plan.event === 'string' ? plan.event : '',
@@ -78,6 +83,34 @@ const sanitizeSnapshot = (snapshot = {}) => ({
 
 const sanitizeSnapshots = (snapshots) => (Array.isArray(snapshots) ? snapshots.map(sanitizeSnapshot) : []);
 
+const sanitizeMessage = (message = {}) => ({
+  id: String(message.id || `msg_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`),
+  userId: String(message.userId || ''),
+  userEmail: typeof message.userEmail === 'string' ? message.userEmail : '',
+  username: typeof message.username === 'string' ? message.username : '',
+  content: typeof message.content === 'string' ? message.content : '',
+  createdAt: typeof message.createdAt === 'string' ? message.createdAt : new Date().toISOString(),
+  emailStatus: typeof message.emailStatus === 'string' ? message.emailStatus : 'pending',
+  emailError: typeof message.emailError === 'string' ? message.emailError : '',
+});
+
+const sanitizeMessages = (messages) => (Array.isArray(messages) ? messages.map(sanitizeMessage) : []);
+
+const sanitizeUser = (user = {}) => ({
+  id: String(user.id || createUserId()),
+  email: normalizeEmail(user.email || ''),
+  username: typeof user.username === 'string' ? user.username.trim() : '',
+  passwordHash: typeof user.passwordHash === 'string' ? user.passwordHash : '',
+  role: user.role === 'admin' ? 'admin' : 'user',
+  birthday: typeof user.birthday === 'string' ? user.birthday : '',
+  resetCodeHash: typeof user.resetCodeHash === 'string' ? user.resetCodeHash : '',
+  resetCodeExpiresAt: typeof user.resetCodeExpiresAt === 'string' ? user.resetCodeExpiresAt : '',
+  lastBirthdayGreetingYear: typeof user.lastBirthdayGreetingYear === 'string' ? user.lastBirthdayGreetingYear : '',
+  isActive: user.isActive !== false,
+  createdAt: typeof user.createdAt === 'string' ? user.createdAt : new Date().toISOString(),
+  updatedAt: typeof user.updatedAt === 'string' ? user.updatedAt : new Date().toISOString(),
+});
+
 export const getShanghaiDateString = (date = new Date()) => {
   const formatter = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Shanghai',
@@ -87,6 +120,8 @@ export const getShanghaiDateString = (date = new Date()) => {
   });
   return formatter.format(date);
 };
+
+export const isValidBirthday = (value = '') => /^\d{4}-\d{2}-\d{2}$/.test(value);
 
 const getStorageConfig = () => {
   const token = process.env.GITHUB_TOKEN;
@@ -103,6 +138,7 @@ const getStorageConfig = () => {
       usersPath: process.env.GITHUB_USERS_PATH || 'data/users.json',
       userPlansPath: process.env.GITHUB_USER_PLANS_PATH || 'data/plans-by-user.json',
       snapshotsPath: process.env.GITHUB_SNAPSHOTS_PATH || 'data/plan-snapshots.json',
+      messagesPath: process.env.GITHUB_MESSAGES_PATH || 'data/messages.json',
       legacyPlansPath: process.env.GITHUB_PLANS_PATH || 'data/plans.json',
     };
   }
@@ -112,6 +148,7 @@ const getStorageConfig = () => {
     usersPath: path.join(LOCAL_DATA_DIR, 'users.json'),
     userPlansPath: path.join(LOCAL_DATA_DIR, 'plans-by-user.json'),
     snapshotsPath: path.join(LOCAL_DATA_DIR, 'plan-snapshots.json'),
+    messagesPath: path.join(LOCAL_DATA_DIR, 'messages.json'),
     legacyPlansPath: path.join(PROJECT_ROOT, 'public', 'data', 'plans.json'),
   };
 };
@@ -242,31 +279,45 @@ export const ensureDataStore = async () => {
   const usersResult = await readJson(config, config.usersPath, []);
   const plansResult = await readJson(config, config.userPlansPath, {});
   const snapshotsResult = await readJson(config, config.snapshotsPath, {});
+  const messagesResult = await readJson(config, config.messagesPath, []);
 
-  const users = Array.isArray(usersResult.data) ? usersResult.data : [];
+  const users = (Array.isArray(usersResult.data) ? usersResult.data : []).map(sanitizeUser);
   const plansByUser = plansResult.data && typeof plansResult.data === 'object' && !Array.isArray(plansResult.data)
     ? plansResult.data
     : {};
   const snapshotsByUser = snapshotsResult.data && typeof snapshotsResult.data === 'object' && !Array.isArray(snapshotsResult.data)
     ? snapshotsResult.data
     : {};
+  const messages = sanitizeMessages(messagesResult.data);
 
   let changed = false;
   let admin = users.find((user) => normalizeEmail(user.email) === ADMIN_SEED.email);
 
   if (!admin) {
-    admin = {
+    admin = sanitizeUser({
       id: ADMIN_SEED.id,
       email: ADMIN_SEED.email,
       username: ADMIN_SEED.username,
       passwordHash: hashPassword(ADMIN_SEED.password),
       role: ADMIN_SEED.role,
       isActive: true,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
+    });
     users.push(admin);
     changed = true;
+  } else {
+    if (admin.username !== ADMIN_SEED.username) {
+      admin.username = ADMIN_SEED.username;
+      changed = true;
+    }
+    if (admin.role !== ADMIN_SEED.role) {
+      admin.role = ADMIN_SEED.role;
+      changed = true;
+    }
+    if (!verifyPassword(ADMIN_SEED.password, admin.passwordHash)) {
+      admin.passwordHash = hashPassword(ADMIN_SEED.password);
+      admin.updatedAt = new Date().toISOString();
+      changed = true;
+    }
   }
 
   if (!Array.isArray(plansByUser[admin.id])) {
@@ -298,13 +349,14 @@ export const ensureDataStore = async () => {
     await writeJson(config, config.usersPath, users, 'Initialize day users');
     await writeJson(config, config.userPlansPath, plansByUser, 'Initialize day user plans');
     await writeJson(config, config.snapshotsPath, snapshotsByUser, 'Initialize day user snapshots');
+    await writeJson(config, config.messagesPath, messages, 'Initialize day messages');
   }
 
-  return { config, users, plansByUser, snapshotsByUser };
+  return { config, users, plansByUser, snapshotsByUser, messages };
 };
 
 export const saveUsers = async (config, users) => {
-  await writeJson(config, config.usersPath, users, 'Update day users');
+  await writeJson(config, config.usersPath, users.map(sanitizeUser), 'Update day users');
 };
 
 export const savePlansByUser = async (config, plansByUser) => {
@@ -315,22 +367,35 @@ export const saveSnapshotsByUser = async (config, snapshotsByUser) => {
   await writeJson(config, config.snapshotsPath, snapshotsByUser, 'Update day user snapshots');
 };
 
+export const saveMessages = async (config, messages) => {
+  await writeJson(config, config.messagesPath, sanitizeMessages(messages), 'Update day messages');
+};
+
 export const findUserByEmail = (users, email) => users.find((user) => normalizeEmail(user.email) === normalizeEmail(email));
 
 export const findUserById = (users, userId) => users.find((user) => user.id === userId);
 
 export const createUserRecord = ({ email, username = '', password, role = 'user' }) => {
   const now = new Date().toISOString();
-  return {
+  return sanitizeUser({
     id: createUserId(),
     email: normalizeEmail(email),
     username: (username || '').trim(),
     passwordHash: hashPassword(password),
     role,
+    birthday: '',
+    resetCodeHash: '',
+    resetCodeExpiresAt: '',
+    lastBirthdayGreetingYear: '',
     isActive: true,
     createdAt: now,
     updatedAt: now,
-  };
+  });
+};
+
+export const updateUserProfile = (user, updates = {}) => {
+  const nextUser = sanitizeUser({ ...user, ...updates, updatedAt: new Date().toISOString() });
+  return nextUser;
 };
 
 export const getUserPlans = (plansByUser, userId) => sanitizePlans(plansByUser[userId] || []);
@@ -364,3 +429,15 @@ export const restoreUserSnapshot = (plansByUser, snapshotsByUser, userId, snapsh
   plansByUser[userId] = sanitizePlans(snapshot.plans);
   return snapshot;
 };
+
+export const createMessageRecord = ({ userId, userEmail, username = '', content, emailStatus = 'pending', emailError = '' }) => sanitizeMessage({
+  userId,
+  userEmail,
+  username,
+  content,
+  createdAt: new Date().toISOString(),
+  emailStatus,
+  emailError,
+});
+
+export const getMessages = (messages) => sanitizeMessages(messages).sort((left, right) => right.createdAt.localeCompare(left.createdAt));
