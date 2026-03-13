@@ -206,6 +206,29 @@ const AdminPanel = ({
     }
   };
 
+  const handleRestoreUser = async (user) => {
+    if (!window.confirm(`恢复用户 ${user.email}？`)) {
+      return;
+    }
+    setError('');
+    setMessage('');
+    try {
+      const response = await fetch(`/api/admin?action=restore-user&id=${encodeURIComponent(user.id)}`, {
+        method: 'POST',
+        credentials: 'same-origin',
+      });
+      const result = await response.json();
+      if (!response.ok || result.status !== 'success') {
+        throw new Error(result.message || '恢复用户失败');
+      }
+      setMessage('用户已恢复');
+      await loadUsers();
+      onAdminDataChanged?.();
+    } catch (restoreError) {
+      setError(restoreError.message || '恢复用户失败');
+    }
+  };
+
   const handleRestoreSnapshot = async (snapshot) => {
     if (!selectedUser) {
       return;
@@ -275,6 +298,9 @@ const AdminPanel = ({
                   <div style={styles.userPrimary}>{user.username || user.email}</div>
                   <div style={styles.userMeta}>{user.email}</div>
                   <div style={styles.userMeta}>{t.adminPlanCount}: {user.planCount || 0}</div>
+                  <div style={styles.userMeta}>
+                    {user.isActive ? '活跃' : '不活跃'}
+                  </div>
                   {viewedUserId === user.id && <div style={styles.viewingFlag}>{t.adminViewingNow}</div>}
                 </button>
               ))}
@@ -308,9 +334,14 @@ const AdminPanel = ({
                     <button className="glass-button active-tab" onClick={() => onOpenUserSchedule?.(selectedUser)}>
                       {t.adminOpenSchedule}
                     </button>
-                    {selectedUser.role !== 'admin' && (
+                    {selectedUser.role !== 'admin' && selectedUser.isActive && (
                       <button className="glass-button" style={styles.dangerBtn} onClick={() => handleDeleteUser(selectedUser)}>
                         {t.adminDeleteUser}
+                      </button>
+                    )}
+                    {selectedUser.role !== 'admin' && !selectedUser.isActive && (
+                      <button className="glass-button" style={styles.successBtn} onClick={() => handleRestoreUser(selectedUser)}>
+                        恢复用户
                       </button>
                     )}
                   </div>
@@ -556,6 +587,10 @@ const styles = {
   dangerBtn: {
     borderColor: 'var(--danger-color)',
     color: 'var(--danger-color)',
+  },
+  successBtn: {
+    borderColor: 'var(--success-color)',
+    color: 'var(--success-color)',
   },
   gridCols: {
     display: 'grid',

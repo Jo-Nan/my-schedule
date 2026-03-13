@@ -122,7 +122,7 @@ const PlanCard = ({ plan, updatePlan, deletePlan, onEdit, t }) => {
               style={{
                 ...styles.sliderThumb, 
                 left: `${progressText}%`,
-                cursor: isCompleted ? 'default' : 'grab'
+                cursor: isCompleted ? 'default' : (isDragging ? 'grabbing' : 'grab')
               }} 
             />
           </div>
@@ -214,7 +214,6 @@ const styles = {
   },
   progressContainer: {
     flex: 1, // fill remaining width next to check btn
-    cursor: 'pointer',
   },
   sliderTrack: {
     height: '6px',

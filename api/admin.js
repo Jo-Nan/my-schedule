@@ -21,6 +21,7 @@ import {
  * - GET /api/admin?action=users -> List all users
  * - POST /api/admin?action=users -> Create user
  * - DELETE /api/admin?action=users&id=userId -> Delete user
+ * - POST /api/admin?action=restore-user&id=userId -> Restore user
  * - GET /api/admin?action=user-plans&userId=xxx -> Get user's plans
  * - POST /api/admin?action=user-plans&userId=xxx -> Save user's plans
  * - GET /api/admin?action=user-snapshots&id=xxx -> Get user's snapshots
@@ -41,7 +42,6 @@ export default async function handler(req, res) {
     // GET /api/admin?action=users - List all users
     if (req.method === 'GET' && action === 'users') {
       const users = auth.users
-        .filter((user) => user.isActive !== false)
         .map((user) => ({
           ...publicUser(user),
           planCount: getUserPlans(auth.plansByUser, user.id).length,
@@ -100,6 +100,26 @@ export default async function handler(req, res) {
       }
 
       targetUser.isActive = false;
+      targetUser.updatedAt = new Date().toISOString();
+
+      await saveUsers(auth.config, auth.users);
+      return res.status(200).json({ status: 'success' });
+    }
+
+    // POST /api/admin?action=restore-user&id=userId - Restore user
+    if (req.method === 'POST' && action === 'restore-user') {
+      const userId = String(req.query.id || '');
+      const targetUser = auth.users.find((user) => user.id === userId);
+
+      if (!targetUser) {
+        return res.status(404).json({ status: 'error', message: 'User not found' });
+      }
+
+      if (targetUser.isActive !== false) {
+        return res.status(400).json({ status: 'error', message: 'User is already active' });
+      }
+
+      targetUser.isActive = true;
       targetUser.updatedAt = new Date().toISOString();
 
       await saveUsers(auth.config, auth.users);
