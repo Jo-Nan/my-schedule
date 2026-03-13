@@ -1,5 +1,3 @@
-import React from 'react';
-
 const Header = ({
   viewMode,
   setViewMode,
@@ -21,7 +19,6 @@ const Header = ({
   onLogout,
   onOpenAdmin,
   hasUnsavedProgress,
-  setHasUnsavedProgress,
 }) => {
   const displayName = activeUser?.username || activeUser?.email || '—';
   const isAdmin = currentUser?.role === 'admin';
@@ -48,20 +45,31 @@ const Header = ({
       </div>
 
       <div style={styles.right}>
-        <div style={styles.statusGroup}>
-          <button className="glass-button icon-only" onClick={() => setSyncModalOpen(true)} style={styles.statusButton} title={t.syncSettings}>
-            <span style={{ ...styles.statusText, color: getStatusColor(syncStatus) }}>
-              {getStatusIcon(syncStatus)} {getStatusLabel(syncStatus, t)}
+        <div style={styles.syncCluster}>
+          <button className="glass-button" onClick={() => setSyncModalOpen(true)} style={styles.statusButton} title={t.syncSettings}>
+            <span style={styles.statusDotWrap}>
+              <span style={{ ...styles.statusDot, background: getStatusColor(syncStatus) }} />
             </span>
+            <span style={{ ...styles.statusText, color: getStatusColor(syncStatus) }}>
+              {getStatusLabel(syncStatus, t)}
+            </span>
+          </button>
+          <button
+            className="glass-button"
+            onClick={onUpload}
+            style={{
+              ...styles.saveButton,
+              ...(hasUnsavedProgress ? styles.saveButtonPending : {}),
+            }}
+            title={hasUnsavedProgress ? 'Save Progress Changes' : t.upload}
+          >
+            {hasUnsavedProgress ? 'Save' : 'Saved'}
           </button>
         </div>
 
         <div className="button-group">
           <button className="glass-button icon-only" onClick={onSync} title={t.sync}>🔄</button>
           <button className="glass-button icon-only" onClick={onUpload} title={t.upload}>📥</button>
-          {hasUnsavedProgress && (
-            <button className="glass-button" onClick={() => { onUpload(); setHasUnsavedProgress(false); }} title="Save Progress Changes">💾</button>
-          )}
         </div>
 
         <div className="button-group">
@@ -163,9 +171,11 @@ const styles = {
   right: {
     display: 'flex',
     alignItems: 'center',
-    gap: '1rem',
+    gap: '0.75rem',
     flexWrap: 'wrap',
     justifyContent: 'flex-end',
+    flex: 1,
+    minWidth: 0,
   },
   logo: {
     width: '36px',
@@ -204,29 +214,59 @@ const styles = {
     color: 'var(--accent-color)',
     fontWeight: 600,
   },
-  statusGroup: {
+  syncCluster: {
     display: 'flex',
     alignItems: 'center',
-    gap: '0.5rem',
-    padding: '0.4rem 0.8rem',
-    background: 'rgba(255,255,255,0.05)',
-    borderRadius: '10px',
+    gap: '0.55rem',
+    padding: '0.3rem',
+    borderRadius: '14px',
+    background: 'rgba(255,255,255,0.06)',
+    border: '1px solid var(--glass-border)',
   },
   statusButton: {
-    background: 'transparent',
-    border: 'none',
+    minWidth: '132px',
+    justifyContent: 'flex-start',
     cursor: 'pointer',
     display: 'flex',
     alignItems: 'center',
-    gap: '0.5rem',
-    padding: 0,
-    fontSize: '1rem',
+    gap: '0.6rem',
+    padding: '0.55rem 0.8rem',
+    fontSize: '0.92rem',
+    boxShadow: 'none',
+  },
+  statusDotWrap: {
+    width: '0.75rem',
+    height: '0.75rem',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  statusDot: {
+    width: '0.5rem',
+    height: '0.5rem',
+    borderRadius: '999px',
+    boxShadow: '0 0 0 4px rgba(255,255,255,0.08)',
   },
   statusText: {
-    fontSize: '0.75rem',
-    fontWeight: 500,
+    fontSize: '0.82rem',
+    fontWeight: 600,
     whiteSpace: 'nowrap',
     transition: 'all 0.3s ease',
+  },
+  saveButton: {
+    minWidth: '74px',
+    padding: '0.55rem 0.85rem',
+    fontSize: '0.82rem',
+    fontWeight: 700,
+    boxShadow: 'none',
+    whiteSpace: 'nowrap',
+    color: 'var(--text-secondary)',
+  },
+  saveButtonPending: {
+    color: '#fff',
+    background: 'linear-gradient(135deg, var(--accent-color), #60a5fa)',
+    borderColor: 'transparent',
   },
   languageSelect: {
     padding: '0.55rem 0.8rem',
@@ -253,12 +293,14 @@ const styles = {
     transition: 'all 0.2s ease',
   },
   logoutBtn: {
-    padding: '0.55rem 1.2rem',
+    padding: '0.55rem 1rem',
     fontSize: '0.95rem',
-    fontWeight: 500,
-    background: 'rgba(239, 68, 68, 0.15)',
-    border: '1.5px solid rgba(239, 68, 68, 0.4)',
-    color: '#ef4444',
+    fontWeight: 600,
+    background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.16), rgba(248, 113, 113, 0.24))',
+    border: '1px solid rgba(239, 68, 68, 0.28)',
+    color: '#dc2626',
+    borderRadius: '999px',
+    boxShadow: '0 10px 24px -18px rgba(239, 68, 68, 0.9)',
     transition: 'all 0.2s ease',
   },
 };

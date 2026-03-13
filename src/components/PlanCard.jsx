@@ -1,10 +1,11 @@
-import React, { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 
 const PlanCard = ({ plan, updatePlan, deletePlan, onEdit, onDragStart, onDragEnd, isDragging: cardIsDragging, t }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [localProgress, setLocalProgress] = useState(null);
   const sliderRef = useRef(null);
   const rafRef = useRef(null);
+  const interactiveSelector = 'button, select, input, textarea, a, .plan-slider, .progress-control';
 
   const handleDelete = () => {
     if (window.confirm(`${t.confirmDelete || 'Are you sure you want to delete'} "${plan.event}"?`)) {
@@ -97,11 +98,13 @@ const PlanCard = ({ plan, updatePlan, deletePlan, onEdit, onDragStart, onDragEnd
   return (
     <div 
       className={`glass-panel plan-card ${isCompleted ? 'completed hover-disable' : ''}`} 
-      style={styles.card}
+      style={{
+        ...styles.card,
+        ...(cardIsDragging ? styles.cardDragging : {}),
+      }}
       draggable
       onDragStart={(e) => {
-        // Only allow drag from the drag button
-        if (!e.target.closest('.drag-handle')) {
+        if (isDragging || e.target.closest(interactiveSelector)) {
           e.preventDefault();
           return;
         }
@@ -147,6 +150,7 @@ const PlanCard = ({ plan, updatePlan, deletePlan, onEdit, onDragStart, onDragEnd
 
       <div style={styles.bottomRow}>
         <div 
+          className="progress-control"
           onClick={toggleStatus}
           style={{
             ...styles.checkBtn,
@@ -161,6 +165,7 @@ const PlanCard = ({ plan, updatePlan, deletePlan, onEdit, onDragStart, onDragEnd
         <div style={styles.progressContainer}>
           <div 
             ref={sliderRef}
+            className="plan-slider"
             style={styles.sliderTrack} 
             onClick={handleTrackClick}
             onMouseDown={handleMouseDown}
@@ -182,6 +187,7 @@ const PlanCard = ({ plan, updatePlan, deletePlan, onEdit, onDragStart, onDragEnd
           className="glass-button drag-handle"
           style={styles.dragBtn}
           title="拖拽移动任务"
+          type="button"
         >
           ⇅
         </button>
@@ -200,6 +206,9 @@ const styles = {
     flexDirection: 'column',
     gap: '0.75rem',
   },
+  cardDragging: {
+    opacity: 0.7,
+  },
   header: {
     display: 'flex',
     justifyContent: 'space-between',
@@ -216,17 +225,20 @@ const styles = {
   headerActions: {
     display: 'flex',
     gap: '0.4rem',
+    flexShrink: 0,
   },
   dragBtn: {
-    padding: '0.1rem',
-    background: 'none',
-    border: 'none',
+    padding: '0.25rem 0.45rem',
+    background: 'rgba(255,255,255,0.06)',
+    border: '1px solid var(--glass-border)',
     boxShadow: 'none',
     color: 'var(--text-secondary)',
-    opacity: 0.6,
+    opacity: 0.9,
     cursor: 'grab',
     fontSize: '12px',
     lineHeight: 1,
+    borderRadius: '999px',
+    flexShrink: 0,
   },
   editBtn: {
     padding: '0.2rem',
@@ -248,11 +260,12 @@ const styles = {
     display: 'flex',
     flexWrap: 'wrap',
     gap: '0.4rem',
+    minHeight: '1.6rem',
   },
   bottomRow: {
     display: 'flex',
     alignItems: 'center',
-    gap: '0.8rem',
+    gap: '0.65rem',
     marginTop: '0.4rem',
   },
   checkBtn: {
@@ -280,7 +293,6 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     gap: '2px',
-    pointerEvents: 'none', // Prevent tags from blocking slider interaction
     userSelect: 'none',
   },
   progressContainer: {

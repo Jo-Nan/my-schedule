@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import AuthOverlay from './components/AuthOverlay';
 import Header from './components/Header';
 import WeeklyView from './components/WeeklyView';
@@ -28,6 +28,7 @@ function App() {
   const [plans, setPlans] = useState([]);
   const [weatherData, setWeatherData] = useState([]);
   const [hasUnsavedProgress, setHasUnsavedProgress] = useState(false);
+  const [pendingSaveType, setPendingSaveType] = useState('none');
 
   const t = translations[language];
   const activeUser = managedUser || currentUser;
@@ -179,13 +180,12 @@ function App() {
         clearTimeout(autoSyncTimerRef.current);
       }
 
-      const delay = hasUnsavedProgress ? 30000 : 500; // 30s for progress changes, 500ms for others
+      const delay = pendingSaveType === 'progress' ? 30000 : 500;
       autoSyncTimerRef.current = setTimeout(() => {
-        handleExport();
-        setHasUnsavedProgress(false);
+        handleExport({ silent: true });
       }, delay);
     }
-  }, [plans, cacheKey, currentUser, activeUser, hasUnsavedProgress]);
+  }, [plans, cacheKey, currentUser, activeUser, pendingSaveType]);
 
   useEffect(() => {
     if (!activeUser || !currentUser) {
@@ -227,7 +227,7 @@ function App() {
     await refreshWorkspacePlans();
   };
 
-  const handleExport = async () => {
+  const handleExport = async ({ silent = false } = {}) => {
     if (!activeUser || !currentUser) {
       return;
     }
@@ -255,12 +255,16 @@ function App() {
       }
 
       lastSyncedHashRef.current = JSON.stringify(plans);
+      setHasUnsavedProgress(false);
+      setPendingSaveType('none');
       setSyncStatus('synced');
       setTimeout(() => setSyncStatus('idle'), 3000);
     } catch (error) {
       console.error('Export error:', error);
       setSyncStatus('error');
-      alert((t.uploadError || t.syncError) || 'Save failed');
+      if (!silent) {
+        alert((t.uploadError || t.syncError) || 'Save failed');
+      }
     }
   };
 
@@ -277,6 +281,9 @@ function App() {
     )));
     if (updates.progress !== undefined) {
       setHasUnsavedProgress(true);
+      setPendingSaveType('progress');
+    } else {
+      setPendingSaveType('general');
     }
   };
 
@@ -294,10 +301,12 @@ function App() {
     };
 
     setPlans((prev) => [...prev, completePlan]);
+    setPendingSaveType('general');
   };
 
   const deletePlan = (id) => {
     setPlans((prev) => prev.filter((plan) => plan.id !== id));
+    setPendingSaveType('general');
   };
 
   const handleAuthenticated = (user) => {
@@ -322,6 +331,8 @@ function App() {
       setIsAdminPanelOpen(false);
       setIsMessageModalOpen(false);
       setIsProfileModalOpen(false);
+      setHasUnsavedProgress(false);
+      setPendingSaveType('none');
       isInitializedRef.current = false;
       lastSyncedHashRef.current = null;
     }
@@ -358,7 +369,6 @@ function App() {
         onLogout={handleLogout}
         onOpenAdmin={() => setIsAdminPanelOpen(true)}
         hasUnsavedProgress={hasUnsavedProgress}
-        setHasUnsavedProgress={setHasUnsavedProgress}
       />
 
       <SyncModal isOpen={isSyncModalOpen} onClose={() => setIsSyncModalOpen(false)} t={t} />
