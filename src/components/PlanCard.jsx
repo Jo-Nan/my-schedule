@@ -4,6 +4,7 @@ const PlanCard = ({ plan, updatePlan, deletePlan, onEdit, onDragStart, onDragEnd
   const [isDragging, setIsDragging] = useState(false);
   const [localProgress, setLocalProgress] = useState(null);
   const sliderRef = useRef(null);
+  const rafRef = useRef(null);
 
   const handleDelete = () => {
     if (window.confirm(`${t.confirmDelete || 'Are you sure you want to delete'} "${plan.event}"?`)) {
@@ -24,17 +25,29 @@ const PlanCard = ({ plan, updatePlan, deletePlan, onEdit, onDragStart, onDragEnd
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
     e.preventDefault(); // Prevent text selection
+    e.stopPropagation(); // Prevent event bubbling
   };
 
   const handleMouseMove = (e) => {
     if (!isDragging || isCompleted || !sliderRef.current) return;
-    const rect = sliderRef.current.getBoundingClientRect();
-    let newProgress = ((e.clientX - rect.left) / rect.width) * 100;
-    newProgress = Math.max(0, Math.min(100, Math.round(newProgress)));
-    setLocalProgress(newProgress);
+    e.stopPropagation(); // Prevent event bubbling
+    
+    if (rafRef.current) return; // Throttle with RAF
+    
+    rafRef.current = requestAnimationFrame(() => {
+      const rect = sliderRef.current.getBoundingClientRect();
+      let newProgress = ((e.clientX - rect.left) / rect.width) * 100;
+      newProgress = Math.max(0, Math.min(100, Math.round(newProgress)));
+      setLocalProgress(newProgress);
+      rafRef.current = null;
+    });
   };
 
   const handleMouseUp = () => {
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
     if (isDragging && localProgress !== null) {
       let newStatus = plan.status;
       if (localProgress === 100) newStatus = 'completed';
@@ -74,23 +87,35 @@ const PlanCard = ({ plan, updatePlan, deletePlan, onEdit, onDragStart, onDragEnd
   };
 
   return (
-    <div className={`glass-panel plan-card ${isCompleted ? 'completed hover-disable' : ''}`} style={styles.card}>
+    <div 
+      className={`glass-panel plan-card ${isCompleted ? 'completed hover-disable' : ''}`} 
+      style={styles.card}
+      draggable
+      onDragStart={(e) => {
+        // Only allow drag from the drag button
+        if (!e.target.closest('.drag-handle')) {
+          e.preventDefault();
+          return;
+        }
+        onDragStart(e);
+        // Set drag image to the entire card
+        const card = e.target.closest('.plan-card');
+        if (card) {
+          e.dataTransfer.setDragImage(card, e.clientX - card.getBoundingClientRect().left, e.clientY - card.getBoundingClientRect().top);
+        }
+      }}
+      onDragEnd={onDragEnd}
+    >
       <div style={styles.header}>
         <h4 style={styles.event}>{plan.event}</h4>
         
         <div style={styles.headerActions}>
           <button 
-            className="glass-button"
-            draggable
-            onDragStart={onDragStart}
-            onDragEnd={onDragEnd}
-            style={{
-              ...styles.dragBtn,
-              opacity: cardIsDragging ? 0.5 : 1,
-            }}
+            className="glass-button drag-handle"
+            style={styles.dragBtn}
             title="拖拽移动任务"
           >
-            ⋮⋮
+            ⠿
           </button>
           <button 
             className="glass-button"
@@ -191,8 +216,9 @@ const styles = {
     color: 'var(--text-secondary)',
     opacity: 0.6,
     cursor: 'grab',
-    fontSize: '12px',
+    fontSize: '14px',
     lineHeight: 1,
+    transform: 'rotate(90deg)',
   },
   editBtn: {
     padding: '0.2rem',
