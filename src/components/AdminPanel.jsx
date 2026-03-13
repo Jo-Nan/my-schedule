@@ -12,6 +12,7 @@ const AdminPanel = ({
 }) => {
   const [users, setUsers] = useState([]);
   const [messages, setMessages] = useState([]);
+  const [cronTasks, setCronTasks] = useState([]);
   const [selectedUserId, setSelectedUserId] = useState('');
   const [selectedUserPlans, setSelectedUserPlans] = useState([]);
   const [selectedUserSnapshots, setSelectedUserSnapshots] = useState([]);
@@ -28,6 +29,7 @@ const AdminPanel = ({
     }
     loadUsers();
     loadMessages();
+    loadCronTasks();
   }, [isOpen]);
 
   useEffect(() => {
@@ -65,6 +67,38 @@ const AdminPanel = ({
       setMessages(result.messages || []);
     } catch (loadError) {
       setError(loadError.message || t.adminLoadError);
+    }
+  };
+
+  const loadCronTasks = async () => {
+    try {
+      const response = await fetch('/api/cron?action=tasks', { credentials: 'same-origin' });
+      const result = await response.json();
+      if (!response.ok || result.status !== 'success') {
+        throw new Error(result.message || 'Failed to load cron tasks');
+      }
+      setCronTasks(result.tasks || []);
+    } catch (loadError) {
+      setError(loadError.message || 'Failed to load cron tasks');
+    }
+  };
+
+  const handleTriggerCronTask = async (taskId) => {
+    setError('');
+    setMessage('');
+    try {
+      const response = await fetch(`/api/cron?action=${taskId}`, {
+        method: 'POST',
+        credentials: 'same-origin',
+      });
+      const result = await response.json();
+      if (!response.ok || result.status !== 'success') {
+        throw new Error(result.message || `Failed to trigger ${taskId}`);
+      }
+      setMessage(`✅ Task triggered successfully. ${result.sent?.length || 0} emails sent.`);
+      await loadCronTasks();
+    } catch (triggerError) {
+      setError(triggerError.message || 'Failed to trigger cron task');
     }
   };
 
@@ -305,6 +339,34 @@ const AdminPanel = ({
                 )) : <div style={styles.empty}>{t.adminNoMessages}</div>}
               </div>
             </div>
+
+            <div className="glass-panel" style={styles.card}>
+              <div style={styles.sectionHeader}>{t.adminCronTasks}</div>
+              <div style={styles.scrollAreaLarge}>
+                {cronTasks.length > 0 ? cronTasks.map((task) => (
+                  <div key={task.id} style={styles.cronTaskItem}>
+                    <div style={styles.planTitle}>{task.name}</div>
+                    <div style={styles.planMeta}>{task.description}</div>
+                    <div style={styles.planMeta}>📅 {task.schedule}</div>
+                    <div style={styles.planMeta}>
+                      {task.stats?.usersWithBirthdayToday && (
+                        <>
+                          🎂 {task.stats.usersWithBirthdayToday} user(s) with birthday today · 
+                          {task.stats.pending} pending
+                        </>
+                      )}
+                    </div>
+                    <button 
+                      className="glass-button" 
+                      style={styles.triggerBtn}
+                      onClick={() => handleTriggerCronTask(task.id)}
+                    >
+                      {t.adminCronTrigger}
+                    </button>
+                  </div>
+                )) : <div style={styles.empty}>No scheduled tasks</div>}
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -480,6 +542,20 @@ const styles = {
   messageContent: {
     whiteSpace: 'pre-wrap',
     lineHeight: 1.5,
+  },
+  cronTaskItem: {
+    border: '1px solid var(--glass-border)',
+    borderRadius: '12px',
+    padding: '0.75rem',
+    background: 'rgba(255,255,255,0.04)',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.5rem',
+  },
+  triggerBtn: {
+    marginTop: '0.5rem',
+    padding: '0.5rem 1rem',
+    fontSize: '0.85rem',
   },
   planTitle: {
     fontWeight: 600,

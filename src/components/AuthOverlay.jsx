@@ -115,10 +115,31 @@ const AuthOverlay = ({ onAuthenticated, t }) => {
             <input type="password" className="glass-input" placeholder={t.passwordPlaceholder} value={form.password} onChange={(e) => updateField('password', e.target.value)} required />
           )}
 
+          {mode === 'forgot' && (
+            <div style={styles.infoBanner}>
+              <div style={styles.infoBannerTitle}>📧 密码重置步骤</div>
+              <ol style={styles.stepsList}>
+                <li>输入你的账户邮箱地址</li>
+                <li>点击"发送重置码"</li>
+                <li>查看邮箱中的重置码</li>
+                <li>点击"我有重置码"使用重置码</li>
+              </ol>
+            </div>
+          )}
+
           {mode === 'reset' && (
             <>
-              <input type="text" className="glass-input" placeholder={t.resetCodePlaceholder} value={form.code} onChange={(e) => updateField('code', e.target.value)} required />
+              <div style={styles.infoBanner}>
+                <div style={styles.infoBannerTitle}>验证重置码</div>
+                <p style={styles.infoText}>请输入从邮箱收到的重置码和新密码</p>
+              </div>
+              <input type="text" className="glass-input" placeholder={t.resetCodePlaceholder} value={form.code} onChange={(e) => updateField('code', e.target.value)} maxLength="6" required />
               <input type="password" className="glass-input" placeholder={t.resetNewPasswordPlaceholder} value={form.newPassword} onChange={(e) => updateField('newPassword', e.target.value)} required />
+              {form.newPassword && (
+                <div style={{...styles.infoBanner, background: 'rgba(34, 197, 94, 0.08)', borderColor: 'rgba(34, 197, 94, 0.2)'}}>
+                  密码强度：{form.newPassword.length < 8 ? '弱 ⚠️' : form.newPassword.length < 12 ? '中等 ✓' : '强 ✓'}（至少 6 个字符）
+                </div>
+              )}
             </>
           )}
 
@@ -216,6 +237,30 @@ const styles = {
     color: 'var(--success-color)',
     marginTop: '1rem',
     fontSize: '0.9rem',
+  },
+  infoBanner: {
+    background: 'rgba(59, 130, 246, 0.08)',
+    border: '1px solid rgba(59, 130, 246, 0.2)',
+    borderRadius: '8px',
+    padding: '1rem',
+    textAlign: 'left',
+  },
+  infoBannerTitle: {
+    fontWeight: 600,
+    marginBottom: '0.5rem',
+    color: 'var(--accent-color)',
+  },
+  stepsList: {
+    margin: 0,
+    paddingLeft: '1.5rem',
+    fontSize: '0.85rem',
+    color: 'var(--text-secondary)',
+    lineHeight: 1.6,
+  },
+  infoText: {
+    margin: 0,
+    fontSize: '0.9rem',
+    color: 'var(--text-secondary)',
   },
   errorText: {
     color: 'var(--danger-color)',

@@ -59,12 +59,77 @@ const ProfileModal = ({ isOpen, onClose, currentUser, t, onProfileUpdated }) => 
           <button onClick={onClose} style={styles.closeBtn}>×</button>
         </div>
         <form onSubmit={handleSubmit} style={styles.form}>
-          <input className="glass-input" placeholder={t.usernamePlaceholder} value={form.username} onChange={(event) => setForm((prev) => ({ ...prev, username: event.target.value }))} />
-          <input className="glass-input" type="date" value={form.birthday} onChange={(event) => setForm((prev) => ({ ...prev, birthday: event.target.value }))} />
-          <input className="glass-input" type="password" placeholder={t.profileCurrentPassword} value={form.currentPassword} onChange={(event) => setForm((prev) => ({ ...prev, currentPassword: event.target.value }))} />
-          <input className="glass-input" type="password" placeholder={t.profileNewPassword} value={form.newPassword} onChange={(event) => setForm((prev) => ({ ...prev, newPassword: event.target.value }))} />
-          {feedback && <div style={{ color: 'var(--success-color)' }}>{feedback}</div>}
-          {error && <div style={{ color: 'var(--danger-color)' }}>{error}</div>}
+          <div style={styles.formSection}>
+            <label style={styles.label}>{t.usernamePlaceholder}</label>
+            <input 
+              className="glass-input" 
+              placeholder={t.usernamePlaceholder} 
+              value={form.username} 
+              onChange={(event) => setForm((prev) => ({ ...prev, username: event.target.value }))} 
+            />
+            <span style={styles.helperText}>你的昵称或显示名称</span>
+          </div>
+
+          <div style={styles.formSection}>
+            <label style={styles.label}>生日（可选）</label>
+            <input 
+              className="glass-input" 
+              type="date" 
+              value={form.birthday} 
+              onChange={(event) => setForm((prev) => ({ ...prev, birthday: event.target.value }))} 
+            />
+            <span style={styles.helperText}>用于发送生日祝福邮件</span>
+          </div>
+
+          {/* 密码更新部分 */}
+          <div style={styles.divider} />
+          
+          <div style={styles.sectionTitle}>🔐 更改密码</div>
+          
+          <div style={styles.formSection}>
+            <label style={styles.label}>{t.profileCurrentPassword}</label>
+            <input 
+              className="glass-input" 
+              type="password" 
+              placeholder={t.profileCurrentPassword} 
+              value={form.currentPassword} 
+              onChange={(event) => setForm((prev) => ({ ...prev, currentPassword: event.target.value }))} 
+            />
+            <span style={styles.helperText}>输入当前密码以验证身份</span>
+          </div>
+
+          {form.newPassword && (
+            <div style={styles.formSection}>
+              <div style={styles.passwordStrength}>
+                密码强度：{form.newPassword.length < 8 ? '弱' : form.newPassword.length < 12 ? '中' : '强'}
+              </div>
+            </div>
+          )}
+          
+          <div style={styles.formSection}>
+            <label style={styles.label}>{t.profileNewPassword}</label>
+            <input 
+              className="glass-input" 
+              type="password" 
+              placeholder={t.profileNewPassword} 
+              value={form.newPassword} 
+              onChange={(event) => setForm((prev) => ({ ...prev, newPassword: event.target.value }))} 
+            />
+            <span style={styles.helperText}>留空表示不修改密码（至少 6 个字符）</span>
+          </div>
+
+          {(feedback || error) && (
+            <div style={{
+              padding: '0.75rem 1rem',
+              borderRadius: '8px',
+              background: error ? 'rgba(239, 68, 68, 0.1)' : 'rgba(34, 197, 94, 0.1)',
+              color: error ? 'var(--danger-color)' : 'var(--success-color)',
+              border: `1px solid ${error ? 'rgba(239, 68, 68, 0.3)' : 'rgba(34, 197, 94, 0.3)'}`,
+            }}>
+              {error || feedback}
+            </div>
+          )}
+
           <div style={styles.actions}>
             <button type="button" className="glass-button" onClick={onClose}>{t.cancel}</button>
             <button type="submit" className="glass-button active-tab" disabled={saving}>{saving ? t.submitting : t.profileSaveBtn}</button>
@@ -111,6 +176,36 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     gap: '1rem',
+  },
+  formSection: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.4rem',
+  },
+  label: {
+    fontSize: '0.9rem',
+    fontWeight: 500,
+    color: 'var(--text-primary)',
+  },
+  helperText: {
+    fontSize: '0.8rem',
+    color: 'var(--text-secondary)',
+  },
+  divider: {
+    height: '1px',
+    background: 'var(--glass-border)',
+    margin: '0.5rem 0',
+  },
+  sectionTitle: {
+    fontSize: '0.95rem',
+    fontWeight: 600,
+    color: 'var(--text-primary)',
+    marginTop: '0.5rem',
+  },
+  passwordStrength: {
+    fontSize: '0.85rem',
+    color: 'var(--accent-color)',
+    fontWeight: 500,
   },
   actions: {
     display: 'flex',
