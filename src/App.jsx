@@ -378,11 +378,11 @@ function App() {
     return `${year}-${month}-${day}`;
   };
 
-  const updatePlan = (id, updates) => {
+  const updatePlan = (id, updates, options = {}) => {
     setPlans((prev) => prev.map((plan) => (
       plan.id === id ? { ...plan, ...updates, updatedAt: Date.now() } : plan
     )));
-    if (updates.progress !== undefined) {
+    if (options.saveStrategy === 'progress') {
       setHasUnsavedProgress(true);
       setPendingSaveType('progress');
     } else {

@@ -54,7 +54,7 @@ const PlanCard = ({ plan, updatePlan, deletePlan, onEdit, onDragStart, onDragEnd
       else if (localProgress > 0) newStatus = 'in-progress';
       else newStatus = 'uncompleted';
 
-      updatePlan(plan.id, { progress: localProgress, status: newStatus });
+      updatePlan(plan.id, { progress: localProgress, status: newStatus }, { saveStrategy: 'progress' });
     }
     setIsDragging(false);
     setLocalProgress(null);
@@ -84,14 +84,14 @@ const PlanCard = ({ plan, updatePlan, deletePlan, onEdit, onDragStart, onDragEnd
     else if (newProgress > 0) newStatus = 'in-progress';
     else newStatus = 'uncompleted';
 
-    updatePlan(plan.id, { progress: newProgress, status: newStatus });
+    updatePlan(plan.id, { progress: newProgress, status: newStatus }, { saveStrategy: 'progress' });
   };
 
   const toggleStatus = () => {
     if (plan.status === 'completed') {
-      updatePlan(plan.id, { status: 'uncompleted', progress: 0 });
+      updatePlan(plan.id, { status: 'uncompleted', progress: 0 }, { saveStrategy: 'general' });
     } else {
-      updatePlan(plan.id, { status: 'completed', progress: 100 });
+      updatePlan(plan.id, { status: 'completed', progress: 100 }, { saveStrategy: 'general' });
     }
   };
 
