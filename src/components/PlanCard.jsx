@@ -19,8 +19,10 @@ const PlanCard = ({ plan, updatePlan, deletePlan, onEdit, onDragStart, onDragEnd
   const handleMouseDown = (e) => {
     if (isCompleted) return;
     const rect = sliderRef.current.getBoundingClientRect();
-    // Only start dragging if mouse is in the upper half of the track
-    if (e.clientY > rect.top + rect.height / 2) return;
+    // Allow dragging from thumb or upper half of track
+    const isOnThumb = e.target === sliderRef.current.querySelector('[style*="sliderThumb"]') || 
+                     e.target.closest('[style*="sliderThumb"]');
+    if (!isOnThumb && e.clientY > rect.top + rect.height / 2) return;
     setIsDragging(true);
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
@@ -97,14 +99,14 @@ const PlanCard = ({ plan, updatePlan, deletePlan, onEdit, onDragStart, onDragEnd
           e.preventDefault();
           return;
         }
-        onDragStart(e);
+        if (onDragStart) onDragStart(e);
         // Set drag image to the entire card
         const card = e.target.closest('.plan-card');
         if (card) {
           e.dataTransfer.setDragImage(card, e.clientX - card.getBoundingClientRect().left, e.clientY - card.getBoundingClientRect().top);
         }
       }}
-      onDragEnd={onDragEnd}
+      onDragEnd={onDragEnd ? onDragEnd : undefined}
     >
       <div style={styles.header}>
         <h4 style={styles.event}>{plan.event}</h4>
