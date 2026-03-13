@@ -292,6 +292,13 @@ const sharedHeaderControlText = {
   letterSpacing: '0.01em',
 };
 
+const sharedHeaderTabText = {
+  fontSize: '1.15rem',
+  fontWeight: 600,
+  color: 'var(--text-secondary)',
+  letterSpacing: '0.01em',
+};
+
 const styles = {
   header: {
     display: 'flex',
@@ -319,14 +326,16 @@ const styles = {
     justifyContent: 'center',
   },
   tabButton: {
-    minWidth: '66px',
-    padding: '6px 10px',
-    ...sharedHeaderControlText,
+    minWidth: '98px',
+    minHeight: '42px',
+    padding: '8px 14px',
+    ...sharedHeaderTabText,
   },
   tabButtonZh: {
-    minWidth: '60px',
-    padding: '6px 10px',
-    ...sharedHeaderControlText,
+    minWidth: '84px',
+    minHeight: '42px',
+    padding: '8px 14px',
+    ...sharedHeaderTabText,
   },
   right: {
     display: 'flex',
@@ -397,13 +406,14 @@ const styles = {
     border: '1px solid var(--glass-border)',
   },
   statusButton: {
-    minWidth: '118px',
+    minWidth: '124px',
+    minHeight: '40px',
     justifyContent: 'flex-start',
     cursor: 'pointer',
     display: 'flex',
     alignItems: 'center',
     gap: '0.6rem',
-    padding: '0.55rem 0.8rem',
+    padding: '0.55rem 0.9rem',
     fontSize: '0.92rem',
     boxShadow: 'none',
   },
@@ -427,15 +437,18 @@ const styles = {
     transition: 'all 0.3s ease',
   },
   saveButton: {
-    minWidth: '68px',
-    padding: '0.55rem 0.75rem',
+    minWidth: '84px',
+    minHeight: '40px',
+    padding: '0.55rem 0.9rem',
     ...sharedHeaderControlText,
     boxShadow: 'none',
     whiteSpace: 'nowrap',
     justifyContent: 'center',
   },
   dataBtn: {
-    padding: '0.5rem 0.8rem',
+    minWidth: '96px',
+    minHeight: '40px',
+    padding: '0.55rem 0.9rem',
     display: 'flex',
     alignItems: 'center',
     gap: '0.45rem',
@@ -472,7 +485,9 @@ const styles = {
     borderColor: 'transparent',
   },
   languageSelect: {
-    padding: '0.55rem 0.8rem',
+    minWidth: '96px',
+    minHeight: '40px',
+    padding: '0.55rem 0.9rem',
     borderRadius: '10px',
     border: '1px solid var(--glass-border)',
     background: 'rgba(255,255,255,0.1)',
@@ -497,7 +512,9 @@ const styles = {
     transition: 'all 0.2s ease',
   },
   settingsBtn: {
-    padding: '0.5rem 0.72rem',
+    minWidth: '104px',
+    minHeight: '40px',
+    padding: '0.55rem 0.9rem',
     display: 'flex',
     alignItems: 'center',
     gap: '0.42rem',
