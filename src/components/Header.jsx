@@ -25,6 +25,7 @@ const Header = ({
 }) => {
   const displayName = activeUser?.username || activeUser?.email || '—';
   const isAdmin = currentUser?.role === 'admin';
+  const isChinese = language === 'zh';
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const settingsRef = useRef(null);
   const importInputRef = useRef(null);
@@ -83,10 +84,10 @@ const Header = ({
       </div>
 
       <div className="segmented-control" style={styles.center}>
-        <button className={`glass-button ${viewMode === 'daily' ? 'active-tab' : ''}`} onClick={() => setViewMode('daily')}>{t.daily}</button>
-        <button className={`glass-button ${viewMode === 'weekly' ? 'active-tab' : ''}`} onClick={() => setViewMode('weekly')}>{t.weekly}</button>
-        <button className={`glass-button ${viewMode === 'monthly' ? 'active-tab' : ''}`} onClick={() => setViewMode('monthly')}>{t.monthly}</button>
-        <button className={`glass-button ${viewMode === 'yearly' ? 'active-tab' : ''}`} onClick={() => setViewMode('yearly')}>{t.yearly}</button>
+        <button className={`glass-button ${viewMode === 'daily' ? 'active-tab' : ''}`} style={isChinese ? styles.tabButtonZh : styles.tabButton} onClick={() => setViewMode('daily')}>{t.daily}</button>
+        <button className={`glass-button ${viewMode === 'weekly' ? 'active-tab' : ''}`} style={isChinese ? styles.tabButtonZh : styles.tabButton} onClick={() => setViewMode('weekly')}>{t.weekly}</button>
+        <button className={`glass-button ${viewMode === 'monthly' ? 'active-tab' : ''}`} style={isChinese ? styles.tabButtonZh : styles.tabButton} onClick={() => setViewMode('monthly')}>{t.monthly}</button>
+        <button className={`glass-button ${viewMode === 'yearly' ? 'active-tab' : ''}`} style={isChinese ? styles.tabButtonZh : styles.tabButton} onClick={() => setViewMode('yearly')}>{t.yearly}</button>
       </div>
 
       <div style={styles.right}>
@@ -237,6 +238,9 @@ const styles = {
     marginBottom: '2rem',
     borderRadius: '24px',
     flexWrap: 'wrap',
+    position: 'relative',
+    zIndex: 40,
+    overflow: 'visible',
   },
   left: {
     display: 'flex',
@@ -246,6 +250,16 @@ const styles = {
   },
   center: {
     flexShrink: 0,
+    minWidth: 0,
+  },
+  tabButton: {
+    minWidth: '72px',
+  },
+  tabButtonZh: {
+    minWidth: '60px',
+    padding: '6px 10px',
+    fontSize: '0.82rem',
+    letterSpacing: '0.01em',
   },
   right: {
     display: 'flex',
@@ -259,6 +273,7 @@ const styles = {
   settingsWrap: {
     position: 'relative',
     flexShrink: 0,
+    zIndex: 60,
   },
   hiddenInput: {
     display: 'none',
@@ -408,7 +423,7 @@ const styles = {
     backdropFilter: 'blur(18px)',
     border: '1px solid var(--glass-border)',
     boxShadow: '0 18px 40px rgba(15, 23, 42, 0.18)',
-    zIndex: 20,
+    zIndex: 80,
   },
   menuItem: {
     width: '100%',
