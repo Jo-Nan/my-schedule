@@ -83,8 +83,8 @@ const Header = ({
   };
 
   return (
-    <header className="glass-panel" style={styles.header}>
-      <div style={styles.left}>
+    <header className="glass-panel app-header" style={styles.header}>
+      <div className="header-left" style={styles.left}>
         <img src="logo.png" alt="Logo" style={styles.logo} />
         <div>
           <h1 style={styles.title}>{t.title}</h1>
@@ -96,15 +96,15 @@ const Header = ({
         </div>
       </div>
 
-      <div className="segmented-control" style={styles.center}>
+      <div className="segmented-control header-center" style={styles.center}>
         <button className={`glass-button ${viewMode === 'daily' ? 'active-tab' : ''}`} style={isChinese ? styles.tabButtonZh : styles.tabButton} onClick={() => setViewMode('daily')}>{t.daily}</button>
         <button className={`glass-button ${viewMode === 'weekly' ? 'active-tab' : ''}`} style={isChinese ? styles.tabButtonZh : styles.tabButton} onClick={() => setViewMode('weekly')}>{t.weekly}</button>
         <button className={`glass-button ${viewMode === 'monthly' ? 'active-tab' : ''}`} style={isChinese ? styles.tabButtonZh : styles.tabButton} onClick={() => setViewMode('monthly')}>{t.monthly}</button>
         <button className={`glass-button ${viewMode === 'yearly' ? 'active-tab' : ''}`} style={isChinese ? styles.tabButtonZh : styles.tabButton} onClick={() => setViewMode('yearly')}>{t.yearly}</button>
       </div>
 
-      <div style={styles.right}>
-        <div style={styles.syncCluster}>
+      <div className="header-right" style={styles.right}>
+        <div className="header-sync-cluster" style={styles.syncCluster}>
           <button className="glass-button" onClick={() => setSyncModalOpen(true)} style={styles.statusButton} title={t.syncSettings}>
             <span style={styles.statusDotWrap}>
               <span style={{ ...styles.statusDot, background: getStatusColor(syncStatus) }} />
@@ -183,15 +183,15 @@ const Header = ({
         </div>
 
         {isAdmin && (
-          <div className="button-group">
-            <button className="glass-button" onClick={onOpenAdmin} title={t.adminPanelTitle}>{t.adminButton}</button>
+          <div className="button-group header-admin-group" style={styles.adminGroup}>
+            <button className="glass-button" style={styles.adminButton} onClick={onOpenAdmin} title={t.adminPanelTitle}>{t.adminButton}</button>
             {isViewingManagedUser && (
-              <button className="glass-button" onClick={onExitManagedView} title={t.adminExitView}>{t.adminExitView}</button>
+              <button className="glass-button" style={styles.adminButtonSecondary} onClick={onExitManagedView} title={t.adminExitView}>{t.adminExitView}</button>
             )}
           </div>
         )}
 
-        <div className="button-group">
+        <div className="button-group header-preferences-group">
           <select 
             value={language} 
             onChange={(e) => setLanguage(e.target.value)}
@@ -290,6 +290,14 @@ const sharedHeaderControlText = {
   fontWeight: 600,
   color: 'var(--text-secondary)',
   letterSpacing: '0.01em',
+};
+
+const sharedHeaderPill = {
+  minHeight: '40px',
+  padding: '0.55rem 0.86rem',
+  borderRadius: '999px',
+  whiteSpace: 'nowrap',
+  ...sharedHeaderControlText,
 };
 
 const styles = {
@@ -429,23 +437,18 @@ const styles = {
   },
   saveButton: {
     minWidth: '68px',
-    minHeight: '40px',
+    ...sharedHeaderPill,
     padding: '0.55rem 0.75rem',
-    ...sharedHeaderControlText,
     boxShadow: 'none',
-    whiteSpace: 'nowrap',
     justifyContent: 'center',
   },
   dataBtn: {
     minWidth: '88px',
-    minHeight: '40px',
+    ...sharedHeaderPill,
     padding: '0.55rem 0.9rem',
     display: 'flex',
     alignItems: 'center',
     gap: '0.45rem',
-    borderRadius: '999px',
-    whiteSpace: 'nowrap',
-    ...sharedHeaderControlText,
   },
   dataIcon: {
     fontSize: '1rem',
@@ -476,12 +479,11 @@ const styles = {
     borderColor: 'transparent',
   },
   languageSelect: {
-    minHeight: '40px',
+    ...sharedHeaderPill,
     padding: '0.55rem 0.8rem',
     borderRadius: '10px',
     border: '1px solid var(--glass-border)',
     background: 'rgba(255,255,255,0.1)',
-    ...sharedHeaderControlText,
     cursor: 'pointer',
     transition: 'all 0.2s ease',
     backdropFilter: 'blur(10px)',
@@ -503,14 +505,27 @@ const styles = {
   },
   settingsBtn: {
     minWidth: '92px',
-    minHeight: '40px',
-    padding: '0.55rem 0.86rem',
+    ...sharedHeaderPill,
     display: 'flex',
     alignItems: 'center',
     gap: '0.42rem',
-    borderRadius: '999px',
-    whiteSpace: 'nowrap',
-    ...sharedHeaderControlText,
+  },
+  adminGroup: {
+    background: 'transparent',
+    gap: '0.45rem',
+    overflow: 'visible',
+  },
+  adminButton: {
+    minWidth: '92px',
+    ...sharedHeaderPill,
+    color: 'var(--text-secondary)',
+    boxShadow: 'none',
+  },
+  adminButtonSecondary: {
+    minWidth: '128px',
+    ...sharedHeaderPill,
+    color: 'var(--text-secondary)',
+    boxShadow: 'none',
   },
   settingsIcon: {
     fontSize: '1.2rem',

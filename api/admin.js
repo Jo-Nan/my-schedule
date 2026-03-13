@@ -1,7 +1,6 @@
 import { parseJsonBody, requireAdmin } from './_lib/auth.js';
 import {
   findUserById,
-  findUserByEmail,
   findActiveUserByEmail,
   getUserPlans,
   getUserSnapshots,
@@ -10,10 +9,12 @@ import {
   saveUsers,
   savePlansByUser,
   saveSnapshotsByUser,
+  ensureDataStore,
   setUserPlans,
   upsertUserSnapshot,
   restoreUserSnapshot,
   getMessages,
+  withDataStoreLock,
 } from './_lib/store.js';
 
 /**
@@ -72,67 +73,76 @@ export default async function handler(req, res) {
         return res.status(400).json({ status: 'error', message: 'Password must be at least 6 characters' });
       }
 
-      const existingUser = findActiveUserByEmail(auth.users, email);
-      if (existingUser) {
-        return res.status(409).json({ status: 'error', message: 'Email is already registered' });
-      }
+      return withDataStoreLock(async () => {
+        const store = await ensureDataStore();
+        const existingUser = findActiveUserByEmail(store.users, email);
+        if (existingUser) {
+          return res.status(409).json({ status: 'error', message: 'Email is already registered' });
+        }
 
-      const user = createUserRecord({ email, username, password, role: 'user' });
-      auth.users.push(user);
-      auth.plansByUser[user.id] = [];
+        const user = createUserRecord({ email, username, password, role: 'user' });
+        store.users.push(user);
+        store.plansByUser[user.id] = [];
 
-      await saveUsers(auth.config, auth.users);
-      await savePlansByUser(auth.config, auth.plansByUser);
+        await saveUsers(store.config, store.users);
+        await savePlansByUser(store.config, store.plansByUser);
 
-      return res.status(201).json({ status: 'success', user: publicUser(user) });
+        return res.status(201).json({ status: 'success', user: publicUser(user) });
+      });
     }
 
     // DELETE /api/admin?action=users&id=userId - Delete user
     if (req.method === 'DELETE' && action === 'users') {
       const userId = String(req.query.id || '');
-      const targetUser = auth.users.find((user) => user.id === userId);
+      return withDataStoreLock(async () => {
+        const store = await ensureDataStore();
+        const targetUser = store.users.find((user) => user.id === userId);
 
-      if (!targetUser) {
-        return res.status(404).json({ status: 'error', message: 'User not found' });
-      }
+        if (!targetUser) {
+          return res.status(404).json({ status: 'error', message: 'User not found' });
+        }
 
-      if (targetUser.role === 'admin') {
-        return res.status(400).json({ status: 'error', message: 'Admin user cannot be deleted' });
-      }
+        if (targetUser.role === 'admin') {
+          return res.status(400).json({ status: 'error', message: 'Admin user cannot be deleted' });
+        }
 
-      targetUser.isActive = false;
-      targetUser.updatedAt = new Date().toISOString();
+        targetUser.isActive = false;
+        targetUser.updatedAt = new Date().toISOString();
 
-      await saveUsers(auth.config, auth.users);
-      return res.status(200).json({ status: 'success' });
+        await saveUsers(store.config, store.users);
+        return res.status(200).json({ status: 'success' });
+      });
     }
 
     // POST /api/admin?action=restore-user&id=userId - Restore user
     if (req.method === 'POST' && action === 'restore-user') {
       const userId = String(req.query.id || '');
-      const targetUser = auth.users.find((user) => user.id === userId);
+      return withDataStoreLock(async () => {
+        const store = await ensureDataStore();
+        const targetUser = store.users.find((user) => user.id === userId);
 
-      if (!targetUser) {
-        return res.status(404).json({ status: 'error', message: 'User not found' });
-      }
+        if (!targetUser) {
+          return res.status(404).json({ status: 'error', message: 'User not found' });
+        }
 
-      if (targetUser.isActive !== false) {
-        return res.status(400).json({ status: 'error', message: 'User is already active' });
-      }
+        if (targetUser.isActive !== false) {
+          return res.status(400).json({ status: 'error', message: 'User is already active' });
+        }
 
-      const activeDuplicate = findActiveUserByEmail(auth.users, targetUser.email);
-      if (activeDuplicate && activeDuplicate.id !== targetUser.id) {
-        return res.status(409).json({
-          status: 'error',
-          message: 'Another active user already uses this email. Deactivate or delete that active account before restoring this user.',
-        });
-      }
+        const activeDuplicate = findActiveUserByEmail(store.users, targetUser.email);
+        if (activeDuplicate && activeDuplicate.id !== targetUser.id) {
+          return res.status(409).json({
+            status: 'error',
+            message: 'Another active user already uses this email. Deactivate or delete that active account before restoring this user.',
+          });
+        }
 
-      targetUser.isActive = true;
-      targetUser.updatedAt = new Date().toISOString();
+        targetUser.isActive = true;
+        targetUser.updatedAt = new Date().toISOString();
 
-      await saveUsers(auth.config, auth.users);
-      return res.status(200).json({ status: 'success' });
+        await saveUsers(store.config, store.users);
+        return res.status(200).json({ status: 'success' });
+      });
     }
 
     // GET /api/admin?action=user-plans&userId=xxx - Get user's plans

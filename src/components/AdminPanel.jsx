@@ -266,7 +266,7 @@ const AdminPanel = ({
 
   return (
     <div style={styles.overlay}>
-      <div className="glass-panel" style={styles.modal}>
+      <div className="glass-panel admin-modal" style={styles.modal}>
         <div style={styles.header}>
           <div>
             <h2 style={{ marginBottom: '0.35rem' }}>{t.adminPanelTitle}</h2>
@@ -281,8 +281,8 @@ const AdminPanel = ({
           </div>
         )}
 
-        <div style={styles.layout}>
-          <div style={styles.sidebar}>
+        <div className="admin-layout" style={styles.layout}>
+          <div className="admin-sidebar" style={styles.sidebar}>
             <div style={styles.sectionHeader}>{t.adminUsers}</div>
             <div style={styles.userList}>
               {users.map((user) => (
@@ -296,6 +296,7 @@ const AdminPanel = ({
                   onClick={() => setSelectedUserId(user.id)}
                 >
                   <div style={styles.userPrimary}>{user.username || user.email}</div>
+                  <div style={styles.userMetaMono}>{user.managementId || '—'}</div>
                   <div style={styles.userMeta}>{user.email}</div>
                   <div style={styles.userMeta}>{t.adminPlanCount}: {user.planCount || 0}</div>
                   <div style={styles.userMeta}>
@@ -307,7 +308,7 @@ const AdminPanel = ({
             </div>
           </div>
 
-          <div style={styles.main}>
+          <div className="admin-main" style={styles.main}>
             <div className="glass-panel" style={styles.card}>
               <div style={styles.sectionHeader}>{t.adminCreateUser}</div>
               <form onSubmit={handleCreateUser} style={styles.createForm}>
@@ -325,6 +326,7 @@ const AdminPanel = ({
               ) : selectedUser ? (
                 <>
                   <div style={styles.userDetails}>
+                    <div style={styles.userDetailWide}><b>{t.adminManagementId}:</b> <span style={styles.detailMono}>{selectedUser.managementId || '—'}</span></div>
                     <div><b>{t.usernamePlaceholder}:</b> {selectedUser.username || '—'}</div>
                     <div><b>{t.emailPlaceholder}:</b> {selectedUser.email}</div>
                     <div><b>{t.adminRole}:</b> {selectedUser.role}</div>
@@ -351,7 +353,7 @@ const AdminPanel = ({
               )}
             </div>
 
-            <div style={styles.gridCols}>
+            <div className="admin-grid-cols" style={styles.gridCols}>
               <div className="glass-panel" style={styles.card}>
                 <div style={styles.sectionHeader}>{t.adminViewPlans}</div>
                 <div style={styles.scrollArea}>
@@ -545,6 +547,12 @@ const styles = {
     fontSize: '0.78rem',
     color: 'var(--text-secondary)',
   },
+  userMetaMono: {
+    fontSize: '0.72rem',
+    color: 'var(--text-secondary)',
+    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace',
+    lineBreak: 'anywhere',
+  },
   viewingFlag: {
     fontSize: '0.72rem',
     color: '#10b981',
@@ -578,6 +586,14 @@ const styles = {
     gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
     gap: '0.5rem 1rem',
     fontSize: '0.92rem',
+  },
+  userDetailWide: {
+    gridColumn: '1 / -1',
+  },
+  detailMono: {
+    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace',
+    fontSize: '0.82rem',
+    lineBreak: 'anywhere',
   },
   actionRow: {
     display: 'flex',

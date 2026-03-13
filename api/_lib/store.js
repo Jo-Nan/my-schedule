@@ -8,6 +8,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
 const LOCAL_DATA_DIR = path.join(PROJECT_ROOT, '.local-data');
+let dataStoreMutationQueue = Promise.resolve();
 
 const ADMIN_SEED = {
   id: 'admin-nanmuz',
@@ -19,8 +20,33 @@ const ADMIN_SEED = {
 
 export const normalizeEmail = (value = '') => value.trim().toLowerCase();
 
+const slugifyIdPart = (value = '', fallback = 'na') => {
+  const normalized = String(value)
+    .trim()
+    .toLowerCase()
+    .replace(/@/g, '-at-')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return normalized || fallback;
+};
+
+const compactTimestamp = (value) => {
+  const date = value ? new Date(value) : new Date();
+  const stamp = Number.isNaN(date.getTime()) ? new Date() : date;
+  return stamp.toISOString().replace(/[-:.TZ]/g, '').slice(0, 14);
+};
+
+export const createManagementUserId = ({ email = '', username = '', createdAt = '' } = {}) => {
+  const emailPart = slugifyIdPart(normalizeEmail(email), 'email');
+  const usernamePart = slugifyIdPart(username || 'nouser', 'nouser');
+  const createdPart = compactTimestamp(createdAt);
+  const randomPart = crypto.randomBytes(3).toString('hex');
+  return `${emailPart}__${usernamePart}__${createdPart}__${randomPart}`;
+};
+
 export const publicUser = (user) => ({
   id: user.id,
+  managementId: user.managementId || '',
   email: user.email,
   username: user.username || '',
   role: user.role || 'user',
@@ -96,20 +122,29 @@ const sanitizeMessage = (message = {}) => ({
 
 const sanitizeMessages = (messages) => (Array.isArray(messages) ? messages.map(sanitizeMessage) : []);
 
-const sanitizeUser = (user = {}) => ({
-  id: String(user.id || createUserId()),
-  email: normalizeEmail(user.email || ''),
-  username: typeof user.username === 'string' ? user.username.trim() : '',
-  passwordHash: typeof user.passwordHash === 'string' ? user.passwordHash : '',
-  role: user.role === 'admin' ? 'admin' : 'user',
-  birthday: typeof user.birthday === 'string' ? user.birthday : '',
-  resetCodeHash: typeof user.resetCodeHash === 'string' ? user.resetCodeHash : '',
-  resetCodeExpiresAt: typeof user.resetCodeExpiresAt === 'string' ? user.resetCodeExpiresAt : '',
-  lastBirthdayGreetingYear: typeof user.lastBirthdayGreetingYear === 'string' ? user.lastBirthdayGreetingYear : '',
-  isActive: user.isActive !== false,
-  createdAt: typeof user.createdAt === 'string' ? user.createdAt : new Date().toISOString(),
-  updatedAt: typeof user.updatedAt === 'string' ? user.updatedAt : new Date().toISOString(),
-});
+const sanitizeUser = (user = {}) => {
+  const createdAt = typeof user.createdAt === 'string' ? user.createdAt : new Date().toISOString();
+  const email = normalizeEmail(user.email || '');
+  const username = typeof user.username === 'string' ? user.username.trim() : '';
+
+  return {
+    id: String(user.id || createUserId()),
+    managementId: typeof user.managementId === 'string' && user.managementId.trim()
+      ? user.managementId.trim()
+      : createManagementUserId({ email, username, createdAt }),
+    email,
+    username,
+    passwordHash: typeof user.passwordHash === 'string' ? user.passwordHash : '',
+    role: user.role === 'admin' ? 'admin' : 'user',
+    birthday: typeof user.birthday === 'string' ? user.birthday : '',
+    resetCodeHash: typeof user.resetCodeHash === 'string' ? user.resetCodeHash : '',
+    resetCodeExpiresAt: typeof user.resetCodeExpiresAt === 'string' ? user.resetCodeExpiresAt : '',
+    lastBirthdayGreetingYear: typeof user.lastBirthdayGreetingYear === 'string' ? user.lastBirthdayGreetingYear : '',
+    isActive: user.isActive !== false,
+    createdAt,
+    updatedAt: typeof user.updatedAt === 'string' ? user.updatedAt : new Date().toISOString(),
+  };
+};
 
 export const getShanghaiDateString = (date = new Date()) => {
   const formatter = new Intl.DateTimeFormat('en-CA', {
@@ -281,7 +316,8 @@ export const ensureDataStore = async () => {
   const snapshotsResult = await readJson(config, config.snapshotsPath, {});
   const messagesResult = await readJson(config, config.messagesPath, []);
 
-  const users = (Array.isArray(usersResult.data) ? usersResult.data : []).map(sanitizeUser);
+  const rawUsers = Array.isArray(usersResult.data) ? usersResult.data : [];
+  const users = rawUsers.map(sanitizeUser);
   const plansByUser = plansResult.data && typeof plansResult.data === 'object' && !Array.isArray(plansResult.data)
     ? plansResult.data
     : {};
@@ -292,6 +328,10 @@ export const ensureDataStore = async () => {
 
   let changed = false;
   let admin = users.find((user) => normalizeEmail(user.email) === ADMIN_SEED.email);
+
+  if (rawUsers.some((user) => !(typeof user?.managementId === 'string' && user.managementId.trim()))) {
+    changed = true;
+  }
 
   if (!admin) {
     admin = sanitizeUser({
@@ -360,7 +400,9 @@ export const ensureDataStore = async () => {
 };
 
 export const saveUsers = async (config, users) => {
-  await writeJson(config, config.usersPath, users.map(sanitizeUser), 'Update day users');
+  const nextUsers = users.map(sanitizeUser);
+  enforceSingleActiveUserPerEmail(nextUsers);
+  await writeJson(config, config.usersPath, nextUsers, 'Update day users');
 };
 
 export const savePlansByUser = async (config, plansByUser) => {
@@ -375,8 +417,6 @@ export const saveMessages = async (config, messages) => {
   await writeJson(config, config.messagesPath, sanitizeMessages(messages), 'Update day messages');
 };
 
-export const findUserByEmail = (users, email) => users.find((user) => normalizeEmail(user.email) === normalizeEmail(email));
-
 export const findUsersByEmail = (users, email) => users.filter((user) => normalizeEmail(user.email) === normalizeEmail(email));
 
 export const findActiveUserByEmail = (users, email) => (
@@ -389,6 +429,7 @@ export const createUserRecord = ({ email, username = '', password, role = 'user'
   const now = new Date().toISOString();
   return sanitizeUser({
     id: createUserId(),
+    managementId: createManagementUserId({ email, username, createdAt: now }),
     email: normalizeEmail(email),
     username: (username || '').trim(),
     passwordHash: hashPassword(password),
@@ -451,6 +492,22 @@ export const createMessageRecord = ({ userId, userEmail, username = '', content,
 });
 
 export const getMessages = (messages) => sanitizeMessages(messages).sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+
+export const withDataStoreLock = async (callback) => {
+  const previousTask = dataStoreMutationQueue;
+  let releaseCurrentTask = () => {};
+  dataStoreMutationQueue = new Promise((resolve) => {
+    releaseCurrentTask = resolve;
+  });
+
+  await previousTask.catch(() => {});
+
+  try {
+    return await callback();
+  } finally {
+    releaseCurrentTask();
+  }
+};
 
 export const enforceSingleActiveUserPerEmail = (users) => {
   const byEmail = new Map();
