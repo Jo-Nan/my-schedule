@@ -126,13 +126,6 @@ const PlanCard = ({ plan, updatePlan, deletePlan, onEdit, onDragStart, onDragEnd
           >
             🗑️
           </button>
-          <button 
-            className="glass-button drag-handle"
-            style={styles.dragBtn}
-            title="拖拽移动任务"
-          >
-            ⠿
-          </button>
         </div>
       </div>
       
@@ -176,6 +169,14 @@ const PlanCard = ({ plan, updatePlan, deletePlan, onEdit, onDragStart, onDragEnd
             />
           </div>
         </div>
+
+        <button 
+          className="glass-button drag-handle"
+          style={styles.dragBtn}
+          title="拖拽移动任务"
+        >
+          ⇅
+        </button>
       </div>
     </div>
   );
@@ -209,16 +210,15 @@ const styles = {
     gap: '0.4rem',
   },
   dragBtn: {
-    padding: '0.2rem',
+    padding: '0.1rem',
     background: 'none',
     border: 'none',
     boxShadow: 'none',
     color: 'var(--text-secondary)',
     opacity: 0.6,
     cursor: 'grab',
-    fontSize: '17.5px',
+    fontSize: '12px',
     lineHeight: 1,
-    transform: 'rotate(90deg)',
   },
   editBtn: {
     padding: '0.2rem',

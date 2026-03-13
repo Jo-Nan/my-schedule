@@ -5,7 +5,8 @@ const Header = ({
   setViewMode,
   theme,
   toggleTheme,
-  toggleLanguage,
+  language,
+  setLanguage,
   t,
   onSync,
   onUpload,
@@ -19,6 +20,8 @@ const Header = ({
   onOpenProfile,
   onLogout,
   onOpenAdmin,
+  hasUnsavedProgress,
+  setHasUnsavedProgress,
 }) => {
   const displayName = activeUser?.username || activeUser?.email || '—';
   const isAdmin = currentUser?.role === 'admin';
@@ -56,6 +59,9 @@ const Header = ({
         <div className="button-group">
           <button className="glass-button icon-only" onClick={onSync} title={t.sync}>🔄</button>
           <button className="glass-button icon-only" onClick={onUpload} title={t.upload}>📥</button>
+          {hasUnsavedProgress && (
+            <button className="glass-button" onClick={() => { onUpload(); setHasUnsavedProgress(false); }} title="Save Progress Changes">💾</button>
+          )}
         </div>
 
         <div className="button-group">
@@ -73,7 +79,10 @@ const Header = ({
         )}
 
         <div className="button-group">
-          <button className="glass-button icon-only" onClick={toggleLanguage} title="Toggle Language (Alt+L)">🌐</button>
+          <div className="segmented-control" style={{ marginRight: '0.5rem' }}>
+            <button className={`glass-button ${language === 'en' ? 'active-tab' : ''}`} onClick={() => setLanguage('en')}>English</button>
+            <button className={`glass-button ${language === 'zh' ? 'active-tab' : ''}`} onClick={() => setLanguage('zh')}>中文</button>
+          </div>
           <button className="glass-button" style={{ padding: '0 0.8rem', fontSize: '1.2rem' }} onClick={toggleTheme} title="Toggle Theme (Alt+T)">
             {theme === 'light' ? '🌙' : '☀️'}
           </button>

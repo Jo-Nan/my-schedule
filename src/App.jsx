@@ -27,6 +27,7 @@ function App() {
   const [syncStatus, setSyncStatus] = useState('idle');
   const [plans, setPlans] = useState([]);
   const [weatherData, setWeatherData] = useState([]);
+  const [hasUnsavedProgress, setHasUnsavedProgress] = useState(false);
 
   const t = translations[language];
   const activeUser = managedUser || currentUser;
@@ -178,11 +179,13 @@ function App() {
         clearTimeout(autoSyncTimerRef.current);
       }
 
+      const delay = hasUnsavedProgress ? 30000 : 500; // 30s for progress changes, 500ms for others
       autoSyncTimerRef.current = setTimeout(() => {
         handleExport();
-      }, 500);
+        setHasUnsavedProgress(false);
+      }, delay);
     }
-  }, [plans, cacheKey, currentUser, activeUser]);
+  }, [plans, cacheKey, currentUser, activeUser, hasUnsavedProgress]);
 
   useEffect(() => {
     if (!activeUser || !currentUser) {
@@ -272,6 +275,9 @@ function App() {
     setPlans((prev) => prev.map((plan) => (
       plan.id === id ? { ...plan, ...updates, updatedAt: Date.now() } : plan
     )));
+    if (updates.progress !== undefined) {
+      setHasUnsavedProgress(true);
+    }
   };
 
   const addPlan = (newPlan) => {
@@ -336,7 +342,8 @@ function App() {
         setViewMode={setViewMode}
         theme={theme}
         toggleTheme={toggleTheme}
-        toggleLanguage={toggleLanguage}
+        language={language}
+        setLanguage={setLanguage}
         t={t}
         onSync={handleSync}
         onUpload={handleExport}
@@ -350,6 +357,8 @@ function App() {
         onOpenProfile={() => setIsProfileModalOpen(true)}
         onLogout={handleLogout}
         onOpenAdmin={() => setIsAdminPanelOpen(true)}
+        hasUnsavedProgress={hasUnsavedProgress}
+        setHasUnsavedProgress={setHasUnsavedProgress}
       />
 
       <SyncModal isOpen={isSyncModalOpen} onClose={() => setIsSyncModalOpen(false)} t={t} />
