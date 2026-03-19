@@ -171,6 +171,10 @@ const TEXTS = {
     closeEditorBtn: 'Close editor',
     editorTitle: 'Bookmark Editor',
     removePhotoBtn: 'Remove',
+    previewPhotoBtn: 'Zoom',
+    closePreviewBtn: 'Close',
+    prevPhotoBtn: 'Prev',
+    nextPhotoBtn: 'Next',
     removePointBtn: 'Remove point',
     photoReadError: 'Some images could not be loaded.',
     photoTooLargeError: `Some images were larger than ${MAX_UPLOAD_FILE_MB}MB and were skipped.`,
@@ -250,6 +254,10 @@ const TEXTS = {
     closeEditorBtn: '关闭编辑器',
     editorTitle: '书签编辑器',
     removePhotoBtn: '删除',
+    previewPhotoBtn: '放大',
+    closePreviewBtn: '关闭',
+    prevPhotoBtn: '上一张',
+    nextPhotoBtn: '下一张',
     removePointBtn: '删除点位',
     photoReadError: '部分图片读取失败，请重试。',
     photoTooLargeError: `部分图片超过 ${MAX_UPLOAD_FILE_MB}MB，已跳过。`,
@@ -618,6 +626,97 @@ function MapBookmarkCard({
   onDeletePhoto,
   onDeletePoint,
 }) {
+  const [lightboxPhotoId, setLightboxPhotoId] = useState('');
+  const swipeStartXRef = useRef(0);
+  const swipeDeltaXRef = useRef(0);
+  const hasPhotos = point.photos.length > 0;
+  const lightboxPhotoIndex = hasPhotos
+    ? point.photos.findIndex((photo) => photo.id === lightboxPhotoId)
+    : -1;
+  const activeLightboxPhoto = lightboxPhotoIndex >= 0 ? point.photos[lightboxPhotoIndex] : null;
+
+  const closeLightbox = useCallback(() => {
+    setLightboxPhotoId('');
+  }, []);
+
+  const openLightbox = useCallback((photoId) => {
+    setLightboxPhotoId(photoId);
+  }, []);
+
+  const shiftLightboxPhoto = useCallback((step) => {
+    if (!point.photos.length || !lightboxPhotoId) {
+      return;
+    }
+    const index = point.photos.findIndex((photo) => photo.id === lightboxPhotoId);
+    if (index < 0) {
+      setLightboxPhotoId(point.photos[0].id);
+      return;
+    }
+    const nextIndex = (index + step + point.photos.length) % point.photos.length;
+    setLightboxPhotoId(point.photos[nextIndex].id);
+  }, [lightboxPhotoId, point.photos]);
+
+  useEffect(() => {
+    if (!point.photos.length) {
+      setLightboxPhotoId('');
+      return;
+    }
+    if (lightboxPhotoId && !point.photos.some((photo) => photo.id === lightboxPhotoId)) {
+      setLightboxPhotoId(point.photos[0].id);
+    }
+  }, [lightboxPhotoId, point.photos]);
+
+  useEffect(() => {
+    if (!activeLightboxPhoto) {
+      return undefined;
+    }
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        closeLightbox();
+        return;
+      }
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        shiftLightboxPhoto(-1);
+      } else if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        shiftLightboxPhoto(1);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeLightboxPhoto, closeLightbox, shiftLightboxPhoto]);
+
+  const handleLightboxTouchStart = (event) => {
+    const touch = event.changedTouches?.[0];
+    if (!touch) {
+      return;
+    }
+    swipeStartXRef.current = touch.clientX;
+    swipeDeltaXRef.current = 0;
+  };
+
+  const handleLightboxTouchMove = (event) => {
+    const touch = event.changedTouches?.[0];
+    if (!touch) {
+      return;
+    }
+    swipeDeltaXRef.current = touch.clientX - swipeStartXRef.current;
+  };
+
+  const handleLightboxTouchEnd = () => {
+    if (Math.abs(swipeDeltaXRef.current) < 42) {
+      return;
+    }
+    if (swipeDeltaXRef.current < 0) {
+      shiftLightboxPhoto(1);
+    } else {
+      shiftLightboxPhoto(-1);
+    }
+  };
+
   return (
     <div className="map-bookmark-card">
       <div className="map-bookmark-head">
@@ -684,6 +783,13 @@ function MapBookmarkCard({
                   <button
                     type="button"
                     className="glass-button"
+                    onClick={() => openLightbox(photo.id)}
+                  >
+                    {text.previewPhotoBtn}
+                  </button>
+                  <button
+                    type="button"
+                    className="glass-button"
                     onClick={() => onSetFeatured(point.id, photo.id)}
                   >
                     {isFeatured ? text.featuredBadge : text.setFeaturedBtn}
@@ -699,6 +805,57 @@ function MapBookmarkCard({
               </figure>
             );
           })}
+        </div>
+      )}
+
+      {activeLightboxPhoto && (
+        <div
+          className="map-photo-lightbox"
+          role="dialog"
+          aria-modal="true"
+          onClick={closeLightbox}
+        >
+          <div
+            className="map-photo-lightbox-panel"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="glass-button map-photo-lightbox-close"
+              onClick={closeLightbox}
+            >
+              {text.closePreviewBtn}
+            </button>
+            <button
+              type="button"
+              className="glass-button map-photo-lightbox-nav prev"
+              onClick={() => shiftLightboxPhoto(-1)}
+            >
+              {text.prevPhotoBtn}
+            </button>
+            <div
+              className="map-photo-lightbox-image-wrap"
+              onTouchStart={handleLightboxTouchStart}
+              onTouchMove={handleLightboxTouchMove}
+              onTouchEnd={handleLightboxTouchEnd}
+            >
+              <img
+                src={photoSrcResolver(activeLightboxPhoto, ownerId)}
+                alt={activeLightboxPhoto.name || text.photosTitle}
+              />
+            </div>
+            <button
+              type="button"
+              className="glass-button map-photo-lightbox-nav next"
+              onClick={() => shiftLightboxPhoto(1)}
+            >
+              {text.nextPhotoBtn}
+            </button>
+            <p className="map-photo-lightbox-caption">
+              {activeLightboxPhoto.name || text.photosTitle}
+              {point.photos.length > 1 ? ` (${lightboxPhotoIndex + 1}/${point.photos.length})` : ''}
+            </p>
+          </div>
         </div>
       )}
     </div>
