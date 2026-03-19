@@ -4,7 +4,6 @@ import {
   CircleMarker,
   MapContainer,
   Marker,
-  Polyline,
   TileLayer,
   Tooltip,
   useMap,
@@ -134,6 +133,7 @@ const TEXTS = {
     colorRgbLabel: 'RGB',
     addUserBtn: 'Add user',
     renameUserBtn: 'Rename',
+    updateUserBtn: 'Save user',
     deleteUserBtn: 'Delete user',
     cityTitle: 'City / Coordinates',
     cityInputLabel: 'Search city',
@@ -146,6 +146,7 @@ const TEXTS = {
     longitudeLabel: 'Longitude',
     routeLabel: 'Optional route note',
     routePlaceholder: 'Metro line, meeting route, driving plan, etc.',
+    addPointSaving: 'Creating...',
     addPointBtn: 'Add map point',
     markersTitle: 'Current Markers',
     markersEmpty: 'No points yet. Add the first one from the panel above.',
@@ -211,6 +212,7 @@ const TEXTS = {
     colorRgbLabel: 'RGB',
     addUserBtn: '添加用户',
     renameUserBtn: '修改用户名',
+    updateUserBtn: '保存用户',
     deleteUserBtn: '删除用户',
     cityTitle: '城市 / 经纬度',
     cityInputLabel: '输入城市',
@@ -223,6 +225,7 @@ const TEXTS = {
     longitudeLabel: '经度',
     routeLabel: '路线备注（可选）',
     routePlaceholder: '地铁线路、会面路线、自驾方案等',
+    addPointSaving: '创建中...',
     addPointBtn: '添加地图点位',
     markersTitle: '当前点位',
     markersEmpty: '还没有点位，先从上方添加第一个地点。',
@@ -602,80 +605,6 @@ const getFeaturedPhoto = (point) => {
   return null;
 };
 
-function FeaturedDockLines({ featuredPoints, layout }) {
-  const map = useMap();
-  const [anchors, setAnchors] = useState([]);
-
-  const recomputeAnchors = useCallback(() => {
-    if (!featuredPoints.length) {
-      setAnchors([]);
-      return;
-    }
-
-    const bounds = map.getBounds();
-    const north = bounds.getNorth();
-    const south = bounds.getSouth();
-    const east = bounds.getEast();
-    const west = bounds.getWest();
-    const latSpan = Math.max(0.000001, north - south);
-    const lngSpan = Math.max(0.000001, east - west);
-    const nextAnchors = featuredPoints.map((_, index) => {
-      const ratio = (index + 1) / (featuredPoints.length + 1);
-      if (layout === 'bottom') {
-        return {
-          lat: south + latSpan * 0.04,
-          lng: west + lngSpan * (0.1 + ratio * 0.8),
-        };
-      }
-
-      return {
-        lat: north - latSpan * (0.12 + ratio * 0.76),
-        lng: east - lngSpan * 0.03,
-      };
-    });
-    setAnchors(nextAnchors);
-  }, [featuredPoints, layout, map]);
-
-  useEffect(() => {
-    recomputeAnchors();
-    map.on('move zoom resize', recomputeAnchors);
-    return () => {
-      map.off('move zoom resize', recomputeAnchors);
-    };
-  }, [map, recomputeAnchors]);
-
-  if (!anchors.length) {
-    return null;
-  }
-
-  return (
-    <>
-      {featuredPoints.map((item, index) => {
-        const anchor = anchors[index];
-        if (!anchor) {
-          return null;
-        }
-
-        return (
-          <Polyline
-            key={`dock_line_${item.point.id}`}
-            positions={[
-              [item.point.latitude, item.point.longitude],
-              [anchor.lat, anchor.lng],
-            ]}
-            pathOptions={{
-              color: item.owner?.color || '#38bdf8',
-              weight: 2,
-              opacity: 0.72,
-              dashArray: '6 6',
-            }}
-          />
-        );
-      })}
-    </>
-  );
-}
-
 function MapBookmarkCard({
   point,
   owner,
@@ -802,6 +731,8 @@ function MapView({
   const [newUserColor, setNewUserColor] = useState(COLOR_PALETTE[0]);
   const [newUserRgb, setNewUserRgb] = useState(hexToRgbString(COLOR_PALETTE[0]));
   const [editUserName, setEditUserName] = useState('');
+  const [editUserColor, setEditUserColor] = useState(COLOR_PALETTE[0]);
+  const [editUserRgb, setEditUserRgb] = useState(hexToRgbString(COLOR_PALETTE[0]));
   const [expandedUserId, setExpandedUserId] = useState('');
 
   const [cityQuery, setCityQuery] = useState('');
@@ -813,13 +744,21 @@ function MapView({
   const [latitudeInput, setLatitudeInput] = useState('');
   const [longitudeInput, setLongitudeInput] = useState('');
   const [routeInput, setRouteInput] = useState('');
+  const [addPointFiles, setAddPointFiles] = useState([]);
+  const [isAddingPoint, setIsAddingPoint] = useState(false);
   const [formMessage, setFormMessage] = useState('');
+  const [mapInstance, setMapInstance] = useState(null);
+  const [dockLines, setDockLines] = useState([]);
 
   const [isLoaded, setIsLoaded] = useState(false);
   const [isServerHydrated, setIsServerHydrated] = useState(false);
   const autoUploadTimerRef = useRef(null);
   const lastServerHashRef = useRef('');
   const localLoadedAtRef = useRef(0);
+  const addPointFileInputRef = useRef(null);
+  const mapCanvasColumnRef = useRef(null);
+  const featuredDockRef = useRef(null);
+  const featuredDockItemRefs = useRef(new Map());
 
   useEffect(() => () => {
     if (autoUploadTimerRef.current) {
@@ -861,6 +800,10 @@ function MapView({
       setNewUserColor(COLOR_PALETTE[1]);
       setNewUserRgb(hexToRgbString(COLOR_PALETTE[1]));
       setFormMessage('');
+      setAddPointFiles([]);
+      if (addPointFileInputRef.current) {
+        addPointFileInputRef.current.value = '';
+      }
       setIsServerHydrated(false);
       lastServerHashRef.current = '';
       setIsLoaded(true);
@@ -1094,16 +1037,115 @@ function MapView({
     (photo, ownerId) => buildPhotoReadUrl(photo, ownerId || activeUserId),
     [activeUserId],
   );
+  const setDockItemRef = useCallback((pointId, node) => {
+    if (!pointId) {
+      return;
+    }
+    if (node) {
+      featuredDockItemRefs.current.set(pointId, node);
+    } else {
+      featuredDockItemRefs.current.delete(pointId);
+    }
+  }, []);
+
+  const recomputeDockLines = useCallback(() => {
+    if (!mapInstance || !mapCanvasColumnRef.current || !showFeaturedBubbles || bubbleLayout === 'map') {
+      setDockLines([]);
+      return;
+    }
+
+    const columnRect = mapCanvasColumnRef.current.getBoundingClientRect();
+    const mapRect = mapInstance.getContainer().getBoundingClientRect();
+    if (!columnRect.width || !columnRect.height || !mapRect.width || !mapRect.height) {
+      setDockLines([]);
+      return;
+    }
+
+    const nextLines = [];
+
+    featuredPoints.forEach(({ point, owner }) => {
+      const dockItem = featuredDockItemRefs.current.get(point.id);
+      if (!dockItem) {
+        return;
+      }
+
+      const markerPixel = mapInstance.latLngToContainerPoint([point.latitude, point.longitude]);
+      const startX = mapRect.left - columnRect.left + markerPixel.x;
+      const startY = mapRect.top - columnRect.top + markerPixel.y;
+
+      const dockRect = dockItem.getBoundingClientRect();
+      const endX = bubbleLayout === 'right'
+        ? dockRect.left - columnRect.left + 2
+        : dockRect.left - columnRect.left + dockRect.width / 2;
+      const endY = bubbleLayout === 'right'
+        ? dockRect.top - columnRect.top + dockRect.height / 2
+        : dockRect.top - columnRect.top + 2;
+
+      nextLines.push({
+        id: point.id,
+        color: owner?.color || '#38bdf8',
+        startX,
+        startY,
+        endX,
+        endY,
+      });
+    });
+
+    setDockLines(nextLines);
+  }, [bubbleLayout, featuredPoints, mapInstance, showFeaturedBubbles]);
+
+  useEffect(() => {
+    if (!mapInstance) {
+      return undefined;
+    }
+
+    const updateLines = () => {
+      window.requestAnimationFrame(recomputeDockLines);
+    };
+
+    updateLines();
+    mapInstance.on('move zoom resize', updateLines);
+    window.addEventListener('resize', updateLines);
+    const dockNode = featuredDockRef.current;
+    if (dockNode) {
+      dockNode.addEventListener('scroll', updateLines);
+    }
+
+    return () => {
+      mapInstance.off('move zoom resize', updateLines);
+      window.removeEventListener('resize', updateLines);
+      if (dockNode) {
+        dockNode.removeEventListener('scroll', updateLines);
+      }
+    };
+  }, [mapInstance, recomputeDockLines]);
+
+  useEffect(() => {
+    const rafId = window.requestAnimationFrame(recomputeDockLines);
+    return () => window.cancelAnimationFrame(rafId);
+  }, [bubbleLayout, featuredPoints, recomputeDockLines, showFeaturedBubbles]);
 
   useEffect(() => {
     setEditUserName(selectedUser?.name || '');
-  }, [selectedUser?.id, selectedUser?.name]);
+    const selectedColor = normalizeHexColor(selectedUser?.color, COLOR_PALETTE[0]);
+    setEditUserColor(selectedColor);
+    setEditUserRgb(hexToRgbString(selectedColor));
+  }, [selectedUser?.id, selectedUser?.name, selectedUser?.color]);
 
   const handleNewRgbChange = (value) => {
     setNewUserRgb(value);
     const parsed = rgbToHex(value);
     if (parsed) {
       setNewUserColor(parsed);
+      setFormMessage('');
+    }
+  };
+
+  const handleEditRgbChange = (value) => {
+    setEditUserRgb(value);
+    const parsed = rgbToHex(value);
+    if (parsed) {
+      setEditUserColor(parsed);
       setFormMessage('');
     }
   };
@@ -1160,9 +1202,16 @@ function MapView({
       return;
     }
 
+    const parsedColor = rgbToHex(editUserRgb);
+    if (!parsedColor) {
+      setFormMessage(text.invalidRgb);
+      return;
+    }
+    const normalizedColor = normalizeHexColor(parsedColor, selectedUser.color);
+
     setUsers((previous) => previous.map((user) => (
       user.id === selectedUser.id
-        ? { ...user, name: nextName }
+        ? { ...user, name: nextName, color: normalizedColor }
         : user
     )));
     setFormMessage('');
@@ -1276,7 +1325,7 @@ function MapView({
     setFormMessage('');
   };
 
-  const handleAddPoint = () => {
+  const handleAddPoint = async () => {
     if (!selectedUserId || !users.some((user) => user.id === selectedUserId)) {
       setFormMessage(text.needUserSelect);
       return;
@@ -1295,27 +1344,60 @@ function MapView({
       return;
     }
 
+    const pointId = makeId('point');
+    const imageFiles = addPointFiles.filter((file) => file?.type?.startsWith('image/'));
+    const oversizedFiles = imageFiles.filter((file) => file.size > MAX_UPLOAD_FILE_MB * 1024 * 1024);
+    const allowedFiles = imageFiles.filter((file) => file.size <= MAX_UPLOAD_FILE_MB * 1024 * 1024);
+    const candidateFiles = allowedFiles.slice(0, MAX_PHOTO_COUNT_PER_POINT);
+
+    setIsAddingPoint(true);
+    let uploadedPhotos = [];
+    let nextMessage = '';
+
+    if (candidateFiles.length > 0) {
+      const settled = await Promise.allSettled(candidateFiles.map((file) => uploadMapPhoto(file, pointId)));
+      uploadedPhotos = settled
+        .filter((result) => result.status === 'fulfilled')
+        .map((result) => result.value);
+
+      const hasDecodeFailure = settled.some((result) => result.status === 'rejected');
+      if (oversizedFiles.length > 0) {
+        nextMessage = text.photoTooLargeError;
+      } else if (hasDecodeFailure) {
+        nextMessage = text.photoReadError;
+      } else if (allowedFiles.length > MAX_PHOTO_COUNT_PER_POINT) {
+        nextMessage = text.photoCountLimitError;
+      }
+    } else if (oversizedFiles.length > 0) {
+      nextMessage = text.photoTooLargeError;
+    }
+
     const point = {
-      id: makeId('point'),
+      id: pointId,
       userId: selectedUserId,
       place: placeInput.trim(),
       latitude,
       longitude,
       route: routeInput.trim(),
-      photos: [],
-      featuredPhotoId: null,
+      photos: uploadedPhotos,
+      featuredPhotoId: uploadedPhotos.length === 1 ? uploadedPhotos[0].id : null,
       noFeatured: false,
     };
 
     setPoints((previous) => [...previous, point]);
     setSelectedPointId(point.id);
-    setFormMessage('');
+    setFormMessage(nextMessage);
     setPlaceInput('');
     setLatitudeInput('');
     setLongitudeInput('');
     setRouteInput('');
+    setAddPointFiles([]);
+    if (addPointFileInputRef.current) {
+      addPointFileInputRef.current.value = '';
+    }
     setCityQuery('');
     setSearchResults([]);
+    setIsAddingPoint(false);
   };
 
   const updatePoint = (pointId, updates) => {
@@ -1664,6 +1746,33 @@ function MapView({
                   onChange={(event) => setEditUserName(event.target.value)}
                   disabled={!selectedUser}
                 />
+                <div className="map-inline-grid">
+                  <div>
+                    <label className="map-label" htmlFor="map_edit_user_color_hex">{text.colorHexLabel}</label>
+                    <input
+                      id="map_edit_user_color_hex"
+                      type="color"
+                      className="map-color-input"
+                      value={editUserColor}
+                      onChange={(event) => {
+                        setEditUserColor(event.target.value);
+                        setEditUserRgb(hexToRgbString(event.target.value));
+                        setFormMessage('');
+                      }}
+                      disabled={!selectedUser}
+                    />
+                  </div>
+                  <div>
+                    <label className="map-label" htmlFor="map_edit_user_color_rgb">{text.colorRgbLabel}</label>
+                    <input
+                      id="map_edit_user_color_rgb"
+                      className="glass-input"
+                      value={editUserRgb}
+                      onChange={(event) => handleEditRgbChange(event.target.value)}
+                      disabled={!selectedUser}
+                    />
+                  </div>
+                </div>
                 <div className="map-user-edit-actions">
                   <button
                     type="button"
@@ -1671,7 +1780,7 @@ function MapView({
                     onClick={handleRenameUser}
                     disabled={!selectedUser}
                   >
-                    {text.renameUserBtn}
+                    {text.updateUserBtn}
                   </button>
                   <button
                     type="button"
@@ -1811,8 +1920,33 @@ function MapView({
               onChange={(event) => setRouteInput(event.target.value)}
             />
 
-            <button type="button" className="glass-button map-block-btn" onClick={handleAddPoint}>
-              {text.addPointBtn}
+            <label className="map-upload-label" htmlFor="map_add_point_photos">{text.uploadPhotosLabel}</label>
+            <input
+              ref={addPointFileInputRef}
+              id="map_add_point_photos"
+              type="file"
+              accept="image/*"
+              multiple
+              className="glass-input map-file-input"
+              onChange={(event) => {
+                setAddPointFiles(Array.from(event.target.files || []));
+              }}
+            />
+            {addPointFiles.length > 0 && (
+              <p className="map-muted">
+                {language === 'zh'
+                  ? `已选择 ${addPointFiles.length} 张图片`
+                  : `${addPointFiles.length} image(s) selected`}
+              </p>
+            )}
+
+            <button
+              type="button"
+              className="glass-button map-block-btn"
+              onClick={handleAddPoint}
+              disabled={isAddingPoint}
+            >
+              {isAddingPoint ? text.addPointSaving : text.addPointBtn}
             </button>
           </section>
 
@@ -1855,7 +1989,28 @@ function MapView({
           )}
         </aside>
 
-        <div className="map-canvas-column">
+        <div className="map-canvas-column" ref={mapCanvasColumnRef}>
+          {showFeaturedBubbles && bubbleLayout !== 'map' && dockLines.length > 0 && (
+            <svg
+              className={`map-dock-connectors map-dock-connectors-${bubbleLayout}`}
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              {dockLines.map((line) => (
+                <line
+                  key={`dock_line_${line.id}`}
+                  x1={line.startX}
+                  y1={line.startY}
+                  x2={line.endX}
+                  y2={line.endY}
+                  stroke={line.color}
+                  strokeWidth="2"
+                  strokeOpacity="0.78"
+                  strokeDasharray="6 6"
+                />
+              ))}
+            </svg>
+          )}
+
           <div className="map-canvas-shell">
             <div className="map-canvas-headline">
               {scope === 'china' ? text.chinaScope : text.worldScope}
@@ -1868,16 +2023,13 @@ function MapView({
               preferCanvas
               maxBoundsViscosity={0.86}
               minZoom={scope === 'china' ? CHINA_VIEW.minZoom : WORLD_VIEW.minZoom}
+              whenReady={(event) => setMapInstance(event.target)}
             >
               <MapViewportController scope={scope} />
               <TileLayer
                 attribution='&copy; OpenStreetMap contributors'
                 url='https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
               />
-
-              {showFeaturedBubbles && bubbleLayout !== 'map' && (
-                <FeaturedDockLines featuredPoints={featuredPoints} layout={bubbleLayout} />
-              )}
 
               {showFeaturedBubbles && bubbleLayout === 'map' && featuredPoints.map(({ point, owner, featuredPhoto }) => {
                 const bubbleSize = getPhotoBubbleSize(featuredPhoto);
@@ -1950,13 +2102,17 @@ function MapView({
           </div>
 
           {showFeaturedBubbles && bubbleLayout !== 'map' && featuredPoints.length > 0 && (
-            <div className={`map-featured-dock map-featured-dock-${bubbleLayout}`}>
+            <div
+              className={`map-featured-dock map-featured-dock-${bubbleLayout}`}
+              ref={featuredDockRef}
+            >
               {featuredPoints.map(({ point, owner, featuredPhoto }) => {
                 const bubbleSize = getPhotoBubbleSize(featuredPhoto);
                 return (
                   <button
                     key={`dock_item_${point.id}`}
                     type="button"
+                    ref={(node) => setDockItemRef(point.id, node)}
                     className={`map-featured-dock-item ${selectedPointId === point.id ? 'active' : ''}`}
                     onClick={() => setSelectedPointId(point.id)}
                     style={{ '--bubble-accent': owner?.color || '#38bdf8' }}

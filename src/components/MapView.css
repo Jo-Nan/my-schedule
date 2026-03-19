@@ -146,6 +146,20 @@
   overflow: visible;
 }
 
+.map-dock-connectors {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  z-index: 430;
+}
+
+.map-dock-connectors-right {
+  width: calc(100% + 320px);
+}
+
 .map-collapse-btn {
   width: 100%;
   border-radius: 12px;
@@ -461,6 +475,8 @@
   margin-top: 0.72rem;
   display: flex;
   gap: 0.65rem;
+  position: relative;
+  z-index: 450;
 }
 
 .map-featured-dock-right {
