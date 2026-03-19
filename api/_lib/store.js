@@ -4,6 +4,26 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const API_VERSION = '2022-11-28';
+const DEFAULT_GITHUB_READ_CACHE_TTL_MS = 15_000;
+const DEFAULT_GITHUB_RATE_LIMIT_MAX_RETRIES = 2;
+const DEFAULT_GITHUB_RATE_LIMIT_RETRY_CAP_MS = 30_000;
+const GITHUB_READ_CACHE_TTL_MS = Math.max(
+  0,
+  Number.parseInt(process.env.GITHUB_READ_CACHE_TTL_MS || `${DEFAULT_GITHUB_READ_CACHE_TTL_MS}`, 10)
+    || DEFAULT_GITHUB_READ_CACHE_TTL_MS,
+);
+const GITHUB_RATE_LIMIT_MAX_RETRIES = Math.max(
+  0,
+  Number.parseInt(process.env.GITHUB_RATE_LIMIT_MAX_RETRIES || `${DEFAULT_GITHUB_RATE_LIMIT_MAX_RETRIES}`, 10)
+    || DEFAULT_GITHUB_RATE_LIMIT_MAX_RETRIES,
+);
+const GITHUB_RATE_LIMIT_RETRY_CAP_MS = Math.max(
+  1000,
+  Number.parseInt(process.env.GITHUB_RATE_LIMIT_RETRY_CAP_MS || `${DEFAULT_GITHUB_RATE_LIMIT_RETRY_CAP_MS}`, 10)
+    || DEFAULT_GITHUB_RATE_LIMIT_RETRY_CAP_MS,
+);
+const githubReadCache = new Map();
+const githubReadInFlight = new Map();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
@@ -302,6 +322,7 @@ const getStorageConfig = () => {
 const githubHeaders = (token) => ({
   Accept: 'application/vnd.github+json',
   Authorization: `Bearer ${token}`,
+  'User-Agent': 'day-app-data-store',
   'X-GitHub-Api-Version': API_VERSION,
 });
 
@@ -315,31 +336,195 @@ const buildGithubWriteUrl = ({ owner, repo }, filePath) => {
   return `https://api.github.com/repos/${owner}/${repo}/contents/${encodedPath}`;
 };
 
-const readGithubJson = async (config, filePath, fallbackValue) => {
-  const response = await fetch(buildGithubContentsUrl(config, filePath), {
-    headers: githubHeaders(config.token),
-  });
+const cloneJsonValue = (value) => structuredClone(value);
 
-  if (response.status === 404) {
-    return { data: fallbackValue, sha: null, exists: false };
+const parseHeaderInt = (headers, name) => {
+  const raw = headers.get(name);
+  const parsed = Number.parseInt(raw ?? '', 10);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const parseRetryAfterMs = (headers) => {
+  const retryAfter = headers.get('retry-after');
+  if (!retryAfter) {
+    return null;
   }
 
-  if (!response.ok) {
-    const details = await response.text();
-    throw new Error(`Failed to read ${filePath} from GitHub: ${details}`);
+  const seconds = Number.parseInt(retryAfter, 10);
+  if (Number.isFinite(seconds)) {
+    return Math.max(0, seconds * 1000);
   }
 
-  const payload = await response.json();
-  const raw = Buffer.from((payload.content || '').replace(/\n/g, ''), 'base64').toString('utf-8');
+  const retryAt = Date.parse(retryAfter);
+  if (Number.isFinite(retryAt)) {
+    return Math.max(0, retryAt - Date.now());
+  }
+
+  return null;
+};
+
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const isRateLimitResponse = (response, details) => {
+  if (response.status === 429) {
+    return true;
+  }
+  if (response.status !== 403) {
+    return false;
+  }
+
+  const remaining = parseHeaderInt(response.headers, 'x-ratelimit-remaining');
+  if (remaining === 0) {
+    return true;
+  }
+
+  return /rate limit|secondary rate limit|abuse detection/i.test(details);
+};
+
+const getRetryDelayMs = (response, attempt) => {
+  const retryAfterMs = parseRetryAfterMs(response.headers);
+  if (retryAfterMs !== null) {
+    return Math.min(GITHUB_RATE_LIMIT_RETRY_CAP_MS, retryAfterMs + 300);
+  }
+
+  const resetEpochSeconds = parseHeaderInt(response.headers, 'x-ratelimit-reset');
+  if (resetEpochSeconds !== null) {
+    const untilResetMs = (resetEpochSeconds * 1000) - Date.now() + 300;
+    if (untilResetMs > 0) {
+      return Math.min(GITHUB_RATE_LIMIT_RETRY_CAP_MS, untilResetMs);
+    }
+  }
+
+  return Math.min(GITHUB_RATE_LIMIT_RETRY_CAP_MS, 1000 * (attempt + 1));
+};
+
+const buildGithubReadCacheKey = (config, filePath) => (
+  `${config.owner}/${config.repo}/${config.branch}/${filePath}`
+);
+
+const getGithubReadCache = (cacheKey) => {
+  if (GITHUB_READ_CACHE_TTL_MS <= 0) {
+    return null;
+  }
+
+  const entry = githubReadCache.get(cacheKey);
+  if (!entry) {
+    return null;
+  }
+
+  if ((Date.now() - entry.cachedAt) > GITHUB_READ_CACHE_TTL_MS) {
+    githubReadCache.delete(cacheKey);
+    return null;
+  }
+
   return {
-    data: JSON.parse(raw || 'null') ?? fallbackValue,
-    sha: payload.sha || null,
-    exists: true,
+    data: cloneJsonValue(entry.data),
+    sha: entry.sha,
+    exists: entry.exists,
   };
 };
 
+const setGithubReadCache = (cacheKey, value) => {
+  if (GITHUB_READ_CACHE_TTL_MS <= 0) {
+    return;
+  }
+
+  githubReadCache.set(cacheKey, {
+    data: cloneJsonValue(value.data),
+    sha: value.sha ?? null,
+    exists: value.exists !== false,
+    cachedAt: Date.now(),
+  });
+};
+
+const readGithubJson = async (config, filePath, fallbackValue, options = {}) => {
+  const cacheKey = buildGithubReadCacheKey(config, filePath);
+  const bypassCache = options.bypassCache === true;
+
+  if (!bypassCache) {
+    const cached = getGithubReadCache(cacheKey);
+    if (cached) {
+      return cached;
+    }
+  }
+
+  const fetchTask = async () => {
+    const url = buildGithubContentsUrl(config, filePath);
+
+    for (let attempt = 0; attempt <= GITHUB_RATE_LIMIT_MAX_RETRIES; attempt += 1) {
+      const response = await fetch(url, {
+        headers: githubHeaders(config.token),
+      });
+
+      if (response.status === 404) {
+        const result = { data: fallbackValue, sha: null, exists: false };
+        if (!bypassCache) {
+          setGithubReadCache(cacheKey, result);
+        }
+        return result;
+      }
+
+      if (response.ok) {
+        const payload = await response.json();
+        const raw = Buffer.from((payload.content || '').replace(/\n/g, ''), 'base64').toString('utf-8');
+        const result = {
+          data: JSON.parse(raw || 'null') ?? fallbackValue,
+          sha: payload.sha || null,
+          exists: true,
+        };
+        if (!bypassCache) {
+          setGithubReadCache(cacheKey, result);
+        }
+        return result;
+      }
+
+      const details = await response.text();
+      const shouldRetry = attempt < GITHUB_RATE_LIMIT_MAX_RETRIES && isRateLimitResponse(response, details);
+      if (shouldRetry) {
+        await delay(getRetryDelayMs(response, attempt));
+        continue;
+      }
+
+      throw new Error(`Failed to read ${filePath} from GitHub: ${details}`);
+    }
+
+    throw new Error(`Failed to read ${filePath} from GitHub: retries exhausted`);
+  };
+
+  if (bypassCache) {
+    return fetchTask();
+  }
+
+  const inFlight = githubReadInFlight.get(cacheKey);
+  if (inFlight) {
+    const result = await inFlight;
+    return {
+      data: cloneJsonValue(result.data),
+      sha: result.sha,
+      exists: result.exists,
+    };
+  }
+
+  const task = fetchTask();
+  githubReadInFlight.set(cacheKey, task);
+
+  try {
+    const result = await task;
+    return {
+      data: cloneJsonValue(result.data),
+      sha: result.sha,
+      exists: result.exists,
+    };
+  } finally {
+    if (githubReadInFlight.get(cacheKey) === task) {
+      githubReadInFlight.delete(cacheKey);
+    }
+  }
+};
+
 const writeGithubJson = async (config, filePath, data, message) => {
-  const current = await readGithubJson(config, filePath, null);
+  const cacheKey = buildGithubReadCacheKey(config, filePath);
+  const current = await readGithubJson(config, filePath, null, { bypassCache: true });
   const payload = {
     message,
     content: Buffer.from(`${JSON.stringify(data, null, 2)}\n`, 'utf-8').toString('base64'),
@@ -363,6 +548,22 @@ const writeGithubJson = async (config, filePath, data, message) => {
     const details = await response.text();
     throw new Error(`Failed to write ${filePath} to GitHub: ${details}`);
   }
+
+  let nextSha = current.sha || null;
+  try {
+    const body = await response.json();
+    if (body?.content?.sha) {
+      nextSha = body.content.sha;
+    }
+  } catch {
+    // Best-effort cache refresh only.
+  }
+
+  setGithubReadCache(cacheKey, {
+    data,
+    sha: nextSha,
+    exists: true,
+  });
 };
 
 const ensureLocalDir = async () => {

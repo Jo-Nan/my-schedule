@@ -12,6 +12,18 @@ import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const DEFAULT_RATE_LIMIT_MAX_RETRIES = 2;
+const DEFAULT_RATE_LIMIT_RETRY_CAP_MS = 30_000;
+const RATE_LIMIT_MAX_RETRIES = Math.max(
+  0,
+  Number.parseInt(process.env.GITHUB_RATE_LIMIT_MAX_RETRIES || `${DEFAULT_RATE_LIMIT_MAX_RETRIES}`, 10)
+    || DEFAULT_RATE_LIMIT_MAX_RETRIES,
+);
+const RATE_LIMIT_RETRY_CAP_MS = Math.max(
+  1000,
+  Number.parseInt(process.env.GITHUB_RATE_LIMIT_RETRY_CAP_MS || `${DEFAULT_RATE_LIMIT_RETRY_CAP_MS}`, 10)
+    || DEFAULT_RATE_LIMIT_RETRY_CAP_MS,
+);
 
 const CORE_DATASETS = [
   {
@@ -93,38 +105,108 @@ const buildContentsUrl = ({ owner, repo }, filePath) => {
 const githubHeaders = (token) => ({
   Accept: 'application/vnd.github+json',
   Authorization: `Bearer ${token}`,
+  'User-Agent': 'day-app-backup',
   'X-GitHub-Api-Version': '2022-11-28',
 });
 
-const fetchJsonFromGitHub = async ({ url, token, branch, fallbackValue, required }) => {
-  const response = await fetch(`${url}?ref=${encodeURIComponent(branch)}`, {
-    headers: githubHeaders(token),
-  });
+const parseHeaderInt = (headers, name) => {
+  const raw = headers.get(name);
+  const parsed = Number.parseInt(raw ?? '', 10);
+  return Number.isFinite(parsed) ? parsed : null;
+};
 
-  if (response.status === 404 && !required) {
+const parseRetryAfterMs = (headers) => {
+  const retryAfter = headers.get('retry-after');
+  if (!retryAfter) {
+    return null;
+  }
+
+  const seconds = Number.parseInt(retryAfter, 10);
+  if (Number.isFinite(seconds)) {
+    return Math.max(0, seconds * 1000);
+  }
+
+  const retryAt = Date.parse(retryAfter);
+  if (Number.isFinite(retryAt)) {
+    return Math.max(0, retryAt - Date.now());
+  }
+
+  return null;
+};
+
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const isRateLimitResponse = (response, details) => {
+  if (response.status === 429) {
+    return true;
+  }
+  if (response.status !== 403) {
+    return false;
+  }
+
+  const remaining = parseHeaderInt(response.headers, 'x-ratelimit-remaining');
+  if (remaining === 0) {
+    return true;
+  }
+
+  return /rate limit|secondary rate limit|abuse detection/i.test(details);
+};
+
+const getRetryDelayMs = (response, attempt) => {
+  const retryAfterMs = parseRetryAfterMs(response.headers);
+  if (retryAfterMs !== null) {
+    return Math.min(RATE_LIMIT_RETRY_CAP_MS, retryAfterMs + 300);
+  }
+
+  const resetEpochSeconds = parseHeaderInt(response.headers, 'x-ratelimit-reset');
+  if (resetEpochSeconds !== null) {
+    const untilResetMs = (resetEpochSeconds * 1000) - Date.now() + 300;
+    if (untilResetMs > 0) {
+      return Math.min(RATE_LIMIT_RETRY_CAP_MS, untilResetMs);
+    }
+  }
+
+  return Math.min(RATE_LIMIT_RETRY_CAP_MS, 1000 * (attempt + 1));
+};
+
+const fetchJsonFromGitHub = async ({ url, token, branch, fallbackValue, required }) => {
+  for (let attempt = 0; attempt <= RATE_LIMIT_MAX_RETRIES; attempt += 1) {
+    const response = await fetch(`${url}?ref=${encodeURIComponent(branch)}`, {
+      headers: githubHeaders(token),
+    });
+
+    if (response.status === 404 && !required) {
+      return {
+        data: fallbackValue,
+        exists: false,
+      };
+    }
+
+    if (!response.ok) {
+      const text = await response.text();
+      const shouldRetry = attempt < RATE_LIMIT_MAX_RETRIES && isRateLimitResponse(response, text);
+      if (shouldRetry) {
+        await delay(getRetryDelayMs(response, attempt));
+        continue;
+      }
+      throw new Error(`Failed to fetch from GitHub: ${response.status} - ${text}`);
+    }
+
+    const payload = await response.json();
+    
+    if (!payload.content) {
+      throw new Error('No content field in GitHub response');
+    }
+
+    // Decode base64 content
+    const decodedContent = Buffer.from(payload.content, 'base64').toString('utf-8');
     return {
-      data: fallbackValue,
-      exists: false,
+      data: JSON.parse(decodedContent),
+      exists: true,
     };
   }
 
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Failed to fetch from GitHub: ${response.status} - ${text}`);
-  }
-
-  const payload = await response.json();
-  
-  if (!payload.content) {
-    throw new Error('No content field in GitHub response');
-  }
-
-  // Decode base64 content
-  const decodedContent = Buffer.from(payload.content, 'base64').toString('utf-8');
-  return {
-    data: JSON.parse(decodedContent),
-    exists: true,
-  };
+  throw new Error('Failed to fetch from GitHub: retries exhausted');
 };
 
 const getBackupDateStamp = () => {
