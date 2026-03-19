@@ -160,6 +160,11 @@ const TEXTS = {
     photosTitle: 'Photos',
     noPhotos: 'No photos uploaded.',
     uploadPhotosLabel: 'Upload photos',
+    uploadingLabel: 'Uploading...',
+    uploadFailedLabel: 'Upload failed',
+    retryUploadBtn: 'Retry',
+    retryAllFailedBtn: 'Retry all failed',
+    uploadQueueTitle: 'Upload queue',
     setFeaturedBtn: 'Set featured',
     clearFeaturedBtn: 'Featured: None',
     featuredBubbleShow: 'Show featured bubbles',
@@ -261,6 +266,11 @@ const TEXTS = {
     photosTitle: '照片',
     noPhotos: '暂无上传照片。',
     uploadPhotosLabel: '上传照片',
+    uploadingLabel: '上传中...',
+    uploadFailedLabel: '上传失败',
+    retryUploadBtn: '重试',
+    retryAllFailedBtn: '重试全部失败',
+    uploadQueueTitle: '上传队列',
     setFeaturedBtn: '设为精选',
     clearFeaturedBtn: '精选：无',
     featuredBubbleShow: '显示精选书签',
@@ -378,6 +388,9 @@ const normalizePhoto = (photo, index) => ({
   contentType: isNonEmpty(photo?.contentType) ? photo.contentType.trim() : '',
   width: Number.isFinite(photo?.width) ? Math.max(1, Math.round(photo.width)) : null,
   height: Number.isFinite(photo?.height) ? Math.max(1, Math.round(photo.height)) : null,
+  uploadState: photo?.uploadState === 'failed' ? 'failed' : (photo?.uploadState === 'uploading' ? 'uploading' : 'ready'),
+  uploadProgress: Number.isFinite(photo?.uploadProgress) ? Math.max(0, Math.min(100, Math.round(photo.uploadProgress))) : 0,
+  uploadError: isNonEmpty(photo?.uploadError) ? photo.uploadError.trim() : '',
 });
 
 const normalizeUser = (user, index, fallbackName) => ({
@@ -581,6 +594,44 @@ const pruneRecycleItems = (items) => {
   });
 };
 
+const persistPhoto = (photo) => {
+  if (!isNonEmpty(photo?.url)) {
+    return null;
+  }
+  return {
+    id: photo.id,
+    name: photo.name || '',
+    url: photo.url,
+    pathname: photo.pathname || '',
+    thumbnailUrl: photo.thumbnailUrl || '',
+    thumbnailPathname: photo.thumbnailPathname || '',
+    contentType: photo.contentType || '',
+    width: Number.isFinite(photo.width) ? photo.width : null,
+    height: Number.isFinite(photo.height) ? photo.height : null,
+  };
+};
+
+const persistPoint = (point) => {
+  const persistedPhotos = (Array.isArray(point?.photos) ? point.photos : [])
+    .map(persistPhoto)
+    .filter(Boolean);
+  let featuredPhotoId = isNonEmpty(point?.featuredPhotoId) ? point.featuredPhotoId : null;
+  if (featuredPhotoId && !persistedPhotos.some((photo) => photo.id === featuredPhotoId)) {
+    featuredPhotoId = null;
+  }
+  return {
+    id: point.id,
+    userId: point.userId,
+    place: point.place || '',
+    latitude: point.latitude,
+    longitude: point.longitude,
+    route: point.route || '',
+    photos: persistedPhotos,
+    featuredPhotoId,
+    noFeatured: Boolean(point.noFeatured),
+  };
+};
+
 const isPointWithinBounds = (point, bounds, padding = 0.2) => {
   if (!bounds) {
     return true;
@@ -649,7 +700,7 @@ const parseWorkspace = (rawWorkspace, defaultName) => {
 const workspaceToPayload = ({ scope, users, points, recycleBin, revision, showFeaturedBubbles, bubbleLayout }) => ({
   scope: scope === 'world' ? 'world' : 'china',
   users: Array.isArray(users) ? users : [],
-  points: Array.isArray(points) ? points : [],
+  points: Array.isArray(points) ? points.map(persistPoint) : [],
   recycleBin: pruneRecycleItems(Array.isArray(recycleBin) ? recycleBin : []),
   revision: Number.isInteger(revision) && revision >= 0 ? revision : 0,
   showFeaturedBubbles: showFeaturedBubbles !== false,
@@ -660,7 +711,7 @@ const workspaceToPayload = ({ scope, users, points, recycleBin, revision, showFe
 const workspaceHash = ({ scope, users, points, recycleBin, revision, showFeaturedBubbles, bubbleLayout }) => JSON.stringify({
   scope: scope === 'world' ? 'world' : 'china',
   users: Array.isArray(users) ? users : [],
-  points: Array.isArray(points) ? points : [],
+  points: Array.isArray(points) ? points.map(persistPoint) : [],
   recycleBin: pruneRecycleItems(Array.isArray(recycleBin) ? recycleBin : []),
   revision: Number.isInteger(revision) && revision >= 0 ? revision : 0,
   showFeaturedBubbles: showFeaturedBubbles !== false,
@@ -741,6 +792,7 @@ function MapBookmarkCard({
   onSetFeatured,
   onClearFeatured,
   onDeletePhoto,
+  onRetryPhoto,
   onDeletePoint,
 }) {
   const [lightboxPhotoId, setLightboxPhotoId] = useState('');
@@ -999,25 +1051,48 @@ function MapBookmarkCard({
         <div className="map-photo-grid">
           {point.photos.map((photo) => {
             const isFeatured = photo.id === point.featuredPhotoId;
+            const isUploading = photo.uploadState === 'uploading';
+            const isFailed = photo.uploadState === 'failed';
             return (
               <figure key={photo.id} className={`map-photo-card ${isFeatured ? 'is-featured' : ''}`}>
-                <img src={photoSrcResolver(photo, ownerId, { preferThumbnail: true })} alt={photo.name || text.photosTitle} loading="lazy" />
+                {photo.url ? (
+                  <img src={photoSrcResolver(photo, ownerId, { preferThumbnail: true })} alt={photo.name || text.photosTitle} loading="lazy" />
+                ) : (
+                  <div className="map-photo-placeholder">
+                    <span>{isFailed ? text.uploadFailedLabel : text.uploadingLabel}</span>
+                    {isUploading && <small>{photo.uploadProgress || 0}%</small>}
+                    {isFailed && photo.uploadError && <small title={photo.uploadError}>{photo.uploadError}</small>}
+                  </div>
+                )}
                 <figcaption title={photo.name}>{photo.name || 'image'}</figcaption>
                 <div className="map-photo-actions">
-                  <button
-                    type="button"
-                    className="glass-button"
-                    onClick={() => openLightbox(photo.id)}
-                  >
-                    {text.previewPhotoBtn}
-                  </button>
-                  <button
-                    type="button"
-                    className="glass-button"
-                    onClick={() => onSetFeatured(point.id, photo.id)}
-                  >
-                    {isFeatured ? text.featuredBadge : text.setFeaturedBtn}
-                  </button>
+                  {!isUploading && photo.url && (
+                    <button
+                      type="button"
+                      className="glass-button"
+                      onClick={() => openLightbox(photo.id)}
+                    >
+                      {text.previewPhotoBtn}
+                    </button>
+                  )}
+                  {!isUploading && photo.url && (
+                    <button
+                      type="button"
+                      className="glass-button"
+                      onClick={() => onSetFeatured(point.id, photo.id)}
+                    >
+                      {isFeatured ? text.featuredBadge : text.setFeaturedBtn}
+                    </button>
+                  )}
+                  {isFailed && (
+                    <button
+                      type="button"
+                      className="glass-button"
+                      onClick={() => onRetryPhoto(point.id, photo.id)}
+                    >
+                      {text.retryUploadBtn}
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="glass-button map-danger-btn"
@@ -1081,6 +1156,12 @@ function MapView({
   const [addPointFiles, setAddPointFiles] = useState([]);
   const [isAddingPoint, setIsAddingPoint] = useState(false);
   const [formMessage, setFormMessage] = useState('');
+  const [uploadQueueStatus, setUploadQueueStatus] = useState({
+    total: 0,
+    completed: 0,
+    failed: 0,
+    active: 0,
+  });
   const [mapInstance, setMapInstance] = useState(null);
   const [dockLines, setDockLines] = useState([]);
   const [visibleBounds, setVisibleBounds] = useState(null);
@@ -1095,6 +1176,10 @@ function MapView({
   const mapCanvasColumnRef = useRef(null);
   const featuredDockRef = useRef(null);
   const featuredDockItemRefs = useRef(new Map());
+  const uploadQueueRef = useRef([]);
+  const uploadRunnerActiveRef = useRef(false);
+  const failedUploadFileRef = useRef(new Map());
+  const activeWorkspaceKeyRef = useRef('');
 
   useEffect(() => () => {
     if (autoUploadTimerRef.current) {
@@ -1142,6 +1227,15 @@ function MapView({
       if (addPointFileInputRef.current) {
         addPointFileInputRef.current.value = '';
       }
+      activeWorkspaceKeyRef.current = storageKey || '';
+      uploadQueueRef.current = [];
+      failedUploadFileRef.current.clear();
+      setUploadQueueStatus({
+        total: 0,
+        completed: 0,
+        failed: 0,
+        active: 0,
+      });
       setIsServerHydrated(false);
       lastServerHashRef.current = '';
       setIsLoaded(true);
@@ -1497,6 +1591,10 @@ function MapView({
     [points, selectedPointId],
   );
   const selectedPointOwner = selectedPoint ? userMap.get(selectedPoint.userId) : null;
+  const uploadProcessedCount = uploadQueueStatus.completed + uploadQueueStatus.failed;
+  const uploadProgressPercent = uploadQueueStatus.total > 0
+    ? Math.round((uploadProcessedCount / uploadQueueStatus.total) * 100)
+    : 0;
   const resolvePhotoSrc = useCallback(
     (photo, ownerId, options = {}) => buildPhotoReadUrl(photo, ownerId || activeUserId, options),
     [activeUserId],
@@ -1866,7 +1964,23 @@ function MapView({
     setFormMessage('');
   };
 
-  const handleAddPoint = async () => {
+  const makeUploadPlaceholder = (file, pointId) => ({
+    id: makeId('uploading_photo'),
+    name: file.name || 'image',
+    url: '',
+    pathname: '',
+    thumbnailUrl: '',
+    thumbnailPathname: '',
+    contentType: file.type || '',
+    width: null,
+    height: null,
+    uploadState: 'uploading',
+    uploadProgress: 0,
+    uploadError: '',
+    uploadPointId: pointId,
+  });
+
+  const handleAddPoint = () => {
     if (!selectedUserId || !users.some((user) => user.id === selectedUserId)) {
       setFormMessage(text.needUserSelect);
       return;
@@ -1890,27 +2004,12 @@ function MapView({
     const oversizedFiles = imageFiles.filter((file) => file.size > MAX_UPLOAD_FILE_MB * 1024 * 1024);
     const allowedFiles = imageFiles.filter((file) => file.size <= MAX_UPLOAD_FILE_MB * 1024 * 1024);
     const candidateFiles = allowedFiles.slice(0, MAX_PHOTO_COUNT_PER_POINT);
-
-    setIsAddingPoint(true);
-    let uploadedPhotos = [];
+    const placeholderPhotos = candidateFiles.map((file) => makeUploadPlaceholder(file, pointId));
     let nextMessage = '';
-
-    if (candidateFiles.length > 0) {
-      const settled = await Promise.allSettled(candidateFiles.map((file) => uploadMapPhoto(file, pointId)));
-      uploadedPhotos = settled
-        .filter((result) => result.status === 'fulfilled')
-        .map((result) => result.value);
-
-      const hasDecodeFailure = settled.some((result) => result.status === 'rejected');
-      if (oversizedFiles.length > 0) {
-        nextMessage = text.photoTooLargeError;
-      } else if (hasDecodeFailure) {
-        nextMessage = text.photoReadError;
-      } else if (allowedFiles.length > MAX_PHOTO_COUNT_PER_POINT) {
-        nextMessage = text.photoCountLimitError;
-      }
-    } else if (oversizedFiles.length > 0) {
+    if (oversizedFiles.length > 0) {
       nextMessage = text.photoTooLargeError;
+    } else if (allowedFiles.length > MAX_PHOTO_COUNT_PER_POINT) {
+      nextMessage = text.photoCountLimitError;
     }
 
     const point = {
@@ -1920,8 +2019,8 @@ function MapView({
       latitude,
       longitude,
       route: routeInput.trim(),
-      photos: uploadedPhotos,
-      featuredPhotoId: uploadedPhotos.length === 1 ? uploadedPhotos[0].id : null,
+      photos: placeholderPhotos,
+      featuredPhotoId: null,
       noFeatured: false,
     };
 
@@ -1939,6 +2038,10 @@ function MapView({
     setCityQuery('');
     setSearchResults([]);
     setIsAddingPoint(false);
+
+    if (candidateFiles.length > 0) {
+      enqueuePhotoUploads(pointId, candidateFiles, placeholderPhotos.map((photo) => photo.id));
+    }
   };
 
   const updatePoint = (pointId, updates) => {
@@ -1963,6 +2066,10 @@ function MapView({
     if (!shouldDelete) {
       return;
     }
+
+    const photoIds = new Set((Array.isArray(point.photos) ? point.photos : []).map((photo) => photo.id));
+    dropQueuedUploads((job) => job.pointId === pointId || photoIds.has(job.photoId));
+    photoIds.forEach((photoId) => dropFailedUpload(photoId));
 
     pushRecycleItem({
       kind: 'point',
@@ -2031,7 +2138,237 @@ function MapView({
     };
   };
 
-  const uploadPhotos = async (pointId, fileList) => {
+  const runUploadQueue = useCallback(async () => {
+    if (uploadRunnerActiveRef.current) {
+      return;
+    }
+    uploadRunnerActiveRef.current = true;
+
+    while (uploadQueueRef.current.length > 0) {
+      const job = uploadQueueRef.current.shift();
+      if (!job) {
+        break;
+      }
+      if (job.workspaceKey && job.workspaceKey !== activeWorkspaceKeyRef.current) {
+        setUploadQueueStatus((previous) => ({
+          ...previous,
+          total: Math.max(0, previous.total - 1),
+          active: Math.max(0, previous.active - 1),
+        }));
+        continue;
+      }
+
+      setPoints((previous) => previous.map((point) => {
+        if (point.id !== job.pointId) {
+          return point;
+        }
+        return {
+          ...point,
+          photos: point.photos.map((photo) => (
+            photo.id === job.photoId
+              ? { ...photo, uploadState: 'uploading', uploadProgress: 12, uploadError: '' }
+              : photo
+          )),
+        };
+      }));
+
+      try {
+        const uploadedPhoto = await uploadMapPhoto(job.file, job.pointId);
+        failedUploadFileRef.current.delete(job.photoId);
+
+        setPoints((previous) => previous.map((point) => {
+          if (point.id !== job.pointId) {
+            return point;
+          }
+          const nextPhotos = point.photos.map((photo) => (
+            photo.id === job.photoId
+              ? {
+                  ...uploadedPhoto,
+                  id: job.photoId,
+                  uploadState: 'ready',
+                  uploadProgress: 100,
+                  uploadError: '',
+                }
+              : photo
+          ));
+          const hasFeatured = nextPhotos.some((photo) => photo.id === point.featuredPhotoId);
+          return {
+            ...point,
+            photos: nextPhotos,
+            featuredPhotoId: hasFeatured ? point.featuredPhotoId : (
+              !point.featuredPhotoId && nextPhotos.filter((photo) => isNonEmpty(photo.url)).length === 1
+                ? nextPhotos.find((photo) => isNonEmpty(photo.url))?.id || null
+                : point.featuredPhotoId
+            ),
+          };
+        }));
+
+        setUploadQueueStatus((previous) => ({
+          ...previous,
+          completed: previous.completed + 1,
+          active: Math.max(0, previous.active - 1),
+        }));
+      } catch (error) {
+        failedUploadFileRef.current.set(job.photoId, {
+          pointId: job.pointId,
+          file: job.file,
+        });
+
+        setPoints((previous) => previous.map((point) => {
+          if (point.id !== job.pointId) {
+            return point;
+          }
+          return {
+            ...point,
+            photos: point.photos.map((photo) => (
+              photo.id === job.photoId
+                ? {
+                    ...photo,
+                    uploadState: 'failed',
+                    uploadProgress: 0,
+                    uploadError: error?.message || text.photoReadError,
+                  }
+                : photo
+            )),
+          };
+        }));
+
+        setUploadQueueStatus((previous) => ({
+          ...previous,
+          failed: previous.failed + 1,
+          active: Math.max(0, previous.active - 1),
+        }));
+      }
+    }
+
+    uploadRunnerActiveRef.current = false;
+  }, [text.photoReadError, uploadMapPhoto]);
+
+  const enqueuePhotoUploads = useCallback((pointId, files, placeholderIds) => {
+    const jobs = files.map((file, index) => ({
+      pointId,
+      file,
+      photoId: placeholderIds[index],
+      workspaceKey: activeWorkspaceKeyRef.current || '',
+    })).filter((job) => isNonEmpty(job.photoId));
+
+    if (!jobs.length) {
+      return;
+    }
+
+    uploadQueueRef.current.push(...jobs);
+    setUploadQueueStatus((previous) => ({
+      ...previous,
+      total: previous.total + jobs.length,
+      active: previous.active + jobs.length,
+    }));
+    runUploadQueue();
+  }, [runUploadQueue]);
+
+  const retryPhotoUpload = (pointId, photoId) => {
+    const failedItem = failedUploadFileRef.current.get(photoId);
+    if (!failedItem || !failedItem.file) {
+      return;
+    }
+    failedUploadFileRef.current.delete(photoId);
+    setUploadQueueStatus((previous) => ({
+      ...previous,
+      failed: Math.max(0, previous.failed - 1),
+      active: previous.active + 1,
+    }));
+    setPoints((previous) => previous.map((point) => {
+      if (point.id !== pointId) {
+        return point;
+      }
+      return {
+        ...point,
+        photos: point.photos.map((photo) => (
+          photo.id === photoId
+            ? { ...photo, uploadState: 'uploading', uploadProgress: 0, uploadError: '' }
+            : photo
+        )),
+      };
+    }));
+    uploadQueueRef.current.push({
+      pointId: failedItem.pointId || pointId,
+      photoId,
+      file: failedItem.file,
+      workspaceKey: activeWorkspaceKeyRef.current || '',
+    });
+    runUploadQueue();
+  };
+
+  const retryAllFailedUploads = () => {
+    const entries = Array.from(failedUploadFileRef.current.entries());
+    if (!entries.length) {
+      return;
+    }
+
+    const jobs = entries
+      .map(([photoId, value]) => ({
+        pointId: value?.pointId,
+        photoId,
+        file: value?.file,
+        workspaceKey: activeWorkspaceKeyRef.current || '',
+      }))
+      .filter((job) => job.pointId && job.file);
+    if (!jobs.length) {
+      return;
+    }
+
+    failedUploadFileRef.current.clear();
+    setUploadQueueStatus((previous) => ({
+      ...previous,
+      failed: Math.max(0, previous.failed - jobs.length),
+      active: previous.active + jobs.length,
+    }));
+
+    setPoints((previous) => previous.map((point) => {
+      const jobIds = new Set(jobs.filter((job) => job.pointId === point.id).map((job) => job.photoId));
+      if (!jobIds.size) {
+        return point;
+      }
+      return {
+        ...point,
+        photos: point.photos.map((photo) => (
+          jobIds.has(photo.id)
+            ? { ...photo, uploadState: 'uploading', uploadProgress: 0, uploadError: '' }
+            : photo
+        )),
+      };
+    }));
+
+    uploadQueueRef.current.push(...jobs);
+    runUploadQueue();
+  };
+
+  const dropQueuedUploads = useCallback((predicate) => {
+    const previousLength = uploadQueueRef.current.length;
+    uploadQueueRef.current = uploadQueueRef.current.filter((job) => !predicate(job));
+    const removedCount = previousLength - uploadQueueRef.current.length;
+    if (removedCount > 0) {
+      setUploadQueueStatus((previous) => ({
+        ...previous,
+        total: Math.max(0, previous.total - removedCount),
+        active: Math.max(0, previous.active - removedCount),
+      }));
+    }
+  }, []);
+
+  const dropFailedUpload = useCallback((photoId) => {
+    if (!photoId) {
+      return;
+    }
+    if (failedUploadFileRef.current.delete(photoId)) {
+      setUploadQueueStatus((previous) => ({
+        ...previous,
+        total: Math.max(0, previous.total - 1),
+        failed: Math.max(0, previous.failed - 1),
+      }));
+    }
+  }, []);
+
+  const uploadPhotos = (pointId, fileList) => {
     const files = Array.from(fileList || []).filter((file) => file.type.startsWith('image/'));
     if (!files.length) {
       return;
@@ -2045,60 +2382,40 @@ function MapView({
       return;
     }
 
-    try {
-      const currentPoint = points.find((point) => point.id === pointId);
-      if (!currentPoint) {
-        return;
+    const currentPoint = points.find((point) => point.id === pointId);
+    if (!currentPoint) {
+      return;
+    }
+
+    const restSlots = Math.max(0, MAX_PHOTO_COUNT_PER_POINT - currentPoint.photos.length);
+    if (restSlots <= 0) {
+      setFormMessage(text.photoCountLimitError);
+      return;
+    }
+
+    const candidateFiles = allowedFiles.slice(0, restSlots);
+    const placeholderPhotos = candidateFiles.map((file) => makeUploadPlaceholder(file, pointId));
+
+    setPoints((previous) => previous.map((point) => {
+      if (point.id !== pointId) {
+        return point;
       }
+      return {
+        ...point,
+        photos: [...point.photos, ...placeholderPhotos],
+      };
+    }));
 
-      const restSlots = Math.max(0, MAX_PHOTO_COUNT_PER_POINT - currentPoint.photos.length);
-      if (restSlots <= 0) {
-        setFormMessage(text.photoCountLimitError);
-        return;
-      }
+    if (oversizedFiles.length > 0) {
+      setFormMessage(text.photoTooLargeError);
+    } else if (allowedFiles.length > restSlots) {
+      setFormMessage(text.photoCountLimitError);
+    } else {
+      setFormMessage('');
+    }
 
-      const candidateFiles = allowedFiles.slice(0, restSlots);
-      const settled = await Promise.allSettled(candidateFiles.map((file) => uploadMapPhoto(file, pointId)));
-      const photos = settled
-        .filter((result) => result.status === 'fulfilled')
-        .map((result) => result.value);
-
-      if (!photos.length) {
-        setFormMessage(text.photoReadError);
-        return;
-      }
-
-      setPoints((previous) => previous.map((point) => {
-        if (point.id !== pointId) {
-          return point;
-        }
-
-        const mergedPhotos = [...point.photos, ...photos];
-        let featuredPhotoId = point.featuredPhotoId;
-
-        if (!featuredPhotoId && mergedPhotos.length === 1 && !point.noFeatured) {
-          featuredPhotoId = mergedPhotos[0].id;
-        }
-
-        return {
-          ...point,
-          photos: mergedPhotos,
-          featuredPhotoId,
-        };
-      }));
-
-      const hasDecodeFailure = settled.some((result) => result.status === 'rejected');
-      if (oversizedFiles.length > 0) {
-        setFormMessage(text.photoTooLargeError);
-      } else if (hasDecodeFailure) {
-        setFormMessage(text.photoReadError);
-      } else if (allowedFiles.length > restSlots) {
-        setFormMessage(text.photoCountLimitError);
-      } else {
-        setFormMessage('');
-      }
-    } catch {
-      setFormMessage(text.photoReadError);
+    if (candidateFiles.length > 0) {
+      enqueuePhotoUploads(pointId, candidateFiles, placeholderPhotos.map((photo) => photo.id));
     }
   };
 
@@ -2140,6 +2457,9 @@ function MapView({
     if (!shouldDelete) {
       return;
     }
+
+    dropQueuedUploads((job) => job.photoId === photoId);
+    dropFailedUpload(photoId);
 
     pushRecycleItem({
       kind: 'photo',
@@ -2681,6 +3001,35 @@ function MapView({
             )}
           </section>
 
+          {(uploadQueueStatus.active > 0 || uploadQueueStatus.failed > 0) && (
+            <section className="map-panel">
+              <h3>{text.uploadQueueTitle}</h3>
+              <p className="map-muted">
+                {uploadProcessedCount}/{uploadQueueStatus.total} · {uploadProgressPercent}%
+              </p>
+              <div className="map-upload-progress-track">
+                <span
+                  className="map-upload-progress-fill"
+                  style={{ width: `${uploadProgressPercent}%` }}
+                />
+              </div>
+              <p className="map-muted">
+                {text.uploadingLabel} {uploadQueueStatus.active}
+                {' · '}
+                {text.uploadFailedLabel} {uploadQueueStatus.failed}
+              </p>
+              {uploadQueueStatus.failed > 0 && (
+                <button
+                  type="button"
+                  className="glass-button"
+                  onClick={retryAllFailedUploads}
+                >
+                  {text.retryAllFailedBtn}
+                </button>
+              )}
+            </section>
+          )}
+
           {(formMessage || searchMessage) && (
             <div className="map-message-box">
               {formMessage && <p>{formMessage}</p>}
@@ -2865,6 +3214,7 @@ function MapView({
             onSetFeatured={setFeaturedPhoto}
             onClearFeatured={clearFeaturedPhoto}
             onDeletePhoto={deletePhoto}
+            onRetryPhoto={retryPhotoUpload}
             onDeletePoint={deletePoint}
           />
         </aside>
