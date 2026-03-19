@@ -1135,12 +1135,12 @@ function MapBookmarkCard({
           >
             <button
               type="button"
-              className="glass-button map-photo-lightbox-close map-danger-btn"
+              className="glass-button map-photo-lightbox-close"
               onClick={closeLightbox}
               aria-label={text.closePreviewBtn}
               title={text.closePreviewBtn}
             >
-              ×
+              ✕
             </button>
             <button
               type="button"
@@ -3820,9 +3820,6 @@ function MapView({
                         loading="lazy"
                       />
                     </div>
-                    <span className="map-featured-dock-caption">
-                      {point.place || `${point.latitude.toFixed(3)}, ${point.longitude.toFixed(3)}`}
-                    </span>
                   </button>
                 );
               })}
