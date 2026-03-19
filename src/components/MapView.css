@@ -3,13 +3,19 @@
   padding: 1.2rem;
   border-radius: 24px;
   min-height: 72vh;
+  --map-font-title: 0.92rem;
+  --map-font-label: 0.79rem;
+  --map-font-body: 0.82rem;
+  --map-font-meta: 0.74rem;
+  --map-font-button: 0.78rem;
 }
 
 .map-view-header {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
+  justify-content: center;
+  gap: 0.72rem;
   margin-bottom: 0.72rem;
   flex-wrap: wrap;
 }
@@ -26,14 +32,16 @@
 
 .map-view-actions {
   display: flex;
-  gap: 0.6rem;
+  justify-content: center;
+  gap: 0.55rem;
   align-items: center;
   flex-wrap: wrap;
   font-family: inherit;
+  width: 100%;
 }
 
 .map-topbar-btn {
-  font-size: 0.78rem;
+  font-size: var(--map-font-button);
   font-weight: 600;
   border-radius: 999px;
   padding: 0.42rem 0.88rem;
@@ -64,7 +72,7 @@
 }
 
 .map-header-share-panel-head strong {
-  font-size: 0.82rem;
+  font-size: var(--map-font-title);
 }
 
 .map-header-share-panel-actions {
@@ -86,7 +94,7 @@
 }
 
 .map-header-share-link {
-  font-size: 0.74rem;
+  font-size: var(--map-font-meta);
   color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
@@ -114,7 +122,7 @@
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  font-size: 0.78rem;
+  font-size: var(--map-font-button);
   font-weight: 600;
   color: var(--text-secondary);
   border: 1px solid var(--glass-border);
@@ -128,7 +136,7 @@
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.22);
   color: var(--text-primary);
-  font-size: 0.78rem;
+  font-size: var(--map-font-button);
   font-family: inherit;
   padding: 0.24rem 0.52rem;
 }
@@ -169,6 +177,8 @@
   max-height: 72vh;
   overflow-y: auto;
   padding-right: 0.25rem;
+  font-family: inherit;
+  font-size: var(--map-font-body);
 }
 
 .map-panel {
@@ -183,18 +193,19 @@
 
 .map-panel h3 {
   margin: 0;
-  font-size: 0.97rem;
+  font-size: var(--map-font-title);
+  font-weight: 700;
   letter-spacing: -0.01em;
 }
 
 .map-muted {
   margin: 0;
   color: var(--text-tertiary);
-  font-size: 0.78rem;
+  font-size: var(--map-font-meta);
 }
 
 .map-label {
-  font-size: 0.75rem;
+  font-size: var(--map-font-label);
   font-weight: 600;
   color: var(--text-secondary);
 }
@@ -319,7 +330,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.84rem;
+  font-size: var(--map-font-body);
 }
 
 .map-user-edit-box {
@@ -337,7 +348,7 @@
 }
 
 .map-user-edit-toggle-btn {
-  font-size: 0.72rem;
+  font-size: var(--map-font-button);
   padding: 0.28rem 0.54rem;
   border-radius: 10px;
   box-shadow: none;
@@ -373,7 +384,7 @@
 }
 
 .map-user-place-name {
-  font-size: 0.74rem;
+  font-size: var(--map-font-body);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -386,7 +397,7 @@
 
 .map-user-place-actions .glass-button {
   padding: 0.28rem 0.44rem;
-  font-size: 0.68rem;
+  font-size: var(--map-font-meta);
   box-shadow: none;
 }
 
@@ -398,7 +409,7 @@
 
 .map-user-edit-action-btn {
   box-shadow: none;
-  font-size: 0.7rem;
+  font-size: var(--map-font-button);
   line-height: 1.1;
   padding: 0.34rem 0.4rem;
   border-radius: 9px;
@@ -406,7 +417,7 @@
 
 .map-user-count,
 .map-marker-owner {
-  font-size: 0.74rem;
+  font-size: var(--map-font-meta);
   color: var(--text-secondary);
   white-space: nowrap;
 }
@@ -454,18 +465,18 @@
 .map-search-fav-btn {
   white-space: nowrap;
   padding: 0.38rem 0.52rem;
-  font-size: 0.7rem;
+  font-size: var(--map-font-meta);
   box-shadow: none;
 }
 
 .map-search-result span {
-  font-size: 0.8rem;
+  font-size: var(--map-font-body);
   line-height: 1.25;
 }
 
 .map-search-result small {
   color: var(--text-secondary);
-  font-size: 0.72rem;
+  font-size: var(--map-font-meta);
 }
 
 .map-place-chip-list {
@@ -476,7 +487,7 @@
 
 .map-place-chip {
   padding: 0.28rem 0.52rem;
-  font-size: 0.68rem;
+  font-size: var(--map-font-meta);
   border-radius: 999px;
   box-shadow: none;
   max-width: 100%;
@@ -488,7 +499,7 @@
 .map-textarea {
   min-height: 74px;
   resize: vertical;
-  font-size: 0.83rem;
+  font-size: var(--map-font-body);
 }
 
 .map-message-box {
@@ -497,7 +508,7 @@
   background: linear-gradient(135deg, rgba(248, 113, 113, 0.15), rgba(245, 158, 11, 0.08));
   padding: 0.7rem;
   color: var(--text-primary);
-  font-size: 0.8rem;
+  font-size: var(--map-font-body);
 }
 
 .map-message-box p + p {
@@ -1002,7 +1013,7 @@
 
   .map-view-actions {
     width: 100%;
-    justify-content: flex-start;
+    justify-content: center;
     gap: 0.55rem;
   }
 
