@@ -908,7 +908,9 @@ function MapBookmarkCard({
   const [lightboxPhotoId, setLightboxPhotoId] = useState('');
   const [lightboxImageSrc, setLightboxImageSrc] = useState('');
   const swipeStartXRef = useRef(0);
+  const swipeStartYRef = useRef(0);
   const swipeDeltaXRef = useRef(0);
+  const swipeDeltaYRef = useRef(0);
   const hasPhotos = point.photos.length > 0;
   const lightboxPhotoIndex = hasPhotos
     ? point.photos.findIndex((photo) => photo.id === lightboxPhotoId)
@@ -1027,7 +1029,9 @@ function MapBookmarkCard({
       return;
     }
     swipeStartXRef.current = touch.clientX;
+    swipeStartYRef.current = touch.clientY;
     swipeDeltaXRef.current = 0;
+    swipeDeltaYRef.current = 0;
   };
 
   const handleLightboxTouchMove = (event) => {
@@ -1036,9 +1040,19 @@ function MapBookmarkCard({
       return;
     }
     swipeDeltaXRef.current = touch.clientX - swipeStartXRef.current;
+    swipeDeltaYRef.current = touch.clientY - swipeStartYRef.current;
   };
 
   const handleLightboxTouchEnd = () => {
+    const absX = Math.abs(swipeDeltaXRef.current);
+    const absY = Math.abs(swipeDeltaYRef.current);
+
+    // Swipe down to close preview on touch devices.
+    if (swipeDeltaYRef.current > 72 && absY > absX * 1.15) {
+      closeLightbox();
+      return;
+    }
+
     if (Math.abs(swipeDeltaXRef.current) < 42) {
       return;
     }
@@ -1663,6 +1677,23 @@ function MapView({
     document.addEventListener('pointerdown', handlePointerDownOutsideEditor);
     return () => {
       document.removeEventListener('pointerdown', handlePointerDownOutsideEditor);
+    };
+  }, [selectedPointId]);
+
+  useEffect(() => {
+    if (!selectedPointId) {
+      return undefined;
+    }
+
+    const handleEscCloseEditor = (event) => {
+      if (event.key === 'Escape') {
+        setSelectedPointId('');
+      }
+    };
+
+    document.addEventListener('keydown', handleEscCloseEditor);
+    return () => {
+      document.removeEventListener('keydown', handleEscCloseEditor);
     };
   }, [selectedPointId]);
 
