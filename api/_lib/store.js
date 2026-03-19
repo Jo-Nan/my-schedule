@@ -143,6 +143,19 @@ const sanitizeMessage = (message = {}) => ({
 
 const sanitizeMessages = (messages) => (Array.isArray(messages) ? messages.map(sanitizeMessage) : []);
 
+const sanitizeMapRecycleBin = (recycleBin) => (
+  Array.isArray(recycleBin)
+    ? recycleBin
+      .map((item) => ({
+        id: typeof item?.id === 'string' ? item.id : `recycle_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
+        kind: ['point', 'photo', 'user'].includes(item?.kind) ? item.kind : 'point',
+        deletedAt: typeof item?.deletedAt === 'string' ? item.deletedAt : new Date().toISOString(),
+        title: typeof item?.title === 'string' ? item.title : '',
+        payload: item?.payload && typeof item.payload === 'object' && !Array.isArray(item.payload) ? item.payload : {},
+      }))
+    : []
+);
+
 const sanitizeMapWorkspace = (workspace = {}) => {
   if (!workspace || typeof workspace !== 'object' || Array.isArray(workspace)) {
     return {
@@ -151,6 +164,7 @@ const sanitizeMapWorkspace = (workspace = {}) => {
       bubbleLayout: 'map',
       users: [],
       points: [],
+      recycleBin: [],
       savedAt: new Date().toISOString(),
     };
   }
@@ -161,6 +175,7 @@ const sanitizeMapWorkspace = (workspace = {}) => {
     bubbleLayout: ['map', 'right', 'bottom'].includes(workspace.bubbleLayout) ? workspace.bubbleLayout : 'map',
     users: Array.isArray(workspace.users) ? workspace.users : [],
     points: Array.isArray(workspace.points) ? workspace.points : [],
+    recycleBin: sanitizeMapRecycleBin(workspace.recycleBin),
     savedAt: typeof workspace.savedAt === 'string' ? workspace.savedAt : new Date().toISOString(),
   };
 };

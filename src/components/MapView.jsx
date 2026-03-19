@@ -64,6 +64,7 @@ const MAX_CANVAS_EDGE = 1920;
 const MAX_THUMBNAIL_EDGE = 560;
 const MAX_PHOTO_COUNT_PER_POINT = 24;
 const MAP_AUTO_UPLOAD_DELAY_MS = 1200;
+const RECYCLE_BIN_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
 const openMapDatabase = () => new Promise((resolve, reject) => {
   if (typeof window === 'undefined' || !window.indexedDB) {
@@ -193,6 +194,15 @@ const TEXTS = {
     dangerSecondConfirm: 'This action cannot be undone. Please confirm again.',
     deletePointConfirm: 'Delete this map point?',
     deletePhotoConfirm: 'Delete this photo?',
+    recycleBinTitle: 'Recycle bin',
+    recycleBinHint: 'Deleted items can be restored within 7 days.',
+    recycleBinEmpty: 'Recycle bin is empty.',
+    recycleRestoreBtn: 'Restore',
+    recycleDeleteBtn: 'Delete now',
+    recycleDeletedAt: 'Deleted',
+    recyclePointLabel: 'Point',
+    recyclePhotoLabel: 'Photo',
+    recycleUserLabel: 'User',
     invalidRgb: 'RGB must be in the format like 255, 120, 0.',
     invalidCoord: 'Please enter valid latitude/longitude.',
     invalidCoordRange: 'Latitude must be between -90 and 90, longitude between -180 and 180.',
@@ -279,6 +289,15 @@ const TEXTS = {
     dangerSecondConfirm: '删除后不可恢复，请再次确认。',
     deletePointConfirm: '确认删除这个点位吗？',
     deletePhotoConfirm: '确认删除这张照片吗？',
+    recycleBinTitle: '回收站',
+    recycleBinHint: '删除内容可在 7 天内恢复。',
+    recycleBinEmpty: '回收站为空。',
+    recycleRestoreBtn: '恢复',
+    recycleDeleteBtn: '立即删除',
+    recycleDeletedAt: '删除于',
+    recyclePointLabel: '点位',
+    recyclePhotoLabel: '照片',
+    recycleUserLabel: '用户',
     invalidRgb: 'RGB 格式应类似 255, 120, 0。',
     invalidCoord: '请输入有效的经纬度。',
     invalidCoordRange: '纬度范围需在 -90 到 90，经度需在 -180 到 180。',
@@ -517,6 +536,53 @@ const sanitizeFilename = (filename = '') => {
   return normalized || 'image';
 };
 
+const safeDateText = (value) => {
+  if (!isNonEmpty(value)) {
+    return '';
+  }
+  const stamp = new Date(value);
+  if (Number.isNaN(stamp.getTime())) {
+    return '';
+  }
+  return stamp.toISOString();
+};
+
+const normalizeRecycleItem = (item, index) => {
+  const kind = ['point', 'photo', 'user'].includes(item?.kind) ? item.kind : 'point';
+  return {
+    id: isNonEmpty(item?.id) ? item.id : makeId(`recycle_${index}`),
+    kind,
+    deletedAt: safeDateText(item?.deletedAt) || new Date().toISOString(),
+    title: isNonEmpty(item?.title) ? item.title.trim() : '',
+    payload: item?.payload && typeof item.payload === 'object' && !Array.isArray(item.payload) ? item.payload : {},
+  };
+};
+
+const pruneRecycleItems = (items) => {
+  const now = Date.now();
+  return (Array.isArray(items) ? items : []).filter((item) => {
+    const stamp = new Date(item.deletedAt).getTime();
+    if (Number.isNaN(stamp)) {
+      return false;
+    }
+    return now - stamp <= RECYCLE_BIN_RETENTION_MS;
+  });
+};
+
+const isPointWithinBounds = (point, bounds, padding = 0.2) => {
+  if (!bounds) {
+    return true;
+  }
+  const latPad = Math.max(0.1, (bounds.north - bounds.south) * padding);
+  const lngPad = Math.max(0.1, (bounds.east - bounds.west) * padding);
+  return (
+    point.latitude >= bounds.south - latPad
+    && point.latitude <= bounds.north + latPad
+    && point.longitude >= bounds.west - lngPad
+    && point.longitude <= bounds.east + lngPad
+  );
+};
+
 const parseWorkspace = (rawWorkspace, defaultName) => {
   const fallbackUser = {
     id: makeId('user'),
@@ -543,6 +609,10 @@ const parseWorkspace = (rawWorkspace, defaultName) => {
         .map((point, index) => normalizePoint(point, index, loadedUsers))
         .filter(Boolean)
     : [];
+  const loadedRecycleBin = pruneRecycleItems(
+    (Array.isArray(safeWorkspace?.recycleBin) ? safeWorkspace.recycleBin : [])
+      .map((item, index) => normalizeRecycleItem(item, index)),
+  );
 
   const savedAt = typeof safeWorkspace?.savedAt === 'string' ? safeWorkspace.savedAt : '';
   const savedAtStamp = Number.isNaN(new Date(savedAt).getTime()) ? 0 : new Date(savedAt).getTime();
@@ -551,6 +621,7 @@ const parseWorkspace = (rawWorkspace, defaultName) => {
     scope: loadedScope,
     users: loadedUsers,
     points: loadedPoints,
+    recycleBin: loadedRecycleBin,
     showFeaturedBubbles: loadedShowFeaturedBubbles,
     bubbleLayout: loadedBubbleLayout,
     savedAt,
@@ -558,19 +629,21 @@ const parseWorkspace = (rawWorkspace, defaultName) => {
   };
 };
 
-const workspaceToPayload = ({ scope, users, points, showFeaturedBubbles, bubbleLayout }) => ({
+const workspaceToPayload = ({ scope, users, points, recycleBin, showFeaturedBubbles, bubbleLayout }) => ({
   scope: scope === 'world' ? 'world' : 'china',
   users: Array.isArray(users) ? users : [],
   points: Array.isArray(points) ? points : [],
+  recycleBin: pruneRecycleItems(Array.isArray(recycleBin) ? recycleBin : []),
   showFeaturedBubbles: showFeaturedBubbles !== false,
   bubbleLayout: ['map', 'right', 'bottom'].includes(bubbleLayout) ? bubbleLayout : 'right',
   savedAt: new Date().toISOString(),
 });
 
-const workspaceHash = ({ scope, users, points, showFeaturedBubbles, bubbleLayout }) => JSON.stringify({
+const workspaceHash = ({ scope, users, points, recycleBin, showFeaturedBubbles, bubbleLayout }) => JSON.stringify({
   scope: scope === 'world' ? 'world' : 'china',
   users: Array.isArray(users) ? users : [],
   points: Array.isArray(points) ? points : [],
+  recycleBin: pruneRecycleItems(Array.isArray(recycleBin) ? recycleBin : []),
   showFeaturedBubbles: showFeaturedBubbles !== false,
   bubbleLayout: ['map', 'right', 'bottom'].includes(bubbleLayout) ? bubbleLayout : 'right',
 });
@@ -960,6 +1033,7 @@ function MapView({
   const [scope, setScope] = useState('china');
   const [users, setUsers] = useState([]);
   const [points, setPoints] = useState([]);
+  const [recycleBin, setRecycleBin] = useState([]);
   const [selectedUserId, setSelectedUserId] = useState('');
   const [isAddUserExpanded, setIsAddUserExpanded] = useState(false);
   const [isUserEditExpanded, setIsUserEditExpanded] = useState(false);
@@ -989,6 +1063,7 @@ function MapView({
   const [formMessage, setFormMessage] = useState('');
   const [mapInstance, setMapInstance] = useState(null);
   const [dockLines, setDockLines] = useState([]);
+  const [visibleBounds, setVisibleBounds] = useState(null);
 
   const [isLoaded, setIsLoaded] = useState(false);
   const [isServerHydrated, setIsServerHydrated] = useState(false);
@@ -1033,6 +1108,7 @@ function MapView({
       setScope(loadedWorkspace.scope);
       setUsers(loadedWorkspace.users);
       setPoints(loadedWorkspace.points);
+      setRecycleBin(loadedWorkspace.recycleBin);
       setShowFeaturedBubbles(loadedWorkspace.showFeaturedBubbles);
       setBubbleLayout(loadedWorkspace.bubbleLayout);
       setSelectedUserId(loadedWorkspace.users[0]?.id || '');
@@ -1092,6 +1168,7 @@ function MapView({
           setScope(serverWorkspace.scope);
           setUsers(serverWorkspace.users);
           setPoints(serverWorkspace.points);
+          setRecycleBin(serverWorkspace.recycleBin);
           setShowFeaturedBubbles(serverWorkspace.showFeaturedBubbles);
           setBubbleLayout(serverWorkspace.bubbleLayout);
           setSelectedUserId(serverWorkspace.users[0]?.id || '');
@@ -1123,6 +1200,7 @@ function MapView({
       scope,
       users,
       points,
+      recycleBin,
       showFeaturedBubbles,
       bubbleLayout,
     });
@@ -1136,6 +1214,7 @@ function MapView({
           bubbleLayout: payload.bubbleLayout,
           users: payload.users,
           points: [],
+          recycleBin: payload.recycleBin,
           savedAt: payload.savedAt,
         }));
       } catch {
@@ -1146,7 +1225,7 @@ function MapView({
         }
       }
     })();
-  }, [bubbleLayout, isLoaded, points, scope, showFeaturedBubbles, storageKey, text.storageLimitError, users]);
+  }, [bubbleLayout, isLoaded, points, recycleBin, scope, showFeaturedBubbles, storageKey, text.storageLimitError, users]);
 
   useEffect(() => {
     if (!isLoaded || !isServerHydrated || !activeUserId) {
@@ -1157,6 +1236,7 @@ function MapView({
       scope,
       users,
       points,
+      recycleBin,
       showFeaturedBubbles,
       bubbleLayout,
     });
@@ -1205,6 +1285,7 @@ function MapView({
     isLoaded,
     isServerHydrated,
     points,
+    recycleBin,
     scope,
     showFeaturedBubbles,
     users,
@@ -1233,6 +1314,34 @@ function MapView({
       setSelectedPointId('');
     }
   }, [points, selectedPointId]);
+
+  useEffect(() => {
+    if (!recycleBin.length) {
+      return;
+    }
+    const now = Date.now();
+    const expired = recycleBin.filter((item) => {
+      const stamp = new Date(item.deletedAt).getTime();
+      if (Number.isNaN(stamp)) {
+        return true;
+      }
+      return now - stamp > RECYCLE_BIN_RETENTION_MS;
+    });
+    if (!expired.length) {
+      return;
+    }
+
+    expired.forEach((item) => {
+      if (item.kind === 'photo') {
+        cleanupPhotoStorage(item.payload?.photo);
+      } else if (item.kind === 'point') {
+        const photos = Array.isArray(item.payload?.point?.photos) ? item.payload.point.photos : [];
+        photos.forEach((photo) => cleanupPhotoStorage(photo));
+      }
+    });
+
+    setRecycleBin((previous) => pruneRecycleItems(previous));
+  }, [cleanupPhotoStorage, recycleBin]);
 
   useEffect(() => {
     if (!selectedPointId) {
@@ -1290,6 +1399,15 @@ function MapView({
       };
     })
     .filter(Boolean), [points, userMap]);
+  const visiblePoints = useMemo(() => {
+    if (!visibleBounds) {
+      return points;
+    }
+    return points.filter((point) => (
+      point.id === selectedPointId
+      || isPointWithinBounds(point, visibleBounds)
+    ));
+  }, [points, selectedPointId, visibleBounds]);
 
   const selectedPoint = useMemo(
     () => points.find((point) => point.id === selectedPointId) || null,
@@ -1387,6 +1505,29 @@ function MapView({
     const rafId = window.requestAnimationFrame(recomputeDockLines);
     return () => window.cancelAnimationFrame(rafId);
   }, [bubbleLayout, featuredPoints, recomputeDockLines, showFeaturedBubbles]);
+
+  useEffect(() => {
+    if (!mapInstance) {
+      setVisibleBounds(null);
+      return undefined;
+    }
+
+    const updateBounds = () => {
+      const bounds = mapInstance.getBounds();
+      setVisibleBounds({
+        north: bounds.getNorth(),
+        south: bounds.getSouth(),
+        east: bounds.getEast(),
+        west: bounds.getWest(),
+      });
+    };
+
+    updateBounds();
+    mapInstance.on('move zoom resize', updateBounds);
+    return () => {
+      mapInstance.off('move zoom resize', updateBounds);
+    };
+  }, [mapInstance]);
 
   useEffect(() => {
     setEditUserName(selectedUser?.name || '');
@@ -1510,6 +1651,18 @@ function MapView({
         ? { ...point, userId: fallbackUser.id }
         : point
     )));
+    const movedPointIds = points
+      .filter((point) => point.userId === selectedUser.id)
+      .map((point) => point.id);
+    pushRecycleItem({
+      kind: 'user',
+      title: selectedUser.name,
+      payload: {
+        user: selectedUser,
+        fallbackUserId: fallbackUser.id,
+        movedPointIds,
+      },
+    });
     setUsers((previous) => previous.filter((user) => user.id !== selectedUser.id));
     setSelectedUserId(fallbackUser.id);
     setExpandedUserId(fallbackUser.id);
@@ -1526,6 +1679,40 @@ function MapView({
     }
     return window.confirm(secondMessage);
   };
+
+  const cleanupPhotoStorage = useCallback((photo) => {
+    if (!activeUserId) {
+      return;
+    }
+    [photo?.pathname, photo?.thumbnailPathname].forEach((pathname) => {
+      if (!isNonEmpty(pathname)) {
+        return;
+      }
+      fetch('/api/attachments?action=delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          targetUserId: activeUserId,
+          pathname,
+          url: photo?.url || '',
+        }),
+      }).catch(() => {});
+    });
+  }, [activeUserId]);
+
+  const pushRecycleItem = useCallback((item) => {
+    setRecycleBin((previous) => pruneRecycleItems([
+      {
+        id: makeId('recycle'),
+        deletedAt: new Date().toISOString(),
+        title: '',
+        payload: {},
+        ...item,
+      },
+      ...previous,
+    ]));
+  }, []);
 
   const handleSearchCity = async () => {
     const query = cityQuery.trim();
@@ -1694,25 +1881,11 @@ function MapView({
       return;
     }
 
-    if (point?.photos?.length && activeUserId) {
-      point.photos.forEach((photo) => {
-        [photo?.pathname, photo?.thumbnailPathname].forEach((pathname) => {
-          if (!isNonEmpty(pathname)) {
-            return;
-          }
-          fetch('/api/attachments?action=delete', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'same-origin',
-            body: JSON.stringify({
-              targetUserId: activeUserId,
-              pathname,
-              url: photo.url || '',
-            }),
-          }).catch(() => {});
-        });
-      });
-    }
+    pushRecycleItem({
+      kind: 'point',
+      title: pointLabel,
+      payload: { point },
+    });
 
     setPoints((previous) => previous.filter((point) => point.id !== pointId));
     setSelectedPointId((previous) => (previous === pointId ? '' : previous));
@@ -1873,6 +2046,9 @@ function MapView({
   const deletePhoto = async (pointId, photoId) => {
     const point = points.find((item) => item.id === pointId);
     const photo = point?.photos?.find((item) => item.id === photoId);
+    if (!photo) {
+      return;
+    }
     const photoLabel = photo?.name || text.photosTitle;
     const shouldDelete = confirmDangerAction(
       `${text.deletePhotoConfirm}\n"${photoLabel}"`,
@@ -1882,23 +2058,14 @@ function MapView({
       return;
     }
 
-    if (activeUserId) {
-      [photo?.pathname, photo?.thumbnailPathname].forEach((pathname) => {
-        if (!isNonEmpty(pathname)) {
-          return;
-        }
-        fetch('/api/attachments?action=delete', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'same-origin',
-          body: JSON.stringify({
-            targetUserId: activeUserId,
-            pathname,
-            url: photo?.url || '',
-          }),
-        }).catch(() => {});
-      });
-    }
+    pushRecycleItem({
+      kind: 'photo',
+      title: photoLabel,
+      payload: {
+        pointId,
+        photo,
+      },
+    });
 
     setPoints((previous) => previous.map((point) => {
       if (point.id !== pointId) {
@@ -1930,6 +2097,97 @@ function MapView({
         featuredPhotoId,
       };
     }));
+  };
+
+  const hardDeleteRecycleItem = (itemId) => {
+    const target = recycleBin.find((item) => item.id === itemId);
+    if (!target) {
+      return;
+    }
+    if (target.kind === 'photo') {
+      cleanupPhotoStorage(target.payload?.photo);
+    } else if (target.kind === 'point') {
+      const photos = Array.isArray(target.payload?.point?.photos) ? target.payload.point.photos : [];
+      photos.forEach((photo) => cleanupPhotoStorage(photo));
+    }
+    setRecycleBin((previous) => previous.filter((item) => item.id !== itemId));
+  };
+
+  const restoreRecycleItem = (itemId) => {
+    const target = recycleBin.find((item) => item.id === itemId);
+    if (!target) {
+      return;
+    }
+
+    if (target.kind === 'point') {
+      const rawPoint = target.payload?.point;
+      if (!rawPoint) {
+        setRecycleBin((previous) => previous.filter((item) => item.id !== itemId));
+        return;
+      }
+      const ownerId = users.some((user) => user.id === rawPoint.userId)
+        ? rawPoint.userId
+        : (selectedUserId || users[0]?.id || '');
+      const restoredPoint = { ...rawPoint, userId: ownerId };
+      setPoints((previous) => (previous.some((point) => point.id === restoredPoint.id)
+        ? previous
+        : [...previous, restoredPoint]));
+      setSelectedPointId(restoredPoint.id);
+    }
+
+    if (target.kind === 'photo') {
+      const targetPointId = target.payload?.pointId;
+      const photo = target.payload?.photo;
+      if (targetPointId && photo) {
+        setPoints((previous) => previous.map((point) => {
+          if (point.id !== targetPointId) {
+            return point;
+          }
+          if (point.photos.some((item) => item.id === photo.id)) {
+            return point;
+          }
+          const mergedPhotos = [...point.photos, photo];
+          return {
+            ...point,
+            photos: mergedPhotos,
+            featuredPhotoId: point.featuredPhotoId || (mergedPhotos.length === 1 ? photo.id : null),
+            noFeatured: mergedPhotos.length > 0 ? point.noFeatured : false,
+          };
+        }));
+      }
+    }
+
+    if (target.kind === 'user') {
+      const restoredUser = target.payload?.user;
+      const fallbackUserId = target.payload?.fallbackUserId;
+      const movedPointIds = Array.isArray(target.payload?.movedPointIds) ? target.payload.movedPointIds : [];
+      if (restoredUser && !users.some((user) => user.id === restoredUser.id)) {
+        setUsers((previous) => [...previous, restoredUser]);
+      }
+      if (restoredUser) {
+        setSelectedUserId(restoredUser.id);
+        setExpandedUserId(restoredUser.id);
+      }
+      if (restoredUser && fallbackUserId) {
+        setPoints((previous) => previous.map((point) => (
+          movedPointIds.includes(point.id) && point.userId === fallbackUserId
+            ? { ...point, userId: restoredUser.id }
+            : point
+        )));
+      }
+    }
+
+    setRecycleBin((previous) => previous.filter((item) => item.id !== itemId));
+  };
+
+  const recycleItemLabel = (item) => {
+    if (item.kind === 'photo') {
+      return text.recyclePhotoLabel;
+    }
+    if (item.kind === 'user') {
+      return text.recycleUserLabel;
+    }
+    return text.recyclePointLabel;
   };
 
   return (
@@ -2305,6 +2563,41 @@ function MapView({
             )}
           </section>
 
+          <section className="map-panel">
+            <h3>{text.recycleBinTitle} ({recycleBin.length})</h3>
+            <p className="map-muted">{text.recycleBinHint}</p>
+            {recycleBin.length === 0 && <p className="map-muted">{text.recycleBinEmpty}</p>}
+            {recycleBin.length > 0 && (
+              <ul className="map-user-places-list">
+                {recycleBin.map((item) => (
+                  <li key={item.id}>
+                    <span className="map-user-place-name" title={item.title || recycleItemLabel(item)}>
+                      {recycleItemLabel(item)}: {item.title || '-'}
+                      {' '}
+                      ({text.recycleDeletedAt} {new Date(item.deletedAt).toLocaleString()})
+                    </span>
+                    <div className="map-user-place-actions">
+                      <button
+                        type="button"
+                        className="glass-button"
+                        onClick={() => restoreRecycleItem(item.id)}
+                      >
+                        {text.recycleRestoreBtn}
+                      </button>
+                      <button
+                        type="button"
+                        className="glass-button map-danger-btn"
+                        onClick={() => hardDeleteRecycleItem(item.id)}
+                      >
+                        {text.recycleDeleteBtn}
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
           {(formMessage || searchMessage) && (
             <div className="map-message-box">
               {formMessage && <p>{formMessage}</p>}
@@ -2391,7 +2684,7 @@ function MapView({
                 );
               })}
 
-              {points.map((point) => {
+              {visiblePoints.map((point) => {
                 const owner = userMap.get(point.userId);
                 const markerColor = owner?.color || '#64748b';
                 const isSelectedMarker = selectedPointId === point.id;
