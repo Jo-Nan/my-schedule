@@ -1780,6 +1780,10 @@ function MapView({
       if (!editorNode) {
         return;
       }
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest('.map-photo-lightbox')) {
+        return;
+      }
       if (editorNode.contains(event.target)) {
         return;
       }
@@ -3130,65 +3134,73 @@ function MapView({
         </div>
       </header>
       {!readOnly && isSharePanelOpen && (
-        <section className="map-header-share-panel">
-          <div className="map-header-share-panel-head">
-            <strong>{text.shareManageBtn}</strong>
-            <button
-              type="button"
-              className="glass-button map-topbar-btn"
-              onClick={() => setIsSharePanelOpen(false)}
-            >
-              {text.shareCloseBtn}
-            </button>
-          </div>
-          {!shareEnabled && (
-            <button
-              type="button"
-              className="glass-button map-topbar-btn"
-              onClick={() => updateShareSetting('enable')}
-              disabled={isShareBusy}
-            >
-              {isShareBusy ? text.shareBusyLabel : text.shareEnableBtn}
-            </button>
-          )}
-          {shareEnabled && (
-            <>
-              <div className="map-header-share-inline">
-                <span className="map-header-share-link" title={currentShareUrl}>
-                  {currentShareUrl}
-                </span>
-                <button
-                  type="button"
-                  className="glass-button map-header-share-copy-btn"
-                  onClick={copyShareLink}
-                  disabled={isShareBusy || !currentShareUrl}
-                  aria-label={text.shareCopyBtn}
-                  title={text.shareCopyBtn}
-                >
-                  ⧉
-                </button>
-              </div>
-              <div className="map-header-share-panel-actions">
-                <button
-                  type="button"
-                  className="glass-button map-topbar-btn"
-                  onClick={() => updateShareSetting('regenerate')}
-                  disabled={isShareBusy}
-                >
-                  {isShareBusy ? text.shareBusyLabel : text.shareRegenerateBtn}
-                </button>
-                <button
-                  type="button"
-                  className="glass-button map-topbar-btn map-danger-btn"
-                  onClick={() => updateShareSetting('disable')}
-                  disabled={isShareBusy}
-                >
-                  {isShareBusy ? text.shareBusyLabel : text.shareDisableBtn}
-                </button>
-              </div>
-            </>
-          )}
-        </section>
+        <div
+          className="map-share-modal-backdrop"
+          onClick={() => setIsSharePanelOpen(false)}
+        >
+          <section
+            className="map-header-share-panel"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="map-header-share-panel-head">
+              <strong>{text.shareManageBtn}</strong>
+              <button
+                type="button"
+                className="glass-button map-topbar-btn"
+                onClick={() => setIsSharePanelOpen(false)}
+              >
+                {text.shareCloseBtn}
+              </button>
+            </div>
+            {!shareEnabled && (
+              <button
+                type="button"
+                className="glass-button map-topbar-btn"
+                onClick={() => updateShareSetting('enable')}
+                disabled={isShareBusy}
+              >
+                {isShareBusy ? text.shareBusyLabel : text.shareEnableBtn}
+              </button>
+            )}
+            {shareEnabled && (
+              <>
+                <div className="map-header-share-inline">
+                  <span className="map-header-share-link" title={currentShareUrl}>
+                    {currentShareUrl}
+                  </span>
+                  <button
+                    type="button"
+                    className="glass-button map-header-share-copy-btn"
+                    onClick={copyShareLink}
+                    disabled={isShareBusy || !currentShareUrl}
+                    aria-label={text.shareCopyBtn}
+                    title={text.shareCopyBtn}
+                  >
+                    ⧉
+                  </button>
+                </div>
+                <div className="map-header-share-panel-actions">
+                  <button
+                    type="button"
+                    className="glass-button map-topbar-btn"
+                    onClick={() => updateShareSetting('regenerate')}
+                    disabled={isShareBusy}
+                  >
+                    {isShareBusy ? text.shareBusyLabel : text.shareRegenerateBtn}
+                  </button>
+                  <button
+                    type="button"
+                    className="glass-button map-topbar-btn map-danger-btn"
+                    onClick={() => updateShareSetting('disable')}
+                    disabled={isShareBusy}
+                  >
+                    {isShareBusy ? text.shareBusyLabel : text.shareDisableBtn}
+                  </button>
+                </div>
+              </>
+            )}
+          </section>
+        </div>
       )}
 
       <div className="map-view-layout">
