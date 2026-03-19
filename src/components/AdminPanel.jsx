@@ -279,6 +279,40 @@ const AdminPanel = ({
     }
   };
 
+  const handlePromoteUser = async (user) => {
+    if (!user) {
+      return;
+    }
+
+    if (!window.confirm(`${t.adminPromoteUserConfirm || 'Promote this user to super user'}: ${user.email}?`)) {
+      return;
+    }
+
+    setError('');
+    setMessage('');
+    try {
+      const response = await fetch('/api/admin?action=user-role', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ userId: user.id, role: 'admin' }),
+      });
+      const result = await response.json();
+      if (!response.ok || result.status !== 'success') {
+        throw new Error(result.message || t.adminPromoteUserError || 'Failed to promote user');
+      }
+
+      setMessage(t.adminPromoteUserSuccess || 'User promoted to super user.');
+      await loadUsers();
+      if (selectedUserId) {
+        await Promise.all([loadUserPlans(selectedUserId), loadUserSnapshots(selectedUserId)]);
+      }
+      onAdminDataChanged?.();
+    } catch (promoteError) {
+      setError(promoteError.message || t.adminPromoteUserError || 'Failed to promote user');
+    }
+  };
+
   if (!isOpen) {
     return null;
   }
@@ -363,6 +397,11 @@ const AdminPanel = ({
                     <button className="glass-button active-tab" onClick={() => onOpenUserSchedule?.(selectedUser)}>
                       {t.adminOpenSchedule}
                     </button>
+                    {selectedUser.role !== 'admin' && selectedUser.isActive && (
+                      <button className="glass-button" style={styles.successBtn} onClick={() => handlePromoteUser(selectedUser)}>
+                        {t.adminPromoteUser || 'Set As Super User'}
+                      </button>
+                    )}
                     {selectedUser.role !== 'admin' && selectedUser.isActive && (
                       <button className="glass-button" style={styles.dangerBtn} onClick={() => handleDeleteUser(selectedUser)}>
                         {t.adminDeleteUser}

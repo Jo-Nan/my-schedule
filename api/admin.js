@@ -248,6 +248,43 @@ export default async function handler(req, res) {
       });
     }
 
+    // POST /api/admin?action=user-role - Promote user role
+    if (req.method === 'POST' && action === 'user-role') {
+      const body = await parseJsonBody(req);
+      const userId = String(body.userId || '').trim();
+      const nextRole = body.role === 'admin' ? 'admin' : 'user';
+
+      if (!userId) {
+        return res.status(400).json({ status: 'error', message: 'User id is required' });
+      }
+
+      return withDataStoreLock(async () => {
+        const store = await ensureDataStore();
+        const targetUser = store.users.find((user) => user.id === userId);
+
+        if (!targetUser || targetUser.isActive === false) {
+          return res.status(404).json({ status: 'error', message: 'User not found' });
+        }
+
+        if (targetUser.role === 'admin') {
+          return res.status(400).json({
+            status: 'error',
+            message: 'Super user role cannot be modified',
+          });
+        }
+
+        if (targetUser.role === nextRole) {
+          return res.status(200).json({ status: 'success', user: publicUser(targetUser) });
+        }
+
+        targetUser.role = nextRole;
+        targetUser.updatedAt = new Date().toISOString();
+
+        await saveUsers(store.config, store.users);
+        return res.status(200).json({ status: 'success', user: publicUser(targetUser) });
+      });
+    }
+
     // GET /api/admin?action=user-plans&userId=xxx - Get user's plans
     if (req.method === 'GET' && action === 'user-plans') {
       const userId = String(req.query.userId || '');
