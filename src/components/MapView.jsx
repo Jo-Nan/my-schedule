@@ -2,11 +2,13 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   CircleMarker,
   MapContainer,
+  Marker,
   Popup,
   TileLayer,
   Tooltip,
   useMap,
 } from 'react-leaflet';
+import { divIcon } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import './MapView.css';
 
@@ -24,16 +26,33 @@ const COLOR_PALETTE = [
 ];
 
 const CHINA_VIEW = {
-  center: [35.8617, 104.1954],
+  center: [30.5, 104.2],
   zoom: 4,
   minZoom: 3,
 };
+
+const CHINA_BOUNDS = [
+  [3.5, 73.0],
+  [53.9, 135.2],
+];
 
 const WORLD_VIEW = {
   center: [20, 0],
   zoom: 2,
   minZoom: 2,
 };
+
+const WORLD_BOUNDS = [
+  [-85, -180],
+  [85, 180],
+];
+
+const FEATURED_BUBBLE_ANCHOR_ICON = divIcon({
+  className: 'map-featured-bubble-anchor',
+  html: '<span></span>',
+  iconSize: [1, 1],
+  iconAnchor: [0, 0],
+});
 
 const TEXTS = {
   en: {
@@ -42,7 +61,7 @@ const TEXTS = {
     chinaScope: 'China',
     worldScope: 'World',
     backToSchedule: 'Back to schedule',
-    legendTitle: 'User Legend',
+    legendTitle: 'Users',
     legendHint: 'Pick the active user before adding a point.',
     addUserTitle: 'Add User',
     addUserName: 'Username',
@@ -73,6 +92,9 @@ const TEXTS = {
     uploadPhotosLabel: 'Upload photos',
     setFeaturedBtn: 'Set featured',
     clearFeaturedBtn: 'Featured: None',
+    featuredBubbleShow: 'Show featured bubbles',
+    featuredBubbleHide: 'Hide featured bubbles',
+    featuredPhotoAlt: 'Featured photo',
     featuredBadge: 'Featured',
     removePhotoBtn: 'Remove',
     removePointBtn: 'Remove point',
@@ -94,7 +116,7 @@ const TEXTS = {
     chinaScope: '中国地图',
     worldScope: '世界地图',
     backToSchedule: '返回日程',
-    legendTitle: '用户图例',
+    legendTitle: '用户',
     legendHint: '先选择当前用户，再添加地点。',
     addUserTitle: '添加用户',
     addUserName: '用户名',
@@ -125,6 +147,9 @@ const TEXTS = {
     uploadPhotosLabel: '上传照片',
     setFeaturedBtn: '设为精选',
     clearFeaturedBtn: '精选：无',
+    featuredBubbleShow: '显示精选书签',
+    featuredBubbleHide: '隐藏精选书签',
+    featuredPhotoAlt: '精选照片',
     featuredBadge: '精选',
     removePhotoBtn: '删除',
     removePointBtn: '删除点位',
@@ -264,16 +289,39 @@ function MapViewportController({ scope }) {
   useEffect(() => {
     if (scope === 'china') {
       map.setMinZoom(CHINA_VIEW.minZoom);
-      map.flyTo(CHINA_VIEW.center, CHINA_VIEW.zoom, { duration: 0.75 });
+      map.setMaxBounds(CHINA_BOUNDS);
+      map.fitBounds(CHINA_BOUNDS, {
+        paddingTopLeft: [18, 44],
+        paddingBottomRight: [18, 18],
+        animate: true,
+        duration: 0.75,
+      });
       return;
     }
 
+    map.setMaxBounds(WORLD_BOUNDS);
     map.setMinZoom(WORLD_VIEW.minZoom);
     map.flyTo(WORLD_VIEW.center, WORLD_VIEW.zoom, { duration: 0.75 });
   }, [map, scope]);
 
   return null;
 }
+
+const getFeaturedPhoto = (point) => {
+  if (!Array.isArray(point?.photos) || point.photos.length === 0) {
+    return null;
+  }
+
+  if (point.featuredPhotoId) {
+    return point.photos.find((photo) => photo.id === point.featuredPhotoId) || null;
+  }
+
+  if (point.photos.length === 1 && !point.noFeatured) {
+    return point.photos[0];
+  }
+
+  return null;
+};
 
 function MapBookmarkCard({
   point,
@@ -389,6 +437,8 @@ function MapView({
   const [users, setUsers] = useState([]);
   const [points, setPoints] = useState([]);
   const [selectedUserId, setSelectedUserId] = useState('');
+  const [isAddUserExpanded, setIsAddUserExpanded] = useState(false);
+  const [showFeaturedBubbles, setShowFeaturedBubbles] = useState(true);
 
   const [newUserName, setNewUserName] = useState('');
   const [newUserColor, setNewUserColor] = useState(COLOR_PALETTE[0]);
@@ -418,6 +468,7 @@ function MapView({
     let loadedScope = 'china';
     let loadedUsers = [fallbackUser];
     let loadedPoints = [];
+    let loadedShowFeaturedBubbles = true;
 
     if (storageKey) {
       try {
@@ -425,6 +476,7 @@ function MapView({
         if (raw) {
           const parsed = JSON.parse(raw);
           loadedScope = parsed?.scope === 'world' ? 'world' : 'china';
+          loadedShowFeaturedBubbles = parsed?.showFeaturedBubbles !== false;
           loadedUsers = Array.isArray(parsed?.users) && parsed.users.length
             ? parsed.users.map((user, index) => normalizeUser(user, index, defaultName))
             : [fallbackUser];
@@ -444,6 +496,7 @@ function MapView({
     setScope(loadedScope);
     setUsers(loadedUsers);
     setPoints(loadedPoints);
+    setShowFeaturedBubbles(loadedShowFeaturedBubbles);
     setSelectedUserId(loadedUsers[0]?.id || '');
     setNewUserColor(COLOR_PALETTE[1]);
     setNewUserRgb(hexToRgbString(COLOR_PALETTE[1]));
@@ -459,11 +512,12 @@ function MapView({
       scope,
       users,
       points,
+      showFeaturedBubbles,
       savedAt: new Date().toISOString(),
     };
 
     localStorage.setItem(storageKey, JSON.stringify(payload));
-  }, [isLoaded, scope, users, points, storageKey]);
+  }, [isLoaded, scope, users, points, showFeaturedBubbles, storageKey]);
 
   useEffect(() => {
     if (!users.length) {
@@ -773,6 +827,14 @@ function MapView({
             </button>
           </div>
 
+          <button
+            type="button"
+            className="glass-button map-featured-toggle-btn"
+            onClick={() => setShowFeaturedBubbles((previous) => !previous)}
+          >
+            {showFeaturedBubbles ? text.featuredBubbleHide : text.featuredBubbleShow}
+          </button>
+
           <button type="button" className="glass-button" onClick={onBackToSchedule}>
             {text.backToSchedule}
           </button>
@@ -811,44 +873,57 @@ function MapView({
           </section>
 
           <section className="map-panel">
-            <h3>{text.addUserTitle}</h3>
-            <label className="map-label" htmlFor="map_user_name">{text.addUserName}</label>
-            <input
-              id="map_user_name"
-              className="glass-input"
-              value={newUserName}
-              placeholder={text.addUserNamePlaceholder}
-              onChange={(event) => setNewUserName(event.target.value)}
-            />
-
-            <div className="map-inline-grid">
-              <div>
-                <label className="map-label" htmlFor="map_user_color_hex">{text.colorHexLabel}</label>
-                <input
-                  id="map_user_color_hex"
-                  type="color"
-                  className="map-color-input"
-                  value={newUserColor}
-                  onChange={(event) => {
-                    setNewUserColor(event.target.value);
-                    setNewUserRgb(hexToRgbString(event.target.value));
-                  }}
-                />
-              </div>
-              <div>
-                <label className="map-label" htmlFor="map_user_color_rgb">{text.colorRgbLabel}</label>
-                <input
-                  id="map_user_color_rgb"
-                  className="glass-input"
-                  value={newUserRgb}
-                  onChange={(event) => handleNewRgbChange(event.target.value)}
-                />
-              </div>
-            </div>
-
-            <button type="button" className="glass-button map-block-btn" onClick={handleAddUser}>
-              {text.addUserBtn}
+            <button
+              type="button"
+              className="glass-button map-collapse-btn"
+              onClick={() => setIsAddUserExpanded((previous) => !previous)}
+              aria-expanded={isAddUserExpanded}
+            >
+              <span>{text.addUserTitle}</span>
+              <span className="map-collapse-indicator">{isAddUserExpanded ? '−' : '+'}</span>
             </button>
+
+            {isAddUserExpanded && (
+              <div className="map-collapsible-body">
+                <label className="map-label" htmlFor="map_user_name">{text.addUserName}</label>
+                <input
+                  id="map_user_name"
+                  className="glass-input"
+                  value={newUserName}
+                  placeholder={text.addUserNamePlaceholder}
+                  onChange={(event) => setNewUserName(event.target.value)}
+                />
+
+                <div className="map-inline-grid">
+                  <div>
+                    <label className="map-label" htmlFor="map_user_color_hex">{text.colorHexLabel}</label>
+                    <input
+                      id="map_user_color_hex"
+                      type="color"
+                      className="map-color-input"
+                      value={newUserColor}
+                      onChange={(event) => {
+                        setNewUserColor(event.target.value);
+                        setNewUserRgb(hexToRgbString(event.target.value));
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label className="map-label" htmlFor="map_user_color_rgb">{text.colorRgbLabel}</label>
+                    <input
+                      id="map_user_color_rgb"
+                      className="glass-input"
+                      value={newUserRgb}
+                      onChange={(event) => handleNewRgbChange(event.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <button type="button" className="glass-button map-block-btn" onClick={handleAddUser}>
+                  {text.addUserBtn}
+                </button>
+              </div>
+            )}
           </section>
 
           <section className="map-panel">
@@ -971,6 +1046,42 @@ function MapView({
               attribution='&copy; OpenStreetMap contributors'
               url='https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
             />
+
+            {showFeaturedBubbles && points.map((point) => {
+              const featuredPhoto = getFeaturedPhoto(point);
+              if (!featuredPhoto) {
+                return null;
+              }
+
+              const owner = userMap.get(point.userId);
+              return (
+                <Marker
+                  key={`featured_bubble_${point.id}`}
+                  position={[point.latitude, point.longitude]}
+                  icon={FEATURED_BUBBLE_ANCHOR_ICON}
+                  interactive={false}
+                  keyboard={false}
+                >
+                  <Tooltip
+                    permanent
+                    direction="right"
+                    offset={[20, -10]}
+                    opacity={1}
+                    className="map-featured-photo-tooltip"
+                  >
+                    <div
+                      className="map-featured-photo-bubble"
+                      style={{ '--bubble-accent': owner?.color || '#38bdf8' }}
+                    >
+                      <img
+                        src={featuredPhoto.url}
+                        alt={featuredPhoto.name || text.featuredPhotoAlt}
+                      />
+                    </div>
+                  </Tooltip>
+                </Marker>
+              );
+            })}
 
             {points.map((point) => {
               const owner = userMap.get(point.userId);

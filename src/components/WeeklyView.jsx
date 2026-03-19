@@ -26,12 +26,12 @@ const WeeklyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t, ac
   const gridRef = useRef(null);
   const dayRefs = useRef({});
   
-  // Generate a window of 5 days based on dayOffset
+  // Generate a window of 7 days based on dayOffset, with today as the 3rd column by default
   const today = new Date();
   const baseDate = new Date(today);
-  baseDate.setDate(today.getDate() - 1 + dayOffset);
+  baseDate.setDate(today.getDate() - 2 + dayOffset);
   
-  const days = Array.from({ length: 5 }).map((_, i) => {
+  const days = Array.from({ length: 7 }).map((_, i) => {
     const d = new Date(baseDate);
     d.setDate(baseDate.getDate() + i);
     return getLocalDateStr(d);

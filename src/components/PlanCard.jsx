@@ -130,18 +130,6 @@ const PlanCard = ({ plan, updatePlan, deletePlan, onEdit, onDragStart, onDragEnd
           <div style={styles.headerActions}>
             <button
               className="glass-button"
-              onClick={(event) => {
-                event.stopPropagation();
-                setIsDetailOpen(true);
-              }}
-              style={styles.detailBtn}
-              title={t.viewDetail || 'View Detail'}
-              type="button"
-            >
-              ⛶
-            </button>
-            <button
-              className="glass-button"
               onClick={() => onEdit(plan)}
               style={styles.editBtn}
               title={t.editPlan}
@@ -157,6 +145,18 @@ const PlanCard = ({ plan, updatePlan, deletePlan, onEdit, onDragStart, onDragEnd
               type="button"
             >
               🗑️
+            </button>
+            <button
+              className="glass-button"
+              onClick={(event) => {
+                event.stopPropagation();
+                setIsDetailOpen(true);
+              }}
+              style={styles.detailBtn}
+              title={t.viewDetail || 'View Detail'}
+              type="button"
+            >
+              ⛶
             </button>
           </div>
         </div>
@@ -321,12 +321,16 @@ const styles = {
     opacity: 0.6,
   },
   detailBtn: {
-    padding: '0.2rem',
-    background: 'none',
-    border: 'none',
+    width: '30px',
+    height: '30px',
+    padding: 0,
+    background: 'rgba(255,255,255,0.08)',
+    border: '1px solid var(--glass-border)',
     boxShadow: 'none',
     color: 'var(--text-secondary)',
-    opacity: 0.7,
+    opacity: 0.9,
+    fontSize: '1rem',
+    lineHeight: 1,
   },
   metaRow: {
     display: 'flex',
