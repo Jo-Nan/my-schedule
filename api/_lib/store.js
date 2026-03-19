@@ -142,6 +142,28 @@ const sanitizeMessage = (message = {}) => ({
 
 const sanitizeMessages = (messages) => (Array.isArray(messages) ? messages.map(sanitizeMessage) : []);
 
+const sanitizeMapWorkspace = (workspace = {}) => {
+  if (!workspace || typeof workspace !== 'object' || Array.isArray(workspace)) {
+    return {
+      scope: 'china',
+      showFeaturedBubbles: true,
+      bubbleLayout: 'map',
+      users: [],
+      points: [],
+      savedAt: new Date().toISOString(),
+    };
+  }
+
+  return {
+    scope: workspace.scope === 'world' ? 'world' : 'china',
+    showFeaturedBubbles: workspace.showFeaturedBubbles !== false,
+    bubbleLayout: ['map', 'right', 'bottom'].includes(workspace.bubbleLayout) ? workspace.bubbleLayout : 'map',
+    users: Array.isArray(workspace.users) ? workspace.users : [],
+    points: Array.isArray(workspace.points) ? workspace.points : [],
+    savedAt: typeof workspace.savedAt === 'string' ? workspace.savedAt : new Date().toISOString(),
+  };
+};
+
 const sanitizeUser = (user = {}) => {
   const createdAt = typeof user.createdAt === 'string' ? user.createdAt : new Date().toISOString();
   const email = normalizeEmail(user.email || '');
@@ -194,6 +216,7 @@ const getStorageConfig = () => {
       userPlansPath: process.env.GITHUB_USER_PLANS_PATH || 'data/plans-by-user.json',
       snapshotsPath: process.env.GITHUB_SNAPSHOTS_PATH || 'data/plan-snapshots.json',
       messagesPath: process.env.GITHUB_MESSAGES_PATH || 'data/messages.json',
+      mapsPath: process.env.GITHUB_MAPS_PATH || 'data/map-by-user.json',
       legacyPlansPath: process.env.GITHUB_PLANS_PATH || 'data/plans.json',
     };
   }
@@ -204,6 +227,7 @@ const getStorageConfig = () => {
     userPlansPath: path.join(LOCAL_DATA_DIR, 'plans-by-user.json'),
     snapshotsPath: path.join(LOCAL_DATA_DIR, 'plan-snapshots.json'),
     messagesPath: path.join(LOCAL_DATA_DIR, 'messages.json'),
+    mapsPath: path.join(LOCAL_DATA_DIR, 'map-by-user.json'),
     legacyPlansPath: path.join(PROJECT_ROOT, 'public', 'data', 'plans.json'),
   };
 };
@@ -326,6 +350,9 @@ const withUserMaps = (store) => {
     if (!Array.isArray(store.snapshotsByUser[user.id])) {
       store.snapshotsByUser[user.id] = [];
     }
+    if (!store.mapsByUser[user.id] || typeof store.mapsByUser[user.id] !== 'object') {
+      store.mapsByUser[user.id] = sanitizeMapWorkspace();
+    }
   }
 };
 
@@ -335,6 +362,7 @@ export const ensureDataStore = async () => {
   const plansResult = await readJson(config, config.userPlansPath, {});
   const snapshotsResult = await readJson(config, config.snapshotsPath, {});
   const messagesResult = await readJson(config, config.messagesPath, []);
+  const mapsResult = await readJson(config, config.mapsPath, {});
 
   const rawUsers = Array.isArray(usersResult.data) ? usersResult.data : [];
   const users = rawUsers.map(sanitizeUser);
@@ -345,6 +373,9 @@ export const ensureDataStore = async () => {
     ? snapshotsResult.data
     : {};
   const messages = sanitizeMessages(messagesResult.data);
+  const mapsByUser = mapsResult.data && typeof mapsResult.data === 'object' && !Array.isArray(mapsResult.data)
+    ? mapsResult.data
+    : {};
 
   let changed = false;
   let admin = users.find((user) => normalizeEmail(user.email) === ADMIN_SEED.email);
@@ -389,13 +420,19 @@ export const ensureDataStore = async () => {
   for (const user of users) {
     plansByUser[user.id] = sanitizePlans(plansByUser[user.id]);
     snapshotsByUser[user.id] = sanitizeSnapshots(snapshotsByUser[user.id]);
+    mapsByUser[user.id] = sanitizeMapWorkspace(mapsByUser[user.id]);
   }
 
   if (enforceSingleActiveUserPerEmail(users)) {
     changed = true;
   }
 
-  withUserMaps({ users, plansByUser, snapshotsByUser });
+  withUserMaps({
+    users,
+    plansByUser,
+    snapshotsByUser,
+    mapsByUser,
+  });
 
   if (!snapshotsByUser[admin.id]?.length && plansByUser[admin.id]?.length) {
     snapshotsByUser[admin.id] = [
@@ -414,9 +451,17 @@ export const ensureDataStore = async () => {
     await writeJson(config, config.userPlansPath, plansByUser, 'Initialize day user plans');
     await writeJson(config, config.snapshotsPath, snapshotsByUser, 'Initialize day user snapshots');
     await writeJson(config, config.messagesPath, messages, 'Initialize day messages');
+    await writeJson(config, config.mapsPath, mapsByUser, 'Initialize day map workspace');
   }
 
-  return { config, users, plansByUser, snapshotsByUser, messages };
+  return {
+    config,
+    users,
+    plansByUser,
+    snapshotsByUser,
+    messages,
+    mapsByUser,
+  };
 };
 
 export const saveUsers = async (config, users) => {
@@ -435,6 +480,10 @@ export const saveSnapshotsByUser = async (config, snapshotsByUser) => {
 
 export const saveMessages = async (config, messages) => {
   await writeJson(config, config.messagesPath, sanitizeMessages(messages), 'Update day messages');
+};
+
+export const saveMapsByUser = async (config, mapsByUser) => {
+  await writeJson(config, config.mapsPath, mapsByUser, 'Update day map workspace');
 };
 
 export const findUsersByEmail = (users, email) => users.filter((user) => normalizeEmail(user.email) === normalizeEmail(email));
@@ -512,6 +561,13 @@ export const createMessageRecord = ({ userId, userEmail, username = '', content,
 });
 
 export const getMessages = (messages) => sanitizeMessages(messages).sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+
+export const getUserMapWorkspace = (mapsByUser, userId) => sanitizeMapWorkspace(mapsByUser[userId]);
+
+export const setUserMapWorkspace = (mapsByUser, userId, workspace) => {
+  mapsByUser[userId] = sanitizeMapWorkspace(workspace);
+  return mapsByUser[userId];
+};
 
 export const withDataStoreLock = async (callback) => {
   const previousTask = dataStoreMutationQueue;

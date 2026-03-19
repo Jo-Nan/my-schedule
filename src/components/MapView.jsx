@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { upload } from '@vercel/blob/client';
 import {
   CircleMarker,
   MapContainer,
@@ -61,6 +62,7 @@ const MAP_DB_STORE = 'workspace';
 const MAX_UPLOAD_FILE_MB = 12;
 const MAX_CANVAS_EDGE = 1920;
 const MAX_PHOTO_COUNT_PER_POINT = 24;
+const MAP_AUTO_UPLOAD_DELAY_MS = 1200;
 
 const openMapDatabase = () => new Promise((resolve, reject) => {
   if (typeof window === 'undefined' || !window.indexedDB) {
@@ -118,6 +120,7 @@ const TEXTS = {
     backToSchedule: 'Back to schedule',
     legendTitle: 'Users',
     legendHint: 'Pick a user to view/edit their points.',
+    userEditBtn: 'Edit user',
     userPlacesTitle: 'User places',
     placeEditBtn: 'Edit',
     placeDeleteBtn: 'Delete',
@@ -194,6 +197,7 @@ const TEXTS = {
     backToSchedule: '返回日程',
     legendTitle: '用户',
     legendHint: '点击用户查看并管理名下地点。',
+    userEditBtn: '编辑用户',
     userPlacesTitle: '用户地点',
     placeEditBtn: '编辑',
     placeDeleteBtn: '删除',
@@ -318,6 +322,8 @@ const normalizePhoto = (photo, index) => ({
   id: isNonEmpty(photo?.id) ? photo.id : makeId(`photo_${index}`),
   name: isNonEmpty(photo?.name) ? photo.name.trim() : '',
   url: isNonEmpty(photo?.url) ? photo.url.trim() : '',
+  pathname: isNonEmpty(photo?.pathname) ? photo.pathname.trim() : '',
+  contentType: isNonEmpty(photo?.contentType) ? photo.contentType.trim() : '',
   width: Number.isFinite(photo?.width) ? Math.max(1, Math.round(photo.width)) : null,
   height: Number.isFinite(photo?.height) ? Math.max(1, Math.round(photo.height)) : null,
 });
@@ -391,6 +397,27 @@ const loadImageFromBlob = (blob) => new Promise((resolve, reject) => {
 
 const renderCanvasToDataUrl = (canvas, mimeType, quality) => canvas.toDataURL(mimeType, quality);
 
+const dataUrlToBlob = (value) => {
+  if (!isNonEmpty(value)) {
+    return null;
+  }
+
+  const matched = value.match(/^data:([^;,]+)?(;base64)?,(.*)$/);
+  if (!matched) {
+    return null;
+  }
+
+  const mimeType = matched[1] || 'application/octet-stream';
+  const isBase64 = Boolean(matched[2]);
+  const payload = matched[3] || '';
+  const binary = isBase64 ? atob(payload) : decodeURIComponent(payload);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return new Blob([bytes], { type: mimeType });
+};
+
 const compressImageFile = async (file) => {
   const image = await loadImageFromBlob(file);
   const originalWidth = image.naturalWidth || image.width;
@@ -444,6 +471,95 @@ const getPhotoBubbleSize = (photo) => {
   const bubbleHeight = Math.max(88, Math.min(150, Math.round(Math.min(height, 460) * 0.24)));
   const bubbleWidth = Math.max(88, Math.min(238, Math.round(bubbleHeight * ratio)));
   return { width: bubbleWidth, height: bubbleHeight };
+};
+
+const sanitizeFilename = (filename = '') => {
+  const withoutControlChars = Array.from(String(filename || 'image'))
+    .filter((char) => {
+      const code = char.charCodeAt(0);
+      return code >= 32 && code !== 127;
+    })
+    .join('');
+
+  const normalized = withoutControlChars
+    .trim()
+    .replace(/[<>:"/\\|?*]+/g, '-')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return normalized || 'image';
+};
+
+const parseWorkspace = (rawWorkspace, defaultName) => {
+  const fallbackUser = {
+    id: makeId('user'),
+    name: defaultName,
+    color: COLOR_PALETTE[0],
+  };
+
+  const safeWorkspace = rawWorkspace && typeof rawWorkspace === 'object' && !Array.isArray(rawWorkspace)
+    ? rawWorkspace
+    : {};
+
+  const loadedScope = safeWorkspace?.scope === 'world' ? 'world' : 'china';
+  const loadedShowFeaturedBubbles = safeWorkspace?.showFeaturedBubbles !== false;
+  const loadedBubbleLayout = ['map', 'right', 'bottom'].includes(safeWorkspace?.bubbleLayout)
+    ? safeWorkspace.bubbleLayout
+    : 'right';
+
+  const loadedUsers = Array.isArray(safeWorkspace?.users) && safeWorkspace.users.length
+    ? safeWorkspace.users.map((user, index) => normalizeUser(user, index, defaultName))
+    : [fallbackUser];
+
+  const loadedPoints = Array.isArray(safeWorkspace?.points)
+    ? safeWorkspace.points
+        .map((point, index) => normalizePoint(point, index, loadedUsers))
+        .filter(Boolean)
+    : [];
+
+  const savedAt = typeof safeWorkspace?.savedAt === 'string' ? safeWorkspace.savedAt : '';
+  const savedAtStamp = Number.isNaN(new Date(savedAt).getTime()) ? 0 : new Date(savedAt).getTime();
+
+  return {
+    scope: loadedScope,
+    users: loadedUsers,
+    points: loadedPoints,
+    showFeaturedBubbles: loadedShowFeaturedBubbles,
+    bubbleLayout: loadedBubbleLayout,
+    savedAt,
+    savedAtStamp,
+  };
+};
+
+const workspaceToPayload = ({ scope, users, points, showFeaturedBubbles, bubbleLayout }) => ({
+  scope: scope === 'world' ? 'world' : 'china',
+  users: Array.isArray(users) ? users : [],
+  points: Array.isArray(points) ? points : [],
+  showFeaturedBubbles: showFeaturedBubbles !== false,
+  bubbleLayout: ['map', 'right', 'bottom'].includes(bubbleLayout) ? bubbleLayout : 'right',
+  savedAt: new Date().toISOString(),
+});
+
+const workspaceHash = ({ scope, users, points, showFeaturedBubbles, bubbleLayout }) => JSON.stringify({
+  scope: scope === 'world' ? 'world' : 'china',
+  users: Array.isArray(users) ? users : [],
+  points: Array.isArray(points) ? points : [],
+  showFeaturedBubbles: showFeaturedBubbles !== false,
+  bubbleLayout: ['map', 'right', 'bottom'].includes(bubbleLayout) ? bubbleLayout : 'right',
+});
+
+const buildPhotoReadUrl = (photo, ownerId) => {
+  const pathname = isNonEmpty(photo?.pathname) ? photo.pathname.trim() : '';
+  if (pathname && ownerId) {
+    const params = new URLSearchParams({
+      action: 'read',
+      pathname,
+      targetUserId: ownerId,
+      mode: 'inline',
+    });
+    return `/api/attachments?${params.toString()}`;
+  }
+  return isNonEmpty(photo?.url) ? photo.url.trim() : '';
 };
 
 function MapViewportController({ scope }) {
@@ -563,7 +679,9 @@ function FeaturedDockLines({ featuredPoints, layout }) {
 function MapBookmarkCard({
   point,
   owner,
+  ownerId,
   text,
+  photoSrcResolver,
   onUpdatePoint,
   onUploadPhotos,
   onSetFeatured,
@@ -631,7 +749,7 @@ function MapBookmarkCard({
             const isFeatured = photo.id === point.featuredPhotoId;
             return (
               <figure key={photo.id} className={`map-photo-card ${isFeatured ? 'is-featured' : ''}`}>
-                <img src={photo.url} alt={photo.name || text.photosTitle} />
+                <img src={photoSrcResolver(photo, ownerId)} alt={photo.name || text.photosTitle} />
                 <figcaption title={photo.name}>{photo.name || 'image'}</figcaption>
                 <div className="map-photo-actions">
                   <button
@@ -675,8 +793,9 @@ function MapView({
   const [points, setPoints] = useState([]);
   const [selectedUserId, setSelectedUserId] = useState('');
   const [isAddUserExpanded, setIsAddUserExpanded] = useState(false);
+  const [isUserEditExpanded, setIsUserEditExpanded] = useState(false);
   const [showFeaturedBubbles, setShowFeaturedBubbles] = useState(true);
-  const [bubbleLayout, setBubbleLayout] = useState('map');
+  const [bubbleLayout, setBubbleLayout] = useState('right');
   const [selectedPointId, setSelectedPointId] = useState('');
 
   const [newUserName, setNewUserName] = useState('');
@@ -697,48 +816,32 @@ function MapView({
   const [formMessage, setFormMessage] = useState('');
 
   const [isLoaded, setIsLoaded] = useState(false);
+  const [isServerHydrated, setIsServerHydrated] = useState(false);
+  const autoUploadTimerRef = useRef(null);
+  const lastServerHashRef = useRef('');
+  const localLoadedAtRef = useRef(0);
+
+  useEffect(() => () => {
+    if (autoUploadTimerRef.current) {
+      clearTimeout(autoUploadTimerRef.current);
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
 
     const loadWorkspace = async () => {
       const defaultName = activeUserName || (language === 'zh' ? '用户' : 'User');
-      const fallbackUser = {
-        id: makeId('user'),
-        name: defaultName,
-        color: COLOR_PALETTE[0],
-      };
-
-      let loadedScope = 'china';
-      let loadedUsers = [fallbackUser];
-      let loadedPoints = [];
-      let loadedShowFeaturedBubbles = true;
-      let loadedBubbleLayout = 'map';
+      let loadedWorkspace = parseWorkspace(null, defaultName);
 
       if (storageKey) {
         try {
           const fromDb = await readWorkspaceFromDb(storageKey);
           const localBackup = localStorage.getItem(storageKey);
           const parsed = fromDb || (localBackup ? JSON.parse(localBackup) : null);
-          if (parsed) {
-            loadedScope = parsed?.scope === 'world' ? 'world' : 'china';
-            loadedShowFeaturedBubbles = parsed?.showFeaturedBubbles !== false;
-            loadedBubbleLayout = ['map', 'right', 'bottom'].includes(parsed?.bubbleLayout)
-              ? parsed.bubbleLayout
-              : 'map';
-            loadedUsers = Array.isArray(parsed?.users) && parsed.users.length
-              ? parsed.users.map((user, index) => normalizeUser(user, index, defaultName))
-              : [fallbackUser];
-            loadedPoints = Array.isArray(parsed?.points)
-              ? parsed.points
-                  .map((point, index) => normalizePoint(point, index, loadedUsers))
-                  .filter(Boolean)
-              : [];
-          }
+          loadedWorkspace = parseWorkspace(parsed, defaultName);
         } catch {
-          loadedScope = 'china';
-          loadedUsers = [fallbackUser];
-          loadedPoints = [];
+          loadedWorkspace = parseWorkspace(null, defaultName);
         }
       }
 
@@ -746,16 +849,20 @@ function MapView({
         return;
       }
 
-      setScope(loadedScope);
-      setUsers(loadedUsers);
-      setPoints(loadedPoints);
-      setShowFeaturedBubbles(loadedShowFeaturedBubbles);
-      setBubbleLayout(loadedBubbleLayout);
-      setSelectedUserId(loadedUsers[0]?.id || '');
-      setExpandedUserId(loadedUsers[0]?.id || '');
+      localLoadedAtRef.current = loadedWorkspace.savedAtStamp;
+      setScope(loadedWorkspace.scope);
+      setUsers(loadedWorkspace.users);
+      setPoints(loadedWorkspace.points);
+      setShowFeaturedBubbles(loadedWorkspace.showFeaturedBubbles);
+      setBubbleLayout(loadedWorkspace.bubbleLayout);
+      setSelectedUserId(loadedWorkspace.users[0]?.id || '');
+      setExpandedUserId(loadedWorkspace.users[0]?.id || '');
       setSelectedPointId('');
       setNewUserColor(COLOR_PALETTE[1]);
       setNewUserRgb(hexToRgbString(COLOR_PALETTE[1]));
+      setFormMessage('');
+      setIsServerHydrated(false);
+      lastServerHashRef.current = '';
       setIsLoaded(true);
     };
 
@@ -767,27 +874,83 @@ function MapView({
   }, [activeUserName, language, storageKey]);
 
   useEffect(() => {
+    if (!isLoaded || !activeUserId) {
+      return undefined;
+    }
+
+    let cancelled = false;
+    const defaultName = activeUserName || (language === 'zh' ? '用户' : 'User');
+
+    const hydrateFromServer = async () => {
+      try {
+        const response = await fetch(`/api/maps?t=${Date.now()}`, {
+          credentials: 'same-origin',
+        });
+        if (response.status === 401) {
+          return;
+        }
+
+        const result = await response.json();
+        if (!response.ok || result.status !== 'success') {
+          throw new Error(result.message || 'Failed to load map workspace');
+        }
+
+        const serverWorkspace = parseWorkspace(result.workspace, defaultName);
+        const serverHash = workspaceHash(serverWorkspace);
+
+        if (cancelled) {
+          return;
+        }
+
+        lastServerHashRef.current = serverHash;
+
+        if (serverWorkspace.savedAtStamp >= localLoadedAtRef.current) {
+          setScope(serverWorkspace.scope);
+          setUsers(serverWorkspace.users);
+          setPoints(serverWorkspace.points);
+          setShowFeaturedBubbles(serverWorkspace.showFeaturedBubbles);
+          setBubbleLayout(serverWorkspace.bubbleLayout);
+          setSelectedUserId(serverWorkspace.users[0]?.id || '');
+          setExpandedUserId(serverWorkspace.users[0]?.id || '');
+          setSelectedPointId('');
+        }
+      } catch {
+        // Keep local workspace when server sync is unavailable.
+      } finally {
+        if (!cancelled) {
+          setIsServerHydrated(true);
+        }
+      }
+    };
+
+    hydrateFromServer();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeUserId, activeUserName, isLoaded, language]);
+
+  useEffect(() => {
     if (!isLoaded || !storageKey) {
       return;
     }
 
-    const payload = {
+    const payload = workspaceToPayload({
       scope,
       users,
       points,
       showFeaturedBubbles,
       bubbleLayout,
-      savedAt: new Date().toISOString(),
-    };
+    });
 
     (async () => {
       try {
         await writeWorkspaceToDb(storageKey, payload);
         localStorage.setItem(storageKey, JSON.stringify({
-          scope,
-          showFeaturedBubbles,
-          bubbleLayout,
-          users,
+          scope: payload.scope,
+          showFeaturedBubbles: payload.showFeaturedBubbles,
+          bubbleLayout: payload.bubbleLayout,
+          users: payload.users,
           points: [],
           savedAt: payload.savedAt,
         }));
@@ -800,6 +963,68 @@ function MapView({
       }
     })();
   }, [bubbleLayout, isLoaded, points, scope, showFeaturedBubbles, storageKey, text.storageLimitError, users]);
+
+  useEffect(() => {
+    if (!isLoaded || !isServerHydrated || !activeUserId) {
+      return undefined;
+    }
+
+    const nextPayload = workspaceToPayload({
+      scope,
+      users,
+      points,
+      showFeaturedBubbles,
+      bubbleLayout,
+    });
+    const nextHash = workspaceHash(nextPayload);
+
+    if (nextHash === lastServerHashRef.current) {
+      return undefined;
+    }
+
+    if (autoUploadTimerRef.current) {
+      clearTimeout(autoUploadTimerRef.current);
+    }
+
+    autoUploadTimerRef.current = setTimeout(async () => {
+      try {
+        const response = await fetch('/api/maps', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify(nextPayload),
+        });
+        if (!response.ok) {
+          return;
+        }
+
+        const result = await response.json();
+        if (result?.status !== 'success') {
+          return;
+        }
+
+        lastServerHashRef.current = workspaceHash(parseWorkspace(result.workspace, activeUserName || 'User'));
+      } catch {
+        // Keep local copy and retry on next workspace mutation.
+      }
+    }, MAP_AUTO_UPLOAD_DELAY_MS);
+
+    return () => {
+      if (autoUploadTimerRef.current) {
+        clearTimeout(autoUploadTimerRef.current);
+      }
+    };
+  }, [
+    activeUserId,
+    activeUserName,
+    bubbleLayout,
+    isLoaded,
+    isServerHydrated,
+    points,
+    scope,
+    showFeaturedBubbles,
+    users,
+  ]);
 
   useEffect(() => {
     if (!users.length) {
@@ -865,6 +1090,10 @@ function MapView({
     [points, selectedPointId],
   );
   const selectedPointOwner = selectedPoint ? userMap.get(selectedPoint.userId) : null;
+  const resolvePhotoSrc = useCallback(
+    (photo, ownerId) => buildPhotoReadUrl(photo, ownerId || activeUserId),
+    [activeUserId],
+  );
 
   useEffect(() => {
     setEditUserName(selectedUser?.name || '');
@@ -1098,8 +1327,60 @@ function MapView({
   };
 
   const deletePoint = (pointId) => {
+    const point = points.find((item) => item.id === pointId);
+    if (point?.photos?.length && activeUserId) {
+      point.photos.forEach((photo) => {
+        if (!isNonEmpty(photo?.pathname)) {
+          return;
+        }
+        fetch('/api/attachments?action=delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({
+            targetUserId: activeUserId,
+            pathname: photo.pathname,
+            url: photo.url || '',
+          }),
+        }).catch(() => {});
+      });
+    }
+
     setPoints((previous) => previous.filter((point) => point.id !== pointId));
     setSelectedPointId((previous) => (previous === pointId ? '' : previous));
+  };
+
+  const uploadMapPhoto = async (file, pointId) => {
+    const compressed = await compressImageFile(file);
+
+    if (!activeUserId) {
+      return {
+        ...compressed,
+        pathname: '',
+        contentType: file.type || '',
+      };
+    }
+
+    const safeFilename = sanitizeFilename(file.name || 'image.jpg');
+    const pathname = `attachments/${activeUserId}/map/${pointId}/${Date.now()}-${safeFilename}`;
+    const uploadBlob = dataUrlToBlob(compressed.url) || file;
+
+    const blob = await upload(pathname, uploadBlob, {
+      access: 'private',
+      handleUploadUrl: '/api/attachments?action=upload',
+      clientPayload: JSON.stringify({
+        targetUserId: activeUserId,
+        planId: `map_${pointId}`,
+      }),
+      multipart: uploadBlob.size > 5 * 1024 * 1024,
+    });
+
+    return {
+      ...compressed,
+      url: blob.url,
+      pathname: blob.pathname || pathname,
+      contentType: blob.contentType || uploadBlob.type || file.type || '',
+    };
   };
 
   const uploadPhotos = async (pointId, fileList) => {
@@ -1129,7 +1410,7 @@ function MapView({
       }
 
       const candidateFiles = allowedFiles.slice(0, restSlots);
-      const settled = await Promise.allSettled(candidateFiles.map((file) => compressImageFile(file)));
+      const settled = await Promise.allSettled(candidateFiles.map((file) => uploadMapPhoto(file, pointId)));
       const photos = settled
         .filter((result) => result.status === 'fulfilled')
         .map((result) => result.value);
@@ -1197,7 +1478,22 @@ function MapView({
     )));
   };
 
-  const deletePhoto = (pointId, photoId) => {
+  const deletePhoto = async (pointId, photoId) => {
+    const point = points.find((item) => item.id === pointId);
+    const photo = point?.photos?.find((item) => item.id === photoId);
+    if (photo?.pathname && activeUserId) {
+      fetch('/api/attachments?action=delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          targetUserId: activeUserId,
+          pathname: photo.pathname,
+          url: photo.url || '',
+        }),
+      }).catch(() => {});
+    }
+
     setPoints((previous) => previous.map((point) => {
       if (point.id !== pointId) {
         return point;
@@ -1233,10 +1529,6 @@ function MapView({
   return (
     <section className="glass-panel map-view-root">
       <header className="map-view-header">
-        <div>
-          <h2>{text.title}</h2>
-          <p>{text.subtitle}</p>
-        </div>
         <div className="map-view-actions">
           <div className="map-scope-toggle">
             <button
@@ -1285,8 +1577,16 @@ function MapView({
       <div className="map-view-layout">
         <aside className="map-sidebar">
           <section className="map-panel">
-            <h3>{text.legendTitle}</h3>
-            <p className="map-muted">{text.legendHint}</p>
+            <div className="map-user-panel-head">
+              <button
+                type="button"
+                className="glass-button map-user-edit-toggle-btn"
+                onClick={() => setIsUserEditExpanded((previous) => !previous)}
+                disabled={!selectedUser}
+              >
+                {text.userEditBtn}
+              </button>
+            </div>
             <ul className="map-user-list">
               {users.map((user) => {
                 const markerCount = markerCountByUser[user.id] || 0;
@@ -1353,35 +1653,37 @@ function MapView({
               </div>
             )}
 
-            <div className="map-user-edit-box">
-              <label className="map-label" htmlFor="map_edit_user_name">{text.editUserTitle}</label>
-              <input
-                id="map_edit_user_name"
-                className="glass-input"
-                value={editUserName}
-                placeholder={text.editUserNamePlaceholder}
-                onChange={(event) => setEditUserName(event.target.value)}
-                disabled={!selectedUser}
-              />
-              <div className="map-user-edit-actions">
-                <button
-                  type="button"
-                  className="glass-button map-user-rename-btn"
-                  onClick={handleRenameUser}
+            {isUserEditExpanded && (
+              <div className="map-user-edit-box">
+                <label className="map-label" htmlFor="map_edit_user_name">{text.editUserTitle}</label>
+                <input
+                  id="map_edit_user_name"
+                  className="glass-input"
+                  value={editUserName}
+                  placeholder={text.editUserNamePlaceholder}
+                  onChange={(event) => setEditUserName(event.target.value)}
                   disabled={!selectedUser}
-                >
-                  {text.renameUserBtn}
-                </button>
-                <button
-                  type="button"
-                  className="glass-button map-danger-btn"
-                  onClick={handleDeleteUser}
-                  disabled={!selectedUser || users.length <= 1}
-                >
-                  {text.deleteUserBtn}
-                </button>
+                />
+                <div className="map-user-edit-actions">
+                  <button
+                    type="button"
+                    className="glass-button map-user-edit-action-btn"
+                    onClick={handleRenameUser}
+                    disabled={!selectedUser}
+                  >
+                    {text.renameUserBtn}
+                  </button>
+                  <button
+                    type="button"
+                    className="glass-button map-danger-btn map-user-edit-action-btn"
+                    onClick={handleDeleteUser}
+                    disabled={!selectedUser || users.length <= 1}
+                  >
+                    {text.deleteUserBtn}
+                  </button>
+                </div>
               </div>
-            </div>
+            )}
           </section>
 
           <section className="map-panel">
@@ -1603,7 +1905,7 @@ function MapView({
                         }}
                       >
                         <img
-                          src={featuredPhoto.url}
+                          src={resolvePhotoSrc(featuredPhoto, activeUserId)}
                           alt={featuredPhoto.name || text.featuredPhotoAlt}
                         />
                       </div>
@@ -1667,7 +1969,7 @@ function MapView({
                       }}
                     >
                       <img
-                        src={featuredPhoto.url}
+                        src={resolvePhotoSrc(featuredPhoto, activeUserId)}
                         alt={featuredPhoto.name || text.featuredPhotoAlt}
                       />
                     </div>
@@ -1697,7 +1999,9 @@ function MapView({
           <MapBookmarkCard
             point={selectedPoint}
             owner={selectedPointOwner}
+            ownerId={activeUserId}
             text={text}
+            photoSrcResolver={resolvePhotoSrc}
             onUpdatePoint={updatePoint}
             onUploadPhotos={uploadPhotos}
             onSetFeatured={setFeaturedPhoto}

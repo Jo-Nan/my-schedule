@@ -7,23 +7,11 @@
 
 .map-view-header {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
+  align-items: center;
+  justify-content: flex-end;
   gap: 1rem;
-  margin-bottom: 1rem;
+  margin-bottom: 0.72rem;
   flex-wrap: wrap;
-}
-
-.map-view-header h2 {
-  margin: 0;
-  font-size: 1.3rem;
-  letter-spacing: -0.015em;
-}
-
-.map-view-header p {
-  margin-top: 0.25rem;
-  color: var(--text-secondary);
-  font-size: 0.92rem;
 }
 
 .map-view-actions {
@@ -245,7 +233,19 @@
   border-top: 1px dashed rgba(148, 163, 184, 0.35);
   display: flex;
   flex-direction: column;
-  gap: 0.45rem;
+  gap: 0.38rem;
+}
+
+.map-user-panel-head {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.map-user-edit-toggle-btn {
+  font-size: 0.72rem;
+  padding: 0.28rem 0.54rem;
+  border-radius: 10px;
+  box-shadow: none;
 }
 
 .map-user-places-box {
@@ -298,11 +298,15 @@
 .map-user-edit-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 0.45rem;
+  gap: 0.38rem;
 }
 
-.map-user-rename-btn {
+.map-user-edit-action-btn {
   box-shadow: none;
+  font-size: 0.7rem;
+  line-height: 1.1;
+  padding: 0.34rem 0.4rem;
+  border-radius: 9px;
 }
 
 .map-user-count,
