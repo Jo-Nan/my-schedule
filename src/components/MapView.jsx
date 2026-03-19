@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { upload } from '@vercel/blob/client';
 import {
   CircleMarker,
@@ -717,6 +718,60 @@ function MapBookmarkCard({
     }
   };
 
+  const lightboxNode = activeLightboxPhoto && typeof document !== 'undefined'
+    ? createPortal(
+        <div
+          className="map-photo-lightbox"
+          role="dialog"
+          aria-modal="true"
+          onClick={closeLightbox}
+        >
+          <div
+            className="map-photo-lightbox-panel"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="glass-button map-photo-lightbox-close"
+              onClick={closeLightbox}
+            >
+              {text.closePreviewBtn}
+            </button>
+            <button
+              type="button"
+              className="glass-button map-photo-lightbox-nav prev"
+              onClick={() => shiftLightboxPhoto(-1)}
+            >
+              {text.prevPhotoBtn}
+            </button>
+            <div
+              className="map-photo-lightbox-image-wrap"
+              onTouchStart={handleLightboxTouchStart}
+              onTouchMove={handleLightboxTouchMove}
+              onTouchEnd={handleLightboxTouchEnd}
+            >
+              <img
+                src={photoSrcResolver(activeLightboxPhoto, ownerId)}
+                alt={activeLightboxPhoto.name || text.photosTitle}
+              />
+            </div>
+            <button
+              type="button"
+              className="glass-button map-photo-lightbox-nav next"
+              onClick={() => shiftLightboxPhoto(1)}
+            >
+              {text.nextPhotoBtn}
+            </button>
+            <p className="map-photo-lightbox-caption">
+              {activeLightboxPhoto.name || text.photosTitle}
+              {point.photos.length > 1 ? ` (${lightboxPhotoIndex + 1}/${point.photos.length})` : ''}
+            </p>
+          </div>
+        </div>,
+        document.body,
+      )
+    : null;
+
   return (
     <div className="map-bookmark-card">
       <div className="map-bookmark-head">
@@ -808,56 +863,7 @@ function MapBookmarkCard({
         </div>
       )}
 
-      {activeLightboxPhoto && (
-        <div
-          className="map-photo-lightbox"
-          role="dialog"
-          aria-modal="true"
-          onClick={closeLightbox}
-        >
-          <div
-            className="map-photo-lightbox-panel"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <button
-              type="button"
-              className="glass-button map-photo-lightbox-close"
-              onClick={closeLightbox}
-            >
-              {text.closePreviewBtn}
-            </button>
-            <button
-              type="button"
-              className="glass-button map-photo-lightbox-nav prev"
-              onClick={() => shiftLightboxPhoto(-1)}
-            >
-              {text.prevPhotoBtn}
-            </button>
-            <div
-              className="map-photo-lightbox-image-wrap"
-              onTouchStart={handleLightboxTouchStart}
-              onTouchMove={handleLightboxTouchMove}
-              onTouchEnd={handleLightboxTouchEnd}
-            >
-              <img
-                src={photoSrcResolver(activeLightboxPhoto, ownerId)}
-                alt={activeLightboxPhoto.name || text.photosTitle}
-              />
-            </div>
-            <button
-              type="button"
-              className="glass-button map-photo-lightbox-nav next"
-              onClick={() => shiftLightboxPhoto(1)}
-            >
-              {text.nextPhotoBtn}
-            </button>
-            <p className="map-photo-lightbox-caption">
-              {activeLightboxPhoto.name || text.photosTitle}
-              {point.photos.length > 1 ? ` (${lightboxPhotoIndex + 1}/${point.photos.length})` : ''}
-            </p>
-          </div>
-        </div>
-      )}
+      {lightboxNode}
     </div>
   );
 }
