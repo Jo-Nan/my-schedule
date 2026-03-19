@@ -9,7 +9,19 @@ const sharedCalendarNavText = {
   letterSpacing: '0.01em',
 };
 
-const DailyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t, activeUserId, onCopyPlans, onCutPlans, onPastePlan, hasClipboard }) => {
+const getPlanSortOrder = (plan) => (Number.isFinite(plan?.sortOrder) ? plan.sortOrder : Number.MAX_SAFE_INTEGER);
+
+const comparePlansByOrder = (left, right) => {
+  const orderDiff = getPlanSortOrder(left) - getPlanSortOrder(right);
+  if (orderDiff !== 0) {
+    return orderDiff;
+  }
+  if (left.status !== 'completed' && right.status === 'completed') return -1;
+  if (left.status === 'completed' && right.status !== 'completed') return 1;
+  return (left.time || '').localeCompare(right.time || '');
+};
+
+const DailyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t, activeUserId, onReorderPlan, onCopyPlans, onCutPlans, onPastePlan, hasClipboard }) => {
   const [modalState, setModalState] = useState({ isOpen: false, date: null, editingPlan: null });
   // Start from Today
   const [currentDateObj, setCurrentDateObj] = useState(new Date());
@@ -40,12 +52,7 @@ const DailyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t, act
 
   const dayWeather = weatherData.find(w => w.date === dateStr);
   
-  const dayPlans = plans.filter(p => p.date === dateStr);
-  dayPlans.sort((a,b) => {
-    if (a.status !== 'completed' && b.status === 'completed') return -1;
-    if (a.status === 'completed' && b.status !== 'completed') return 1;
-    return (a.time || '').localeCompare(b.time || '');
-  });
+  const dayPlans = plans.filter(p => p.date === dateStr).sort(comparePlansByOrder);
 
   const getDayName = (dStr) => {
     return new Intl.DateTimeFormat(t.languageToggle === '🌐 English' ? 'en-US' : 'zh-CN', { weekday: 'long' }).format(new Date(dStr));
@@ -83,10 +90,12 @@ const DailyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t, act
     e.dataTransfer.dropEffect = 'move';
   };
 
-  const handleDrop = (e, targetDate) => {
+  const handleDrop = (e, targetDate, targetIndex = null) => {
     e.preventDefault();
-    if (draggedPlan && draggedPlan.date !== targetDate) {
-      updatePlan(draggedPlan.id, { date: targetDate });
+    e.stopPropagation();
+    if (draggedPlan) {
+      const fallbackIndex = dayPlans.length;
+      onReorderPlan?.(draggedPlan.id, targetDate, Number.isFinite(targetIndex) ? targetIndex : fallbackIndex);
     }
     setDraggedPlan(null);
   };
@@ -252,7 +261,7 @@ const DailyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t, act
         className="daily-timeline-container" 
         style={styles.timelineContainer}
         onDragOver={handleDragOver}
-        onDrop={(e) => handleDrop(e, dateStr)}
+        onDrop={(e) => handleDrop(e, dateStr, dayPlans.length)}
       >
         {dayPlans.length === 0 ? (
           <div style={styles.emptyState}>
@@ -261,8 +270,14 @@ const DailyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t, act
           </div>
         ) : (
           <div className="daily-plans-stack" style={styles.plansStack}>
-            {dayPlans.map(plan => (
-              <div key={plan.id} className="daily-plan-wrapper" style={styles.planWrapper}>
+            {dayPlans.map((plan, planIndex) => (
+              <div
+                key={plan.id}
+                className="daily-plan-wrapper"
+                style={styles.planWrapper}
+                onDragOver={handleDragOver}
+                onDrop={(e) => handleDrop(e, dateStr, planIndex)}
+              >
                 {/* Visual Timeline Node */}
                 <div className="daily-timeline-node-box" style={styles.timelineNodeBox}>
                   <div style={{

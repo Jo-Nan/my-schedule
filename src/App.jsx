@@ -60,8 +60,22 @@ const normalizeImportedPlan = (plan, index, fallbackDate) => ({
     : [],
   progress: Number.isFinite(plan?.progress) ? Math.max(0, Math.min(100, Math.round(plan.progress))) : 0,
   status: typeof plan?.status === 'string' && plan.status ? plan.status : 'uncompleted',
+  sortOrder: Number.isFinite(plan?.sortOrder) ? Math.round(plan.sortOrder) : null,
   updatedAt: Number.isFinite(plan?.updatedAt) ? plan.updatedAt : Date.now(),
 });
+
+const getPlanSortOrder = (plan) => (Number.isFinite(plan?.sortOrder) ? plan.sortOrder : Number.MAX_SAFE_INTEGER);
+
+const comparePlansByOrder = (left, right) => {
+  const orderDiff = getPlanSortOrder(left) - getPlanSortOrder(right);
+  if (orderDiff !== 0) {
+    return orderDiff;
+  }
+
+  if (left.status !== 'completed' && right.status === 'completed') return -1;
+  if (left.status === 'completed' && right.status !== 'completed') return 1;
+  return (left.time || '').localeCompare(right.time || '');
+};
 
 const extractImportedPlans = (payload) => {
   if (Array.isArray(payload)) {
@@ -542,8 +556,9 @@ function App() {
   };
 
   const addPlan = (newPlan) => {
+    const now = Date.now();
     const completePlan = {
-      id: newPlan.id || `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+      id: newPlan.id || `${now}-${Math.random().toString(36).slice(2, 9)}`,
       event: newPlan.event || '',
       date: newPlan.date || getLocalDateStr(),
       time: newPlan.time || '',
@@ -555,11 +570,58 @@ function App() {
         : [],
       progress: newPlan.progress || 0,
       status: newPlan.status || 'uncompleted',
-      updatedAt: Date.now(),
+      sortOrder: Number.isFinite(newPlan.sortOrder) ? Math.round(newPlan.sortOrder) : now,
+      updatedAt: now,
     };
 
     setPlans((prev) => [...prev, completePlan]);
     setPendingSaveType('general');
+  };
+
+  const reorderPlan = (planId, targetDate, targetIndex) => {
+    if (!planId || !targetDate) {
+      return false;
+    }
+
+    setPlans((prev) => {
+      const movingPlan = prev.find((plan) => plan.id === planId);
+      if (!movingPlan) {
+        return prev;
+      }
+
+      const sourceDate = movingPlan.date;
+      const sourceWithoutMoving = prev
+        .filter((plan) => plan.date === sourceDate && plan.id !== planId)
+        .sort(comparePlansByOrder);
+      const targetWithoutMoving = prev
+        .filter((plan) => plan.date === targetDate && plan.id !== planId)
+        .sort(comparePlansByOrder);
+
+      const insertIndex = Math.max(0, Math.min(Number.isFinite(targetIndex) ? targetIndex : targetWithoutMoving.length, targetWithoutMoving.length));
+      const nextTargetPlans = [...targetWithoutMoving];
+      nextTargetPlans.splice(insertIndex, 0, { ...movingPlan, date: targetDate });
+
+      const updates = new Map();
+      const reindexPlans = (list, date) => {
+        list.forEach((plan, index) => {
+          updates.set(plan.id, {
+            ...plan,
+            date,
+            sortOrder: index + 1,
+            updatedAt: plan.id === planId ? Date.now() : plan.updatedAt,
+          });
+        });
+      };
+
+      reindexPlans(nextTargetPlans, targetDate);
+      if (sourceDate !== targetDate) {
+        reindexPlans(sourceWithoutMoving, sourceDate);
+      }
+
+      return prev.map((plan) => updates.get(plan.id) || plan);
+    });
+    setPendingSaveType('general');
+    return true;
   };
 
   const normalizeClipboardPlans = (selectedPlans) => (
@@ -632,11 +694,40 @@ function App() {
 
     if (planClipboard.mode === 'cut') {
       const cutIdSet = new Set(clippedPlans.map((plan) => plan.id));
-      setPlans((prev) => prev.map((plan) => (
-        cutIdSet.has(plan.id)
-          ? { ...plan, date: targetDate, updatedAt: Date.now() }
-          : plan
-      )));
+      setPlans((prev) => {
+        const movingPlans = prev
+          .filter((plan) => cutIdSet.has(plan.id))
+          .sort(comparePlansByOrder);
+
+        const updates = new Map();
+        const sourceDates = new Set(movingPlans.map((plan) => plan.date).filter((date) => date !== targetDate));
+        const targetPlans = prev
+          .filter((plan) => plan.date === targetDate && !cutIdSet.has(plan.id))
+          .sort(comparePlansByOrder);
+        const nextTargetPlans = [...targetPlans, ...movingPlans.map((plan) => ({ ...plan, date: targetDate }))];
+        nextTargetPlans.forEach((plan, index) => {
+          updates.set(plan.id, {
+            ...plan,
+            date: targetDate,
+            sortOrder: index + 1,
+            updatedAt: Date.now(),
+          });
+        });
+
+        sourceDates.forEach((date) => {
+          const sourcePlans = prev
+            .filter((plan) => plan.date === date && !cutIdSet.has(plan.id))
+            .sort(comparePlansByOrder);
+          sourcePlans.forEach((plan, index) => {
+            updates.set(plan.id, {
+              ...plan,
+              sortOrder: index + 1,
+            });
+          });
+        });
+
+        return prev.map((plan) => updates.get(plan.id) || plan);
+      });
       setPendingSaveType('general');
       setPlanClipboard({ items: [], mode: 'copy' });
       return true;
@@ -647,6 +738,7 @@ function App() {
       ...plan,
       id: `${now}-${index}-${Math.random().toString(36).slice(2, 9)}`,
       date: targetDate,
+      sortOrder: now + index,
       updatedAt: now + index,
     }));
     setPlans((prev) => [...prev, ...pastedPlans]);
@@ -823,6 +915,7 @@ function App() {
             weatherData={weatherData}
             t={t}
             activeUserId={activeUser?.id || ''}
+            onReorderPlan={reorderPlan}
             onCopyPlans={copyPlans}
             onCutPlans={cutPlans}
             onPastePlan={pastePlanToDate}
@@ -838,6 +931,7 @@ function App() {
             weatherData={weatherData}
             t={t}
             activeUserId={activeUser?.id || ''}
+            onReorderPlan={reorderPlan}
             onCopyPlans={copyPlans}
             onCutPlans={cutPlans}
             onPastePlan={pastePlanToDate}

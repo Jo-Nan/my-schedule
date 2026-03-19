@@ -20,7 +20,19 @@ const getLocalDateStr = (date = new Date()) => {
   return `${year}-${month}-${day}`;
 };
 
-const WeeklyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t, activeUserId, onCopyPlans, onCutPlans, onPastePlan, hasClipboard }) => {
+const getPlanSortOrder = (plan) => (Number.isFinite(plan?.sortOrder) ? plan.sortOrder : Number.MAX_SAFE_INTEGER);
+
+const comparePlansByOrder = (left, right) => {
+  const orderDiff = getPlanSortOrder(left) - getPlanSortOrder(right);
+  if (orderDiff !== 0) {
+    return orderDiff;
+  }
+  if (left.status !== 'completed' && right.status === 'completed') return -1;
+  if (left.status === 'completed' && right.status !== 'completed') return 1;
+  return (left.time || '').localeCompare(right.time || '');
+};
+
+const WeeklyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t, activeUserId, onReorderPlan, onCopyPlans, onCutPlans, onPastePlan, hasClipboard }) => {
   // Sliding window navigation state
   const [dayOffset, setDayOffset] = useState(0);
   const gridRef = useRef(null);
@@ -151,10 +163,12 @@ const WeeklyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t, ac
     e.dataTransfer.dropEffect = 'move';
   };
 
-  const handleDrop = (e, targetDate) => {
+  const handleDrop = (e, targetDate, targetIndex = null, dayPlanCount = 0) => {
     e.preventDefault();
-    if (draggedPlan && draggedPlan.date !== targetDate) {
-      updatePlan(draggedPlan.id, { date: targetDate });
+    e.stopPropagation();
+    if (draggedPlan) {
+      const fallbackIndex = Number.isFinite(dayPlanCount) ? dayPlanCount : 0;
+      onReorderPlan?.(draggedPlan.id, targetDate, Number.isFinite(targetIndex) ? targetIndex : fallbackIndex);
     }
     setDraggedPlan(null);
   };
@@ -226,14 +240,7 @@ const WeeklyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t, ac
         const isYesterday = dateStr === getLocalDateStr(yesterday);
 
         const dayWeather = weatherData.find(w => w.date === dateStr);
-        const dayPlans = plans.filter(p => p.date === dateStr);
-
-        // Sort plans: incomplete first, then time
-        dayPlans.sort((a,b) => {
-          if (a.status !== 'completed' && b.status === 'completed') return -1;
-          if (a.status === 'completed' && b.status !== 'completed') return 1;
-          return (a.time || '').localeCompare(b.time || '');
-        });
+        const dayPlans = plans.filter(p => p.date === dateStr).sort(comparePlansByOrder);
 
         return (
           <div 
@@ -254,7 +261,7 @@ const WeeklyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t, ac
             }}
             onClick={() => setSelectedDate(dateStr)}
             onDragOver={handleDragOver}
-            onDrop={(e) => handleDrop(e, dateStr)}
+            onDrop={(e) => handleDrop(e, dateStr, dayPlans.length, dayPlans.length)}
           >
             <div className="weekly-day-header" style={styles.dayHeader}>
               <div style={styles.dateInfo}>
@@ -287,13 +294,15 @@ const WeeklyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t, ac
             </div>
 
             <div style={styles.planList}>
-              {dayPlans.map(plan => (
+              {dayPlans.map((plan, planIndex) => (
                 <div
                   key={plan.id}
                   style={{
                     opacity: draggedPlan?.id === plan.id ? 0.5 : 1,
                     transition: 'opacity 0.2s ease',
                   }}
+                  onDragOver={handleDragOver}
+                  onDrop={(e) => handleDrop(e, dateStr, planIndex, dayPlans.length)}
                 >
                   <PlanCard 
                     plan={plan} 

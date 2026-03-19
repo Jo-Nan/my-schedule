@@ -636,6 +636,34 @@
   box-shadow: 0 12px 28px rgba(2, 6, 23, 0.18);
 }
 
+.map-freestyle-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 455;
+  pointer-events: none;
+}
+
+.map-freestyle-item {
+  position: absolute;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  pointer-events: auto;
+  cursor: grab;
+  touch-action: none;
+}
+
+.map-freestyle-item:active {
+  cursor: grabbing;
+}
+
+.map-freestyle-item .map-featured-photo-bubble {
+  box-shadow:
+    0 12px 22px rgba(2, 6, 23, 0.24),
+    0 0 0 1px rgba(255, 255, 255, 0.48) inset;
+}
+
 .map-featured-dock-bottom {
   width: 100%;
   overflow-x: auto;

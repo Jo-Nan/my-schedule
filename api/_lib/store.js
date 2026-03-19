@@ -115,6 +115,7 @@ const sanitizePlan = (plan = {}) => ({
   attachments: sanitizeAttachments(plan.attachments),
   progress: Number.isFinite(plan.progress) ? plan.progress : 0,
   status: typeof plan.status === 'string' ? plan.status : 'uncompleted',
+  sortOrder: Number.isFinite(plan.sortOrder) ? Math.round(plan.sortOrder) : null,
   updatedAt: Number.isFinite(plan.updatedAt) ? plan.updatedAt : Date.now(),
 });
 
@@ -216,7 +217,7 @@ const sanitizeMapWorkspace = (workspace = {}) => {
   return {
     scope: workspace.scope === 'world' ? 'world' : 'china',
     showFeaturedBubbles: workspace.showFeaturedBubbles !== false,
-    bubbleLayout: ['map', 'right', 'bottom'].includes(workspace.bubbleLayout) ? workspace.bubbleLayout : 'map',
+    bubbleLayout: ['map', 'right', 'bottom', 'freestyle'].includes(workspace.bubbleLayout) ? workspace.bubbleLayout : 'map',
     users: Array.isArray(workspace.users) ? workspace.users : [],
     points: Array.isArray(workspace.points) ? workspace.points : [],
     searchHistory: sanitizeMapPlaceBookmarks(workspace.searchHistory, 12),

@@ -199,6 +199,7 @@ const TEXTS = {
     featuredLayoutMap: 'Near pin',
     featuredLayoutRight: 'Right dock',
     featuredLayoutBottom: 'Bottom dock',
+    featuredLayoutFreestyle: 'Freestyle',
     featuredPhotoAlt: 'Featured photo',
     featuredBadge: 'Featured',
     openBookmarkBtn: 'Open bookmark editor',
@@ -329,6 +330,7 @@ const TEXTS = {
     featuredLayoutMap: '点位旁边',
     featuredLayoutRight: '右侧停靠',
     featuredLayoutBottom: '下侧停靠',
+    featuredLayoutFreestyle: '自由布局',
     featuredPhotoAlt: '精选照片',
     featuredBadge: '精选',
     openBookmarkBtn: '打开书签编辑器',
@@ -465,6 +467,14 @@ const normalizePoint = (point, index, users) => {
 
   let featuredPhotoId = isNonEmpty(point?.featuredPhotoId) ? point.featuredPhotoId : null;
   let noFeatured = Boolean(point?.noFeatured);
+  const rawFeaturedBoxX = Number.parseFloat(point?.featuredBox?.x);
+  const rawFeaturedBoxY = Number.parseFloat(point?.featuredBox?.y);
+  const featuredBox = Number.isFinite(rawFeaturedBoxX) && Number.isFinite(rawFeaturedBoxY)
+    ? {
+        x: clampCoord(rawFeaturedBoxX, 0, 1),
+        y: clampCoord(rawFeaturedBoxY, 0, 1),
+      }
+    : null;
 
   if (featuredPhotoId && !photos.some((photo) => photo.id === featuredPhotoId)) {
     featuredPhotoId = null;
@@ -493,6 +503,7 @@ const normalizePoint = (point, index, users) => {
     photos,
     featuredPhotoId,
     noFeatured,
+    featuredBox,
   };
 };
 
@@ -759,6 +770,14 @@ const persistPoint = (point) => {
     photos: persistedPhotos,
     featuredPhotoId,
     noFeatured: Boolean(point.noFeatured),
+    featuredBox: point?.featuredBox
+      && Number.isFinite(point.featuredBox.x)
+      && Number.isFinite(point.featuredBox.y)
+      ? {
+          x: clampCoord(point.featuredBox.x, 0, 1),
+          y: clampCoord(point.featuredBox.y, 0, 1),
+        }
+      : null,
   };
 };
 
@@ -789,7 +808,7 @@ const parseWorkspace = (rawWorkspace, defaultName) => {
 
   const loadedScope = safeWorkspace?.scope === 'world' ? 'world' : 'china';
   const loadedShowFeaturedBubbles = safeWorkspace?.showFeaturedBubbles !== false;
-  const loadedBubbleLayout = ['map', 'right', 'bottom'].includes(safeWorkspace?.bubbleLayout)
+  const loadedBubbleLayout = ['map', 'right', 'bottom', 'freestyle'].includes(safeWorkspace?.bubbleLayout)
     ? safeWorkspace.bubbleLayout
     : 'right';
 
@@ -852,7 +871,7 @@ const workspaceToPayload = ({
   recycleBin: pruneRecycleItems(Array.isArray(recycleBin) ? recycleBin : []),
   revision: Number.isInteger(revision) && revision >= 0 ? revision : 0,
   showFeaturedBubbles: showFeaturedBubbles !== false,
-  bubbleLayout: ['map', 'right', 'bottom'].includes(bubbleLayout) ? bubbleLayout : 'right',
+  bubbleLayout: ['map', 'right', 'bottom', 'freestyle'].includes(bubbleLayout) ? bubbleLayout : 'right',
   savedAt: new Date().toISOString(),
 });
 
@@ -875,7 +894,7 @@ const workspaceHash = ({
   recycleBin: pruneRecycleItems(Array.isArray(recycleBin) ? recycleBin : []),
   revision: Number.isInteger(revision) && revision >= 0 ? revision : 0,
   showFeaturedBubbles: showFeaturedBubbles !== false,
-  bubbleLayout: ['map', 'right', 'bottom'].includes(bubbleLayout) ? bubbleLayout : 'right',
+  bubbleLayout: ['map', 'right', 'bottom', 'freestyle'].includes(bubbleLayout) ? bubbleLayout : 'right',
 });
 
 const buildPhotoReadUrl = (photo, ownerId, options = {}) => {
@@ -1384,8 +1403,11 @@ function MapView({
   const addPointFileInputRef = useRef(null);
   const bookmarkEditorRef = useRef(null);
   const mapCanvasColumnRef = useRef(null);
+  const mapCanvasShellRef = useRef(null);
   const featuredDockRef = useRef(null);
   const featuredDockItemRefs = useRef(new Map());
+  const featuredDragStateRef = useRef(null);
+  const featuredDragIgnoreClickRef = useRef(new Set());
   const uploadQueueRef = useRef([]);
   const uploadRunnerActiveRef = useRef(false);
   const failedUploadFileRef = useRef(new Map());
@@ -1921,8 +1943,52 @@ function MapView({
       return next;
     }
 
+    if (bubbleLayout === 'freestyle') {
+      return next;
+    }
+
     return next;
   }, [bubbleLayout, featuredPoints]);
+  const freestyleFeaturedPoints = useMemo(() => {
+    if (bubbleLayout !== 'freestyle' || !mapInstance) {
+      return [];
+    }
+    const mapRect = mapInstance.getContainer().getBoundingClientRect();
+    const width = Math.max(1, mapRect.width);
+    const height = Math.max(1, mapRect.height);
+    const defaultOffsets = [
+      { x: 24, y: -12 },
+      { x: -24, y: -18 },
+      { x: 18, y: 14 },
+      { x: -20, y: 18 },
+      { x: 28, y: -24 },
+      { x: -28, y: 20 },
+    ];
+
+    return dockFeaturedPoints.map((item, index) => {
+      const bubbleSize = getPhotoBubbleSize(item.featuredPhoto);
+      const markerPixel = mapInstance.latLngToContainerPoint([item.point.latitude, item.point.longitude]);
+      const maxX = Math.max(0, width - bubbleSize.width);
+      const maxY = Math.max(0, height - bubbleSize.height);
+      const slot = index % defaultOffsets.length;
+      const offset = defaultOffsets[slot];
+      const defaultX = clampCoord(markerPixel.x + offset.x, 0, maxX);
+      const defaultY = clampCoord(markerPixel.y + offset.y, 0, maxY);
+      const normalizedX = Number.isFinite(item.point?.featuredBox?.x) ? clampCoord(item.point.featuredBox.x, 0, 1) : null;
+      const normalizedY = Number.isFinite(item.point?.featuredBox?.y) ? clampCoord(item.point.featuredBox.y, 0, 1) : null;
+
+      return {
+        ...item,
+        bubbleSize,
+        freestyleBox: {
+          x: normalizedX === null ? defaultX : clampCoord(normalizedX * maxX, 0, maxX),
+          y: normalizedY === null ? defaultY : clampCoord(normalizedY * maxY, 0, maxY),
+          maxX,
+          maxY,
+        },
+      };
+    });
+  }, [bubbleLayout, dockFeaturedPoints, mapInstance]);
   const visiblePoints = useMemo(() => {
     if (!visibleBounds) {
       return points;
@@ -1962,6 +2028,45 @@ function MapView({
       featuredDockItemRefs.current.delete(pointId);
     }
   }, []);
+  const updateFeaturedBoxPosition = useCallback((pointId, nextX, nextY, maxX, maxY) => {
+    const safeMaxX = Math.max(1, maxX);
+    const safeMaxY = Math.max(1, maxY);
+    const normalizedX = clampCoord(nextX / safeMaxX, 0, 1);
+    const normalizedY = clampCoord(nextY / safeMaxY, 0, 1);
+    setPoints((previous) => previous.map((point) => (
+      point.id === pointId
+        ? {
+            ...point,
+            featuredBox: {
+              x: normalizedX,
+              y: normalizedY,
+            },
+          }
+        : point
+    )));
+  }, []);
+  const handleFreestyleDragStart = useCallback((event, pointId, freestyleBox) => {
+    if (readOnly) {
+      return;
+    }
+    const source = event.nativeEvent;
+    if (!(source instanceof PointerEvent) || !freestyleBox) {
+      return;
+    }
+
+    featuredDragStateRef.current = {
+      pointId,
+      startClientX: source.clientX,
+      startClientY: source.clientY,
+      startX: freestyleBox.x,
+      startY: freestyleBox.y,
+      maxX: freestyleBox.maxX,
+      maxY: freestyleBox.maxY,
+      moved: false,
+    };
+    event.preventDefault();
+    event.stopPropagation();
+  }, [readOnly]);
 
   const recomputeDockLines = useCallback(() => {
     if (!mapInstance || !mapCanvasColumnRef.current || !showFeaturedBubbles || bubbleLayout === 'map') {
@@ -1991,10 +2096,22 @@ function MapView({
       const dockRect = dockItem.getBoundingClientRect();
       const endX = bubbleLayout === 'right'
         ? dockRect.left - columnRect.left + 2
-        : dockRect.left - columnRect.left + dockRect.width / 2;
+        : bubbleLayout === 'bottom'
+          ? dockRect.left - columnRect.left + dockRect.width / 2
+          : clampCoord(
+              startX,
+              dockRect.left - columnRect.left + 2,
+              dockRect.left - columnRect.left + Math.max(2, dockRect.width - 2),
+            );
       const endY = bubbleLayout === 'right'
         ? dockRect.top - columnRect.top + dockRect.height / 2
-        : dockRect.top - columnRect.top + 2;
+        : bubbleLayout === 'bottom'
+          ? dockRect.top - columnRect.top + 2
+          : clampCoord(
+              startY,
+              dockRect.top - columnRect.top + 2,
+              dockRect.top - columnRect.top + Math.max(2, dockRect.height - 2),
+            );
 
       nextLines.push({
         id: point.id,
@@ -2039,6 +2156,48 @@ function MapView({
     const rafId = window.requestAnimationFrame(recomputeDockLines);
     return () => window.cancelAnimationFrame(rafId);
   }, [bubbleLayout, dockFeaturedPoints, recomputeDockLines, showFeaturedBubbles]);
+
+  useEffect(() => {
+    const handlePointerMove = (event) => {
+      const dragState = featuredDragStateRef.current;
+      if (!dragState) {
+        return;
+      }
+
+      const deltaX = event.clientX - dragState.startClientX;
+      const deltaY = event.clientY - dragState.startClientY;
+      if (Math.abs(deltaX) > 2 || Math.abs(deltaY) > 2) {
+        dragState.moved = true;
+      }
+      const nextX = clampCoord(dragState.startX + deltaX, 0, dragState.maxX);
+      const nextY = clampCoord(dragState.startY + deltaY, 0, dragState.maxY);
+      updateFeaturedBoxPosition(dragState.pointId, nextX, nextY, dragState.maxX, dragState.maxY);
+      window.requestAnimationFrame(recomputeDockLines);
+    };
+
+    const handlePointerUp = () => {
+      const dragState = featuredDragStateRef.current;
+      if (!dragState) {
+        return;
+      }
+      if (dragState.moved) {
+        featuredDragIgnoreClickRef.current.add(dragState.pointId);
+        window.setTimeout(() => {
+          featuredDragIgnoreClickRef.current.delete(dragState.pointId);
+        }, 160);
+      }
+      featuredDragStateRef.current = null;
+    };
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('pointercancel', handlePointerUp);
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('pointercancel', handlePointerUp);
+    };
+  }, [recomputeDockLines, updateFeaturedBoxPosition]);
 
   useEffect(() => {
     if (!mapInstance) {
@@ -3113,6 +3272,7 @@ function MapView({
               <option value="map">{text.featuredLayoutMap}</option>
               <option value="right">{text.featuredLayoutRight}</option>
               <option value="bottom">{text.featuredLayoutBottom}</option>
+              <option value="freestyle">{text.featuredLayoutFreestyle}</option>
             </select>
           </label>
 
@@ -3700,7 +3860,7 @@ function MapView({
             </svg>
           )}
 
-          <div className="map-canvas-shell">
+          <div className="map-canvas-shell" ref={mapCanvasShellRef}>
             <div className="map-canvas-headline">
               {scope === 'china' ? text.chinaScope : text.worldScope}
             </div>
@@ -3720,8 +3880,17 @@ function MapView({
                 url='https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
               />
 
-              {showFeaturedBubbles && bubbleLayout === 'map' && featuredPoints.map(({ point, owner, featuredPhoto }) => {
+              {showFeaturedBubbles && bubbleLayout === 'map' && featuredPoints.map(({ point, owner, featuredPhoto }, index) => {
                 const bubbleSize = getPhotoBubbleSize(featuredPhoto);
+                const mapSlots = [
+                  { direction: 'right', offset: [22, -8] },
+                  { direction: 'left', offset: [-22, -8] },
+                  { direction: 'top', offset: [0, -16] },
+                  { direction: 'bottom', offset: [0, 16] },
+                  { direction: 'right', offset: [26, 14] },
+                  { direction: 'left', offset: [-26, 14] },
+                ];
+                const slot = mapSlots[index % mapSlots.length];
                 return (
                   <Marker
                     key={`featured_bubble_${point.id}`}
@@ -3732,8 +3901,8 @@ function MapView({
                   >
                     <Tooltip
                       permanent
-                      direction="right"
-                      offset={[20, -10]}
+                      direction={slot.direction}
+                      offset={slot.offset}
                       opacity={1}
                       className="map-featured-photo-tooltip"
                     >
@@ -3789,9 +3958,49 @@ function MapView({
                 );
               })}
             </MapContainer>
+            {showFeaturedBubbles && bubbleLayout === 'freestyle' && freestyleFeaturedPoints.length > 0 && (
+              <div className="map-freestyle-layer">
+                {freestyleFeaturedPoints.map(({ point, owner, featuredPhoto, freestyleBox, bubbleSize }) => (
+                  <button
+                    key={`freestyle_item_${point.id}`}
+                    type="button"
+                    ref={(node) => setDockItemRef(point.id, node)}
+                    className={`map-featured-dock-item map-freestyle-item ${selectedPointId === point.id ? 'active' : ''}`}
+                    onPointerDown={(event) => handleFreestyleDragStart(event, point.id, freestyleBox)}
+                    onClick={() => {
+                      if (featuredDragIgnoreClickRef.current.has(point.id)) {
+                        return;
+                      }
+                      setSelectedPointId(point.id);
+                    }}
+                    style={{
+                      '--bubble-accent': owner?.color || '#38bdf8',
+                      left: `${freestyleBox.x}px`,
+                      top: `${freestyleBox.y}px`,
+                      width: `${bubbleSize.width}px`,
+                      height: `${bubbleSize.height}px`,
+                    }}
+                  >
+                    <div
+                      className="map-featured-photo-bubble"
+                      style={{
+                        width: `${bubbleSize.width}px`,
+                        height: `${bubbleSize.height}px`,
+                      }}
+                    >
+                      <img
+                        src={resolvePhotoSrc(featuredPhoto, activeUserId, { preferThumbnail: true })}
+                        alt={featuredPhoto.name || text.featuredPhotoAlt}
+                        loading="lazy"
+                      />
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
-          {showFeaturedBubbles && bubbleLayout !== 'map' && dockFeaturedPoints.length > 0 && (
+          {showFeaturedBubbles && ['right', 'bottom'].includes(bubbleLayout) && dockFeaturedPoints.length > 0 && (
             <div
               className={`map-featured-dock map-featured-dock-${bubbleLayout}`}
               ref={featuredDockRef}
