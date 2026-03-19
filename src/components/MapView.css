@@ -797,6 +797,19 @@
   line-height: 1.35;
 }
 
+.map-bookmark-owner-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.map-owner-inline-select {
+  min-width: 10.5rem;
+  max-width: 100%;
+  padding: 0.2rem 1.85rem 0.2rem 0.55rem;
+}
+
 .map-bookmark-card .map-label {
   font-size: var(--editor-font-label);
   margin-top: 0.18rem;

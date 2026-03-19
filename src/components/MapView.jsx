@@ -140,7 +140,7 @@ const TEXTS = {
     renameUserBtn: 'Rename',
     updateUserBtn: 'Save user',
     deleteUserBtn: 'Delete user',
-    cityTitle: 'City / Coordinates',
+    cityTitle: 'Add City',
     cityInputLabel: 'Search city',
     cityInputPlaceholder: 'e.g. Shanghai, London, Tokyo',
     citySearchBtn: 'Search',
@@ -272,7 +272,7 @@ const TEXTS = {
     renameUserBtn: '修改用户名',
     updateUserBtn: '保存用户',
     deleteUserBtn: '删除用户',
-    cityTitle: '城市 / 经纬度',
+    cityTitle: '添加城市',
     cityInputLabel: '输入城市',
     cityInputPlaceholder: '例如：上海、北京、London',
     citySearchBtn: '搜索',
@@ -1217,15 +1217,13 @@ function MapBookmarkCard({
           </button>
         )}
       </div>
-      <p className="map-bookmark-meta">
-        <strong>{text.ownerLabel}:</strong> {owner?.name || '-'}
-      </p>
-      {!readOnly && users.length > 0 && (
-        <>
-          <label className="map-label" htmlFor={`point_user_${point.id}`}>{text.editorUserLabel}</label>
+      <p className="map-bookmark-meta map-bookmark-owner-row">
+        <strong>{text.ownerLabel}:</strong>
+        {!readOnly && users.length > 0 ? (
           <select
             id={`point_user_${point.id}`}
-            className="glass-input map-editor-select"
+            className="glass-input map-editor-select map-owner-inline-select"
+            aria-label={text.editorUserLabel || text.ownerLabel}
             value={point.userId}
             onChange={(event) => onUpdatePoint(point.id, { userId: event.target.value })}
           >
@@ -1233,8 +1231,10 @@ function MapBookmarkCard({
               <option key={user.id} value={user.id}>{user.name}</option>
             ))}
           </select>
-        </>
-      )}
+        ) : (
+          <span>{owner?.name || '-'}</span>
+        )}
+      </p>
       <p className="map-bookmark-meta">
         <strong>{text.coordinateLabel}:</strong> {point.latitude.toFixed(6)}, {point.longitude.toFixed(6)}
       </p>
@@ -1373,6 +1373,7 @@ function MapView({
   const [workspaceRevision, setWorkspaceRevision] = useState(0);
   const [selectedUserId, setSelectedUserId] = useState('');
   const [isAddUserExpanded, setIsAddUserExpanded] = useState(false);
+  const [isAddCityExpanded, setIsAddCityExpanded] = useState(false);
   const [isUserEditExpanded, setIsUserEditExpanded] = useState(false);
   const [showFeaturedBubbles, setShowFeaturedBubbles] = useState(true);
   const [bubbleLayout, setBubbleLayout] = useState('freestyle');
@@ -3680,173 +3681,186 @@ function MapView({
 
           {!readOnly && (
             <section className="map-panel">
-              <h3>{text.cityTitle}</h3>
-              <label className="map-label" htmlFor="map_city_search">{text.cityInputLabel}</label>
-              <div className="map-search-combobox" ref={placeSearchWrapRef}>
-                <div className="map-search-row">
-                  <input
-                    id="map_city_search"
-                    className="glass-input"
-                    value={cityQuery}
-                    placeholder={text.cityInputPlaceholder}
-                    onFocus={() => setIsPlaceDropdownOpen(true)}
-                    onChange={(event) => {
-                      setCityQuery(event.target.value);
-                      setIsPlaceDropdownOpen(true);
-                    }}
-                  />
-                  <button type="button" className="glass-button" onClick={handleSearchCity} disabled={isSearching}>
-                    {isSearching ? text.citySearching : text.citySearchBtn}
-                  </button>
-                  <button
-                    type="button"
-                    className="glass-button"
-                    onClick={saveCurrentPlaceToFavorites}
-                  >
-                    {text.saveCurrentPlaceBtn}
-                  </button>
-                </div>
-                {isPlaceDropdownOpen && (localMatchPlaces.length > 0 || favoritePlaces.length > 0 || searchHistory.length > 0) && (
-                  <div className="map-place-dropdown">
-                    {localMatchPlaces.length > 0 && (
-                      <div className="map-place-dropdown-group">
-                        <p className="map-label">{text.localMatchTitle}</p>
-                        <div className="map-place-chip-list">
-                          {localMatchPlaces.map((place) => (
-                            <button
-                              key={`local_match_${place.id}`}
-                              type="button"
-                              className="glass-button map-place-chip"
-                              onClick={() => applyQuickPlace(place)}
-                            >
-                              {place.name}
-                            </button>
-                          ))}
+              <button
+                type="button"
+                className="glass-button map-collapse-btn"
+                onClick={() => setIsAddCityExpanded((previous) => !previous)}
+                aria-expanded={isAddCityExpanded}
+              >
+                <span>{text.cityTitle}</span>
+                <span className="map-collapse-indicator">{isAddCityExpanded ? '−' : '+'}</span>
+              </button>
+
+              {isAddCityExpanded && (
+                <div className="map-collapsible-body">
+                  <label className="map-label" htmlFor="map_city_search">{text.cityInputLabel}</label>
+                  <div className="map-search-combobox" ref={placeSearchWrapRef}>
+                    <div className="map-search-row">
+                      <input
+                        id="map_city_search"
+                        className="glass-input"
+                        value={cityQuery}
+                        placeholder={text.cityInputPlaceholder}
+                        onFocus={() => setIsPlaceDropdownOpen(true)}
+                        onChange={(event) => {
+                          setCityQuery(event.target.value);
+                          setIsPlaceDropdownOpen(true);
+                        }}
+                      />
+                      <button type="button" className="glass-button" onClick={handleSearchCity} disabled={isSearching}>
+                        {isSearching ? text.citySearching : text.citySearchBtn}
+                      </button>
+                      <button
+                        type="button"
+                        className="glass-button"
+                        onClick={saveCurrentPlaceToFavorites}
+                      >
+                        {text.saveCurrentPlaceBtn}
+                      </button>
+                    </div>
+                    {isPlaceDropdownOpen && (localMatchPlaces.length > 0 || favoritePlaces.length > 0 || searchHistory.length > 0) && (
+                      <div className="map-place-dropdown">
+                        {localMatchPlaces.length > 0 && (
+                          <div className="map-place-dropdown-group">
+                            <p className="map-label">{text.localMatchTitle}</p>
+                            <div className="map-place-chip-list">
+                              {localMatchPlaces.map((place) => (
+                                <button
+                                  key={`local_match_${place.id}`}
+                                  type="button"
+                                  className="glass-button map-place-chip"
+                                  onClick={() => applyQuickPlace(place)}
+                                >
+                                  {place.name}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        <div className="map-place-dropdown-group">
+                          <p className="map-label">{text.favoritePlacesTitle}</p>
+                          {favoritePlaces.length === 0 && <p className="map-muted">{text.noFavoritePlaces}</p>}
+                          {favoritePlaces.length > 0 && (
+                            <div className="map-place-chip-list">
+                              {favoritePlaces.map((place) => (
+                                <button
+                                  key={`fav_place_${place.id}`}
+                                  type="button"
+                                  className="glass-button map-place-chip"
+                                  onClick={() => applyQuickPlace(place)}
+                                >
+                                  {place.name}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        <div className="map-place-dropdown-group">
+                          <p className="map-label">{text.searchHistoryTitle}</p>
+                          {searchHistory.length === 0 && <p className="map-muted">{text.noSearchHistory}</p>}
+                          {searchHistory.length > 0 && (
+                            <div className="map-place-chip-list">
+                              {searchHistory.map((place) => (
+                                <button
+                                  key={`history_place_${place.id}`}
+                                  type="button"
+                                  className="glass-button map-place-chip"
+                                  onClick={() => applyQuickPlace(place)}
+                                >
+                                  {place.name}
+                                </button>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}
-                    <div className="map-place-dropdown-group">
-                      <p className="map-label">{text.favoritePlacesTitle}</p>
-                      {favoritePlaces.length === 0 && <p className="map-muted">{text.noFavoritePlaces}</p>}
-                      {favoritePlaces.length > 0 && (
-                        <div className="map-place-chip-list">
-                          {favoritePlaces.map((place) => (
-                            <button
-                              key={`fav_place_${place.id}`}
-                              type="button"
-                              className="glass-button map-place-chip"
-                              onClick={() => applyQuickPlace(place)}
-                            >
-                              {place.name}
-                            </button>
-                          ))}
+                  </div>
+
+                  {searchResults.length > 0 && (
+                    <div className="map-search-results">
+                      {searchResults.map((result) => (
+                        <div key={result.id} className="map-search-result-row">
+                          <button
+                            type="button"
+                            className="map-search-result map-search-result-main"
+                            onClick={() => applySearchResult(result)}
+                          >
+                            <span>{result.name}</span>
+                            <small>{result.latitude.toFixed(4)}, {result.longitude.toFixed(4)}</small>
+                          </button>
+                          <button
+                            type="button"
+                            className="glass-button map-search-fav-btn"
+                            onClick={() => toggleFavoritePlace(placeFromResult(result))}
+                          >
+                            {isFavoritePlace(result) ? text.removeFavoriteBtn : text.addFavoriteBtn}
+                          </button>
                         </div>
-                      )}
+                      ))}
                     </div>
-                    <div className="map-place-dropdown-group">
-                      <p className="map-label">{text.searchHistoryTitle}</p>
-                      {searchHistory.length === 0 && <p className="map-muted">{text.noSearchHistory}</p>}
-                      {searchHistory.length > 0 && (
-                        <div className="map-place-chip-list">
-                          {searchHistory.map((place) => (
-                            <button
-                              key={`history_place_${place.id}`}
-                              type="button"
-                              className="glass-button map-place-chip"
-                              onClick={() => applyQuickPlace(place)}
-                            >
-                              {place.name}
-                            </button>
-                          ))}
-                        </div>
-                      )}
+                  )}
+
+                  <div className="map-inline-grid">
+                    <div>
+                      <label className="map-label" htmlFor="map_latitude">{text.latitudeLabel}</label>
+                      <input
+                        id="map_latitude"
+                        className="glass-input"
+                        value={latitudeInput}
+                        onChange={(event) => setLatitudeInput(event.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="map-label" htmlFor="map_longitude">{text.longitudeLabel}</label>
+                      <input
+                        id="map_longitude"
+                        className="glass-input"
+                        value={longitudeInput}
+                        onChange={(event) => setLongitudeInput(event.target.value)}
+                      />
                     </div>
                   </div>
-                )}
-              </div>
 
-            {searchResults.length > 0 && (
-              <div className="map-search-results">
-                {searchResults.map((result) => (
-                  <div key={result.id} className="map-search-result-row">
-                    <button
-                      type="button"
-                      className="map-search-result map-search-result-main"
-                      onClick={() => applySearchResult(result)}
-                    >
-                      <span>{result.name}</span>
-                      <small>{result.latitude.toFixed(4)}, {result.longitude.toFixed(4)}</small>
-                    </button>
-                    <button
-                      type="button"
-                      className="glass-button map-search-fav-btn"
-                      onClick={() => toggleFavoritePlace(placeFromResult(result))}
-                    >
-                      {isFavoritePlace(result) ? text.removeFavoriteBtn : text.addFavoriteBtn}
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
+                  <label className="map-label" htmlFor="map_route_input">{text.routeLabel}</label>
+                  <textarea
+                    id="map_route_input"
+                    className="glass-input map-textarea"
+                    value={routeInput}
+                    placeholder={text.routePlaceholder}
+                    onChange={(event) => setRouteInput(event.target.value)}
+                  />
 
-            <div className="map-inline-grid">
-              <div>
-                <label className="map-label" htmlFor="map_latitude">{text.latitudeLabel}</label>
-                <input
-                  id="map_latitude"
-                  className="glass-input"
-                  value={latitudeInput}
-                  onChange={(event) => setLatitudeInput(event.target.value)}
-                />
-              </div>
-              <div>
-                <label className="map-label" htmlFor="map_longitude">{text.longitudeLabel}</label>
-                <input
-                  id="map_longitude"
-                  className="glass-input"
-                  value={longitudeInput}
-                  onChange={(event) => setLongitudeInput(event.target.value)}
-                />
-              </div>
-            </div>
+                  <label className="map-upload-label" htmlFor="map_add_point_photos">{text.uploadPhotosLabel}</label>
+                  <input
+                    ref={addPointFileInputRef}
+                    id="map_add_point_photos"
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="glass-input map-file-input"
+                    onChange={(event) => {
+                      setAddPointFiles(Array.from(event.target.files || []));
+                    }}
+                  />
+                  {addPointFiles.length > 0 && (
+                    <p className="map-muted">
+                      {language === 'zh'
+                        ? `已选择 ${addPointFiles.length} 张图片`
+                        : `${addPointFiles.length} image(s) selected`}
+                    </p>
+                  )}
 
-            <label className="map-label" htmlFor="map_route_input">{text.routeLabel}</label>
-            <textarea
-              id="map_route_input"
-              className="glass-input map-textarea"
-              value={routeInput}
-              placeholder={text.routePlaceholder}
-              onChange={(event) => setRouteInput(event.target.value)}
-            />
-
-            <label className="map-upload-label" htmlFor="map_add_point_photos">{text.uploadPhotosLabel}</label>
-            <input
-              ref={addPointFileInputRef}
-              id="map_add_point_photos"
-              type="file"
-              accept="image/*"
-              multiple
-              className="glass-input map-file-input"
-              onChange={(event) => {
-                setAddPointFiles(Array.from(event.target.files || []));
-              }}
-            />
-            {addPointFiles.length > 0 && (
-              <p className="map-muted">
-                {language === 'zh'
-                  ? `已选择 ${addPointFiles.length} 张图片`
-                  : `${addPointFiles.length} image(s) selected`}
-              </p>
-            )}
-
-            <button
-              type="button"
-              className="glass-button map-block-btn"
-              onClick={handleAddPoint}
-              disabled={isAddingPoint}
-            >
-                {isAddingPoint ? text.addPointSaving : text.addPointBtn}
-              </button>
+                  <button
+                    type="button"
+                    className="glass-button map-block-btn"
+                    onClick={handleAddPoint}
+                    disabled={isAddingPoint}
+                  >
+                    {isAddingPoint ? text.addPointSaving : text.addPointBtn}
+                  </button>
+                </div>
+              )}
             </section>
           )}
 

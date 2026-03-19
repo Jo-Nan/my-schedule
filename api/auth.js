@@ -14,6 +14,29 @@ import {
 } from './_lib/store.js';
 import { sendResetCodeEmail } from './_lib/email.js';
 
+const AUTH_SESSION_CHECK_TIMEOUT_MS = Math.max(
+  1000,
+  Number.parseInt(process.env.AUTH_SESSION_CHECK_TIMEOUT_MS || '10000', 10) || 10000,
+);
+
+const withTimeout = (promise, timeoutMs) => new Promise((resolve, reject) => {
+  const timer = setTimeout(() => {
+    const error = new Error('Session check timeout');
+    error.code = 'AUTH_SESSION_CHECK_TIMEOUT';
+    reject(error);
+  }, timeoutMs);
+
+  promise
+    .then((value) => {
+      clearTimeout(timer);
+      resolve(value);
+    })
+    .catch((error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+});
+
 /**
  * Unified Auth Endpoint
  * Routes:
@@ -29,7 +52,15 @@ export default async function handler(req, res) {
 
   // GET /api/auth - Get current user
   if (req.method === 'GET') {
-    const auth = await getAuthenticatedUser(req);
+    let auth = null;
+    try {
+      auth = await withTimeout(getAuthenticatedUser(req), AUTH_SESSION_CHECK_TIMEOUT_MS);
+    } catch {
+      // Fail closed so client can show login UI instead of hanging forever.
+      clearSessionCookie(res);
+      return res.status(401).json({ status: 'error', message: 'Unauthorized' });
+    }
+
     if (!auth) {
       return res.status(401).json({ status: 'error', message: 'Unauthorized' });
     }

@@ -17,6 +17,7 @@ import './index.css';
 
 const APP_VERSION = __APP_VERSION__;
 const APP_BUILD_TIME = __APP_BUILD_TIME__;
+const SESSION_RESTORE_TIMEOUT_MS = 12_000;
 
 const normalizeAttachment = (attachment, index = 0) => ({
   id: typeof attachment?.id === 'string' && attachment.id.trim()
@@ -306,9 +307,18 @@ function App() {
   }, [viewMode]);
 
   useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      controller.abort();
+    }, SESSION_RESTORE_TIMEOUT_MS);
+
     const restoreSession = async () => {
       try {
-        const response = await fetch('/api/auth', { credentials: 'same-origin' });
+        const response = await fetch('/api/auth', {
+          credentials: 'same-origin',
+          signal: controller.signal,
+        });
         if (!response.ok) {
           setCurrentUser(null);
           return;
@@ -321,11 +331,19 @@ function App() {
       } catch {
         setCurrentUser(null);
       } finally {
-        setAuthReady(true);
+        clearTimeout(timer);
+        if (!cancelled) {
+          setAuthReady(true);
+        }
       }
     };
 
     restoreSession();
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      controller.abort();
+    };
   }, []);
 
   useEffect(() => {
