@@ -183,6 +183,12 @@ const TEXTS = {
     photoTooLargeError: `Some images were larger than ${MAX_UPLOAD_FILE_MB}MB and were skipped.`,
     photoCountLimitError: `At most ${MAX_PHOTO_COUNT_PER_POINT} photos can be stored for one point.`,
     storageLimitError: 'Storage limit reached. Reduce photos or clear old points.',
+    conflictDetected: 'Map data changed on another device.',
+    conflictLoadLatest: 'Load latest cloud version now?',
+    conflictForceOverwrite: 'Force overwrite cloud data with current local changes?',
+    conflictNoAction: 'Save paused due to version conflict.',
+    conflictLoadedLatest: 'Loaded latest cloud version.',
+    conflictOverwriteSuccess: 'Conflict resolved by overwrite.',
     geocodeError: 'Failed to search city. Try another keyword or enter coordinates manually.',
     noGeocodeResult: 'No city result found.',
     needUserName: 'Please enter a username first.',
@@ -278,6 +284,12 @@ const TEXTS = {
     photoTooLargeError: `部分图片超过 ${MAX_UPLOAD_FILE_MB}MB，已跳过。`,
     photoCountLimitError: `单个点位最多保存 ${MAX_PHOTO_COUNT_PER_POINT} 张图片。`,
     storageLimitError: '本地存储空间不足，请减少图片或清理旧点位。',
+    conflictDetected: '地图数据已被其他设备修改。',
+    conflictLoadLatest: '是否加载云端最新版本？',
+    conflictForceOverwrite: '是否用当前本地修改强制覆盖云端？',
+    conflictNoAction: '检测到版本冲突，已暂停保存。',
+    conflictLoadedLatest: '已加载云端最新版本。',
+    conflictOverwriteSuccess: '已强制覆盖并解决冲突。',
     geocodeError: '城市搜索失败，请换关键词或直接输入经纬度。',
     noGeocodeResult: '没有匹配到城市结果。',
     needUserName: '请先输入用户名。',
@@ -616,12 +628,17 @@ const parseWorkspace = (rawWorkspace, defaultName) => {
 
   const savedAt = typeof safeWorkspace?.savedAt === 'string' ? safeWorkspace.savedAt : '';
   const savedAtStamp = Number.isNaN(new Date(savedAt).getTime()) ? 0 : new Date(savedAt).getTime();
+  const rawRevision = Number.isFinite(safeWorkspace?.revision)
+    ? safeWorkspace.revision
+    : Number.parseInt(safeWorkspace?.revision, 10);
+  const revision = Number.isInteger(rawRevision) && rawRevision >= 0 ? rawRevision : 0;
 
   return {
     scope: loadedScope,
     users: loadedUsers,
     points: loadedPoints,
     recycleBin: loadedRecycleBin,
+    revision,
     showFeaturedBubbles: loadedShowFeaturedBubbles,
     bubbleLayout: loadedBubbleLayout,
     savedAt,
@@ -629,21 +646,23 @@ const parseWorkspace = (rawWorkspace, defaultName) => {
   };
 };
 
-const workspaceToPayload = ({ scope, users, points, recycleBin, showFeaturedBubbles, bubbleLayout }) => ({
+const workspaceToPayload = ({ scope, users, points, recycleBin, revision, showFeaturedBubbles, bubbleLayout }) => ({
   scope: scope === 'world' ? 'world' : 'china',
   users: Array.isArray(users) ? users : [],
   points: Array.isArray(points) ? points : [],
   recycleBin: pruneRecycleItems(Array.isArray(recycleBin) ? recycleBin : []),
+  revision: Number.isInteger(revision) && revision >= 0 ? revision : 0,
   showFeaturedBubbles: showFeaturedBubbles !== false,
   bubbleLayout: ['map', 'right', 'bottom'].includes(bubbleLayout) ? bubbleLayout : 'right',
   savedAt: new Date().toISOString(),
 });
 
-const workspaceHash = ({ scope, users, points, recycleBin, showFeaturedBubbles, bubbleLayout }) => JSON.stringify({
+const workspaceHash = ({ scope, users, points, recycleBin, revision, showFeaturedBubbles, bubbleLayout }) => JSON.stringify({
   scope: scope === 'world' ? 'world' : 'china',
   users: Array.isArray(users) ? users : [],
   points: Array.isArray(points) ? points : [],
   recycleBin: pruneRecycleItems(Array.isArray(recycleBin) ? recycleBin : []),
+  revision: Number.isInteger(revision) && revision >= 0 ? revision : 0,
   showFeaturedBubbles: showFeaturedBubbles !== false,
   bubbleLayout: ['map', 'right', 'bottom'].includes(bubbleLayout) ? bubbleLayout : 'right',
 });
@@ -1034,6 +1053,7 @@ function MapView({
   const [users, setUsers] = useState([]);
   const [points, setPoints] = useState([]);
   const [recycleBin, setRecycleBin] = useState([]);
+  const [workspaceRevision, setWorkspaceRevision] = useState(0);
   const [selectedUserId, setSelectedUserId] = useState('');
   const [isAddUserExpanded, setIsAddUserExpanded] = useState(false);
   const [isUserEditExpanded, setIsUserEditExpanded] = useState(false);
@@ -1109,6 +1129,7 @@ function MapView({
       setUsers(loadedWorkspace.users);
       setPoints(loadedWorkspace.points);
       setRecycleBin(loadedWorkspace.recycleBin);
+      setWorkspaceRevision(loadedWorkspace.revision);
       setShowFeaturedBubbles(loadedWorkspace.showFeaturedBubbles);
       setBubbleLayout(loadedWorkspace.bubbleLayout);
       setSelectedUserId(loadedWorkspace.users[0]?.id || '');
@@ -1169,6 +1190,7 @@ function MapView({
           setUsers(serverWorkspace.users);
           setPoints(serverWorkspace.points);
           setRecycleBin(serverWorkspace.recycleBin);
+          setWorkspaceRevision(serverWorkspace.revision);
           setShowFeaturedBubbles(serverWorkspace.showFeaturedBubbles);
           setBubbleLayout(serverWorkspace.bubbleLayout);
           setSelectedUserId(serverWorkspace.users[0]?.id || '');
@@ -1201,6 +1223,7 @@ function MapView({
       users,
       points,
       recycleBin,
+      revision: workspaceRevision,
       showFeaturedBubbles,
       bubbleLayout,
     });
@@ -1215,6 +1238,7 @@ function MapView({
           users: payload.users,
           points: [],
           recycleBin: payload.recycleBin,
+          revision: payload.revision,
           savedAt: payload.savedAt,
         }));
       } catch {
@@ -1225,18 +1249,20 @@ function MapView({
         }
       }
     })();
-  }, [bubbleLayout, isLoaded, points, recycleBin, scope, showFeaturedBubbles, storageKey, text.storageLimitError, users]);
+  }, [bubbleLayout, isLoaded, points, recycleBin, scope, showFeaturedBubbles, storageKey, text.storageLimitError, users, workspaceRevision]);
 
   useEffect(() => {
     if (!isLoaded || !isServerHydrated || !activeUserId) {
       return undefined;
     }
 
+    const defaultName = activeUserName || (language === 'zh' ? '用户' : 'User');
     const nextPayload = workspaceToPayload({
       scope,
       users,
       points,
       recycleBin,
+      revision: workspaceRevision,
       showFeaturedBubbles,
       bubbleLayout,
     });
@@ -1251,15 +1277,62 @@ function MapView({
     }
 
     autoUploadTimerRef.current = setTimeout(async () => {
-      try {
+      const expectedRevision = workspaceRevision;
+      const postWorkspace = async (force = false) => {
         const response = await fetch('/api/maps', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'same-origin',
-          body: JSON.stringify(nextPayload),
+          body: JSON.stringify({
+            workspace: nextPayload,
+            expectedRevision,
+            force,
+          }),
         });
-
         const result = await response.json().catch(() => null);
+        return { response, result };
+      };
+
+      try {
+        const { response, result } = await postWorkspace(false);
+        if (response.status === 409 && result?.workspace) {
+          const shouldLoadLatest = window.confirm(`${text.conflictDetected}\n${text.conflictLoadLatest}`);
+          if (shouldLoadLatest) {
+            const latest = parseWorkspace(result.workspace, defaultName);
+            setScope(latest.scope);
+            setUsers(latest.users);
+            setPoints(latest.points);
+            setRecycleBin(latest.recycleBin);
+            setWorkspaceRevision(latest.revision);
+            setSelectedUserId(latest.users[0]?.id || '');
+            setExpandedUserId(latest.users[0]?.id || '');
+            setSelectedPointId('');
+            lastServerHashRef.current = workspaceHash(latest);
+            setFormMessage(text.conflictLoadedLatest);
+            return;
+          }
+
+          const shouldForceOverwrite = window.confirm(text.conflictForceOverwrite);
+          if (!shouldForceOverwrite) {
+            setFormMessage(text.conflictNoAction);
+            return;
+          }
+
+          const forced = await postWorkspace(true);
+          if (!forced.response.ok || forced.result?.status !== 'success') {
+            if (forced.result?.message) {
+              setFormMessage(forced.result.message);
+            }
+            return;
+          }
+
+          const forcedWorkspace = parseWorkspace(forced.result.workspace, defaultName);
+          setWorkspaceRevision(forcedWorkspace.revision);
+          lastServerHashRef.current = workspaceHash(forcedWorkspace);
+          setFormMessage(text.conflictOverwriteSuccess);
+          return;
+        }
+
         if (!response.ok || result?.status !== 'success') {
           if (result?.message) {
             setFormMessage(result.message);
@@ -1267,7 +1340,9 @@ function MapView({
           return;
         }
 
-        lastServerHashRef.current = workspaceHash(parseWorkspace(result.workspace, activeUserName || 'User'));
+        const savedWorkspace = parseWorkspace(result.workspace, defaultName);
+        setWorkspaceRevision(savedWorkspace.revision);
+        lastServerHashRef.current = workspaceHash(savedWorkspace);
       } catch {
         // Keep local copy and retry on next workspace mutation.
       }
@@ -1284,11 +1359,19 @@ function MapView({
     bubbleLayout,
     isLoaded,
     isServerHydrated,
+    language,
     points,
     recycleBin,
     scope,
     showFeaturedBubbles,
+    text.conflictDetected,
+    text.conflictForceOverwrite,
+    text.conflictLoadLatest,
+    text.conflictLoadedLatest,
+    text.conflictNoAction,
+    text.conflictOverwriteSuccess,
     users,
+    workspaceRevision,
   ]);
 
   useEffect(() => {

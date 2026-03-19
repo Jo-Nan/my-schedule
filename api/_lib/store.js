@@ -165,9 +165,12 @@ const sanitizeMapWorkspace = (workspace = {}) => {
       users: [],
       points: [],
       recycleBin: [],
+      revision: 0,
       savedAt: new Date().toISOString(),
     };
   }
+
+  const rawRevision = Number.isFinite(workspace.revision) ? workspace.revision : Number.parseInt(workspace.revision, 10);
 
   return {
     scope: workspace.scope === 'world' ? 'world' : 'china',
@@ -176,6 +179,7 @@ const sanitizeMapWorkspace = (workspace = {}) => {
     users: Array.isArray(workspace.users) ? workspace.users : [],
     points: Array.isArray(workspace.points) ? workspace.points : [],
     recycleBin: sanitizeMapRecycleBin(workspace.recycleBin),
+    revision: Number.isInteger(rawRevision) && rawRevision >= 0 ? rawRevision : 0,
     savedAt: typeof workspace.savedAt === 'string' ? workspace.savedAt : new Date().toISOString(),
   };
 };
@@ -582,9 +586,32 @@ export const getMessages = (messages) => sanitizeMessages(messages).sort((left, 
 
 export const getUserMapWorkspace = (mapsByUser, userId) => sanitizeMapWorkspace(mapsByUser[userId]);
 
-export const setUserMapWorkspace = (mapsByUser, userId, workspace) => {
-  mapsByUser[userId] = sanitizeMapWorkspace(workspace);
-  return mapsByUser[userId];
+export const setUserMapWorkspace = (mapsByUser, userId, workspace, options = {}) => {
+  const currentWorkspace = getUserMapWorkspace(mapsByUser, userId);
+  const expectedRevision = Number.isInteger(options.expectedRevision) ? options.expectedRevision : null;
+  const force = options.force === true;
+
+  if (expectedRevision !== null && !force && currentWorkspace.revision !== expectedRevision) {
+    return {
+      conflict: true,
+      currentWorkspace,
+      savedWorkspace: currentWorkspace,
+    };
+  }
+
+  const sanitizedWorkspace = sanitizeMapWorkspace(workspace);
+  const nextWorkspace = sanitizeMapWorkspace({
+    ...sanitizedWorkspace,
+    revision: currentWorkspace.revision + 1,
+    savedAt: new Date().toISOString(),
+  });
+  mapsByUser[userId] = nextWorkspace;
+
+  return {
+    conflict: false,
+    currentWorkspace,
+    savedWorkspace: nextWorkspace,
+  };
 };
 
 export const getUserWorkspaceDataSizeBytes = ({

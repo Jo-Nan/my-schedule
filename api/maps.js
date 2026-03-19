@@ -25,13 +25,21 @@ export default async function handler(req, res) {
 
   if (req.method === 'POST') {
     try {
-      const workspace = await parseJsonBody(req);
-      if (!workspace || typeof workspace !== 'object' || Array.isArray(workspace)) {
+      const body = await parseJsonBody(req);
+      if (!body || typeof body !== 'object' || Array.isArray(body)) {
         return res.status(400).json({
           status: 'error',
           message: 'Request body must be a JSON object',
         });
       }
+
+      const workspace = body.workspace && typeof body.workspace === 'object' && !Array.isArray(body.workspace)
+        ? body.workspace
+        : body;
+      const expectedRevision = Number.isInteger(body.expectedRevision)
+        ? body.expectedRevision
+        : null;
+      const force = body.force === true;
 
       assertUserWorkspaceQuota({
         users: auth.users,
@@ -41,13 +49,25 @@ export default async function handler(req, res) {
         nextMapWorkspace: workspace,
       });
 
-      const savedWorkspace = setUserMapWorkspace(auth.mapsByUser, auth.user.id, workspace);
+      const result = setUserMapWorkspace(auth.mapsByUser, auth.user.id, workspace, {
+        expectedRevision,
+        force,
+      });
+      if (result.conflict) {
+        return res.status(409).json({
+          status: 'error',
+          code: 'MAP_WORKSPACE_CONFLICT',
+          message: 'Map workspace was changed by another session.',
+          workspace: result.currentWorkspace,
+        });
+      }
+
       await saveMapsByUser(auth.config, auth.mapsByUser);
 
       return res.status(200).json({
         status: 'success',
         source: auth.config.mode,
-        workspace: savedWorkspace,
+        workspace: result.savedWorkspace,
       });
     } catch (error) {
       if (error?.code === 'USER_STORAGE_LIMIT_EXCEEDED') {
