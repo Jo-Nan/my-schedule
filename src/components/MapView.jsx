@@ -65,6 +65,8 @@ const MAX_THUMBNAIL_EDGE = 560;
 const MAX_PHOTO_COUNT_PER_POINT = 24;
 const MAP_AUTO_UPLOAD_DELAY_MS = 1200;
 const RECYCLE_BIN_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+const MAX_PLACE_HISTORY = 12;
+const MAX_FAVORITE_PLACES = 16;
 
 const openMapDatabase = () => new Promise((resolve, reject) => {
   if (typeof window === 'undefined' || !window.indexedDB) {
@@ -143,6 +145,14 @@ const TEXTS = {
     cityInputPlaceholder: 'e.g. Shanghai, London, Tokyo',
     citySearchBtn: 'Search',
     citySearching: 'Searching...',
+    localMatchTitle: 'Local matches',
+    favoritePlacesTitle: 'Favorites',
+    searchHistoryTitle: 'Recent searches',
+    addFavoriteBtn: 'Favorite',
+    removeFavoriteBtn: 'Unfavorite',
+    saveCurrentPlaceBtn: 'Save current place',
+    noFavoritePlaces: 'No favorites yet.',
+    noSearchHistory: 'No recent searches.',
     placeLabel: 'Place label',
     placePlaceholder: 'Can be city, scenic spot, or custom note',
     latitudeLabel: 'Latitude',
@@ -249,6 +259,14 @@ const TEXTS = {
     cityInputPlaceholder: '例如：上海、北京、London',
     citySearchBtn: '搜索',
     citySearching: '搜索中...',
+    localMatchTitle: '本地匹配',
+    favoritePlacesTitle: '收藏地点',
+    searchHistoryTitle: '最近搜索',
+    addFavoriteBtn: '收藏',
+    removeFavoriteBtn: '取消收藏',
+    saveCurrentPlaceBtn: '收藏当前地点',
+    noFavoritePlaces: '暂无收藏地点。',
+    noSearchHistory: '暂无搜索记录。',
     placeLabel: '地点名称',
     placePlaceholder: '可填城市、景点或自定义备注',
     latitudeLabel: '纬度',
@@ -583,6 +601,70 @@ const normalizeRecycleItem = (item, index) => {
   };
 };
 
+const normalizePlaceBookmark = (item, index) => {
+  const latitude = Number.parseFloat(item?.latitude);
+  const longitude = Number.parseFloat(item?.longitude);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    return null;
+  }
+  const name = isNonEmpty(item?.name)
+    ? item.name.trim()
+    : `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
+  return {
+    id: isNonEmpty(item?.id) ? item.id : makeId(`place_${index}`),
+    name,
+    latitude: clampCoord(latitude, -90, 90),
+    longitude: clampCoord(longitude, -180, 180),
+  };
+};
+
+const placeBookmarkKey = (item) => (
+  `${item.name.toLowerCase()}__${item.latitude.toFixed(4)}__${item.longitude.toFixed(4)}`
+);
+
+const dedupePlaceBookmarks = (list, maxSize) => {
+  const seen = new Set();
+  const output = [];
+  (Array.isArray(list) ? list : []).forEach((item, index) => {
+    const normalized = normalizePlaceBookmark(item, index);
+    if (!normalized) {
+      return;
+    }
+    const key = placeBookmarkKey(normalized);
+    if (seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    output.push(normalized);
+  });
+  return output.slice(0, maxSize);
+};
+
+const normalizeSearchToken = (value) => String(value || '')
+  .toLowerCase()
+  .replace(/[^a-z0-9\u4e00-\u9fa5]+/g, '');
+
+const initialsToken = (value) => String(value || '')
+  .toLowerCase()
+  .split(/[^a-z0-9\u4e00-\u9fa5]+/g)
+  .filter(Boolean)
+  .map((token) => token[0] || '')
+  .join('');
+
+const placeMatchesQuery = (place, query) => {
+  if (!isNonEmpty(query)) {
+    return false;
+  }
+  const q = normalizeSearchToken(query);
+  if (!q) {
+    return false;
+  }
+  const nameToken = normalizeSearchToken(place?.name || '');
+  const coordToken = normalizeSearchToken(`${place?.latitude || ''},${place?.longitude || ''}`);
+  const shortToken = initialsToken(place?.name || '');
+  return nameToken.includes(q) || coordToken.includes(q) || shortToken.startsWith(q);
+};
+
 const pruneRecycleItems = (items) => {
   const now = Date.now();
   return (Array.isArray(items) ? items : []).filter((item) => {
@@ -672,6 +754,8 @@ const parseWorkspace = (rawWorkspace, defaultName) => {
         .map((point, index) => normalizePoint(point, index, loadedUsers))
         .filter(Boolean)
     : [];
+  const loadedSearchHistory = dedupePlaceBookmarks(safeWorkspace?.searchHistory, MAX_PLACE_HISTORY);
+  const loadedFavoritePlaces = dedupePlaceBookmarks(safeWorkspace?.favoritePlaces, MAX_FAVORITE_PLACES);
   const loadedRecycleBin = pruneRecycleItems(
     (Array.isArray(safeWorkspace?.recycleBin) ? safeWorkspace.recycleBin : [])
       .map((item, index) => normalizeRecycleItem(item, index)),
@@ -688,6 +772,8 @@ const parseWorkspace = (rawWorkspace, defaultName) => {
     scope: loadedScope,
     users: loadedUsers,
     points: loadedPoints,
+    searchHistory: loadedSearchHistory,
+    favoritePlaces: loadedFavoritePlaces,
     recycleBin: loadedRecycleBin,
     revision,
     showFeaturedBubbles: loadedShowFeaturedBubbles,
@@ -697,10 +783,22 @@ const parseWorkspace = (rawWorkspace, defaultName) => {
   };
 };
 
-const workspaceToPayload = ({ scope, users, points, recycleBin, revision, showFeaturedBubbles, bubbleLayout }) => ({
+const workspaceToPayload = ({
+  scope,
+  users,
+  points,
+  searchHistory,
+  favoritePlaces,
+  recycleBin,
+  revision,
+  showFeaturedBubbles,
+  bubbleLayout,
+}) => ({
   scope: scope === 'world' ? 'world' : 'china',
   users: Array.isArray(users) ? users : [],
   points: Array.isArray(points) ? points.map(persistPoint) : [],
+  searchHistory: dedupePlaceBookmarks(searchHistory, MAX_PLACE_HISTORY),
+  favoritePlaces: dedupePlaceBookmarks(favoritePlaces, MAX_FAVORITE_PLACES),
   recycleBin: pruneRecycleItems(Array.isArray(recycleBin) ? recycleBin : []),
   revision: Number.isInteger(revision) && revision >= 0 ? revision : 0,
   showFeaturedBubbles: showFeaturedBubbles !== false,
@@ -708,10 +806,22 @@ const workspaceToPayload = ({ scope, users, points, recycleBin, revision, showFe
   savedAt: new Date().toISOString(),
 });
 
-const workspaceHash = ({ scope, users, points, recycleBin, revision, showFeaturedBubbles, bubbleLayout }) => JSON.stringify({
+const workspaceHash = ({
+  scope,
+  users,
+  points,
+  searchHistory,
+  favoritePlaces,
+  recycleBin,
+  revision,
+  showFeaturedBubbles,
+  bubbleLayout,
+}) => JSON.stringify({
   scope: scope === 'world' ? 'world' : 'china',
   users: Array.isArray(users) ? users : [],
   points: Array.isArray(points) ? points.map(persistPoint) : [],
+  searchHistory: dedupePlaceBookmarks(searchHistory, MAX_PLACE_HISTORY),
+  favoritePlaces: dedupePlaceBookmarks(favoritePlaces, MAX_FAVORITE_PLACES),
   recycleBin: pruneRecycleItems(Array.isArray(recycleBin) ? recycleBin : []),
   revision: Number.isInteger(revision) && revision >= 0 ? revision : 0,
   showFeaturedBubbles: showFeaturedBubbles !== false,
@@ -1127,6 +1237,8 @@ function MapView({
   const [scope, setScope] = useState('china');
   const [users, setUsers] = useState([]);
   const [points, setPoints] = useState([]);
+  const [searchHistory, setSearchHistory] = useState([]);
+  const [favoritePlaces, setFavoritePlaces] = useState([]);
   const [recycleBin, setRecycleBin] = useState([]);
   const [workspaceRevision, setWorkspaceRevision] = useState(0);
   const [selectedUserId, setSelectedUserId] = useState('');
@@ -1213,6 +1325,8 @@ function MapView({
       setScope(loadedWorkspace.scope);
       setUsers(loadedWorkspace.users);
       setPoints(loadedWorkspace.points);
+      setSearchHistory(loadedWorkspace.searchHistory);
+      setFavoritePlaces(loadedWorkspace.favoritePlaces);
       setRecycleBin(loadedWorkspace.recycleBin);
       setWorkspaceRevision(loadedWorkspace.revision);
       setShowFeaturedBubbles(loadedWorkspace.showFeaturedBubbles);
@@ -1283,6 +1397,8 @@ function MapView({
           setScope(serverWorkspace.scope);
           setUsers(serverWorkspace.users);
           setPoints(serverWorkspace.points);
+          setSearchHistory(serverWorkspace.searchHistory);
+          setFavoritePlaces(serverWorkspace.favoritePlaces);
           setRecycleBin(serverWorkspace.recycleBin);
           setWorkspaceRevision(serverWorkspace.revision);
           setShowFeaturedBubbles(serverWorkspace.showFeaturedBubbles);
@@ -1316,6 +1432,8 @@ function MapView({
       scope,
       users,
       points,
+      searchHistory,
+      favoritePlaces,
       recycleBin,
       revision: workspaceRevision,
       showFeaturedBubbles,
@@ -1331,6 +1449,8 @@ function MapView({
           bubbleLayout: payload.bubbleLayout,
           users: payload.users,
           points: [],
+          searchHistory: payload.searchHistory,
+          favoritePlaces: payload.favoritePlaces,
           recycleBin: payload.recycleBin,
           revision: payload.revision,
           savedAt: payload.savedAt,
@@ -1343,7 +1463,7 @@ function MapView({
         }
       }
     })();
-  }, [bubbleLayout, isLoaded, points, recycleBin, scope, showFeaturedBubbles, storageKey, text.storageLimitError, users, workspaceRevision]);
+  }, [bubbleLayout, favoritePlaces, isLoaded, points, recycleBin, scope, searchHistory, showFeaturedBubbles, storageKey, text.storageLimitError, users, workspaceRevision]);
 
   useEffect(() => {
     if (!isLoaded || !isServerHydrated || !activeUserId) {
@@ -1355,6 +1475,8 @@ function MapView({
       scope,
       users,
       points,
+      searchHistory,
+      favoritePlaces,
       recycleBin,
       revision: workspaceRevision,
       showFeaturedBubbles,
@@ -1455,6 +1577,8 @@ function MapView({
     isServerHydrated,
     language,
     points,
+    searchHistory,
+    favoritePlaces,
     recycleBin,
     scope,
     showFeaturedBubbles,
@@ -1562,6 +1686,15 @@ function MapView({
     () => points.filter((point) => point.userId === expandedUserId),
     [expandedUserId, points],
   );
+  const localMatchPlaces = useMemo(() => {
+    if (!isNonEmpty(cityQuery)) {
+      return [];
+    }
+    const merged = dedupePlaceBookmarks([...favoritePlaces, ...searchHistory], MAX_FAVORITE_PLACES + MAX_PLACE_HISTORY);
+    return merged
+      .filter((item) => placeMatchesQuery(item, cityQuery))
+      .slice(0, 8);
+  }, [cityQuery, favoritePlaces, searchHistory]);
 
   const featuredPoints = useMemo(() => points
     .map((point) => {
@@ -1895,6 +2028,58 @@ function MapView({
     ]));
   }, []);
 
+  const placeFromResult = useCallback((result) => normalizePlaceBookmark({
+    id: result?.id,
+    name: result?.name,
+    latitude: result?.latitude,
+    longitude: result?.longitude,
+  }, 0), []);
+
+  const addToSearchHistory = useCallback((place) => {
+    const normalized = normalizePlaceBookmark(place, 0);
+    if (!normalized) {
+      return;
+    }
+    setSearchHistory((previous) => dedupePlaceBookmarks([normalized, ...previous], MAX_PLACE_HISTORY));
+  }, []);
+
+  const isFavoritePlace = useCallback((place) => {
+    const normalized = normalizePlaceBookmark(place, 0);
+    if (!normalized) {
+      return false;
+    }
+    const key = placeBookmarkKey(normalized);
+    return favoritePlaces.some((item) => placeBookmarkKey(item) === key);
+  }, [favoritePlaces]);
+
+  const toggleFavoritePlace = useCallback((place) => {
+    const normalized = normalizePlaceBookmark(place, 0);
+    if (!normalized) {
+      return;
+    }
+    const key = placeBookmarkKey(normalized);
+    setFavoritePlaces((previous) => {
+      if (previous.some((item) => placeBookmarkKey(item) === key)) {
+        return previous.filter((item) => placeBookmarkKey(item) !== key);
+      }
+      return dedupePlaceBookmarks([normalized, ...previous], MAX_FAVORITE_PLACES);
+    });
+  }, []);
+
+  const applyQuickPlace = useCallback((place) => {
+    const normalized = normalizePlaceBookmark(place, 0);
+    if (!normalized) {
+      return;
+    }
+    setPlaceInput(normalized.name);
+    setLatitudeInput(normalized.latitude.toFixed(6));
+    setLongitudeInput(normalized.longitude.toFixed(6));
+    setSearchResults([]);
+    setSearchMessage('');
+    setFormMessage('');
+    addToSearchHistory(normalized);
+  }, [addToSearchHistory]);
+
   const handleSearchCity = async () => {
     const query = cityQuery.trim();
     if (!query) {
@@ -1956,13 +2141,36 @@ function MapView({
   };
 
   const applySearchResult = (result) => {
-    setPlaceInput(result.name);
-    setLatitudeInput(result.latitude.toFixed(6));
-    setLongitudeInput(result.longitude.toFixed(6));
-    setSearchResults([]);
-    setSearchMessage('');
-    setFormMessage('');
+    const place = placeFromResult(result);
+    if (!place) {
+      return;
+    }
+    applyQuickPlace(place);
   };
+
+  const getCurrentInputPlace = useCallback(() => {
+    const latitude = Number.parseFloat(latitudeInput);
+    const longitude = Number.parseFloat(longitudeInput);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      return null;
+    }
+    return normalizePlaceBookmark({
+      name: placeInput.trim() || cityQuery.trim() || `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`,
+      latitude,
+      longitude,
+    }, 0);
+  }, [cityQuery, latitudeInput, longitudeInput, placeInput]);
+
+  const saveCurrentPlaceToFavorites = useCallback(() => {
+    const place = getCurrentInputPlace();
+    if (!place) {
+      setFormMessage(text.invalidCoord);
+      return;
+    }
+    toggleFavoritePlace(place);
+    addToSearchHistory(place);
+    setFormMessage('');
+  }, [addToSearchHistory, getCurrentInputPlace, text.invalidCoord, toggleFavoritePlace]);
 
   const makeUploadPlaceholder = (file, pointId) => ({
     id: makeId('uploading_photo'),
@@ -2025,6 +2233,11 @@ function MapView({
     };
 
     setPoints((previous) => [...previous, point]);
+    addToSearchHistory({
+      name: point.place || `${point.latitude.toFixed(4)}, ${point.longitude.toFixed(4)}`,
+      latitude: point.latitude,
+      longitude: point.longitude,
+    });
     setSelectedPointId(point.id);
     setFormMessage(nextMessage);
     setPlaceInput('');
@@ -2850,17 +3063,85 @@ function MapView({
               </button>
             </div>
 
+            <button
+              type="button"
+              className="glass-button"
+              onClick={saveCurrentPlaceToFavorites}
+            >
+              {text.saveCurrentPlaceBtn}
+            </button>
+
+            {localMatchPlaces.length > 0 && (
+              <>
+                <p className="map-label">{text.localMatchTitle}</p>
+                <div className="map-place-chip-list">
+                  {localMatchPlaces.map((place) => (
+                    <button
+                      key={`local_match_${place.id}`}
+                      type="button"
+                      className="glass-button map-place-chip"
+                      onClick={() => applyQuickPlace(place)}
+                    >
+                      {place.name}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
             {searchResults.length > 0 && (
               <div className="map-search-results">
                 {searchResults.map((result) => (
+                  <div key={result.id} className="map-search-result-row">
+                    <button
+                      type="button"
+                      className="map-search-result map-search-result-main"
+                      onClick={() => applySearchResult(result)}
+                    >
+                      <span>{result.name}</span>
+                      <small>{result.latitude.toFixed(4)}, {result.longitude.toFixed(4)}</small>
+                    </button>
+                    <button
+                      type="button"
+                      className="glass-button map-search-fav-btn"
+                      onClick={() => toggleFavoritePlace(placeFromResult(result))}
+                    >
+                      {isFavoritePlace(result) ? text.removeFavoriteBtn : text.addFavoriteBtn}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <p className="map-label">{text.favoritePlacesTitle}</p>
+            {favoritePlaces.length === 0 && <p className="map-muted">{text.noFavoritePlaces}</p>}
+            {favoritePlaces.length > 0 && (
+              <div className="map-place-chip-list">
+                {favoritePlaces.map((place) => (
                   <button
-                    key={result.id}
+                    key={`fav_place_${place.id}`}
                     type="button"
-                    className="map-search-result"
-                    onClick={() => applySearchResult(result)}
+                    className="glass-button map-place-chip"
+                    onClick={() => applyQuickPlace(place)}
                   >
-                    <span>{result.name}</span>
-                    <small>{result.latitude.toFixed(4)}, {result.longitude.toFixed(4)}</small>
+                    {place.name}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <p className="map-label">{text.searchHistoryTitle}</p>
+            {searchHistory.length === 0 && <p className="map-muted">{text.noSearchHistory}</p>}
+            {searchHistory.length > 0 && (
+              <div className="map-place-chip-list">
+                {searchHistory.map((place) => (
+                  <button
+                    key={`history_place_${place.id}`}
+                    type="button"
+                    className="glass-button map-place-chip"
+                    onClick={() => applyQuickPlace(place)}
+                  >
+                    {place.name}
                   </button>
                 ))}
               </div>

@@ -345,6 +345,13 @@
   padding-right: 0.2rem;
 }
 
+.map-search-result-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.35rem;
+  align-items: stretch;
+}
+
 .map-search-result {
   width: 100%;
   border: 1px solid var(--glass-border);
@@ -359,6 +366,17 @@
   cursor: pointer;
 }
 
+.map-search-result-main {
+  min-width: 0;
+}
+
+.map-search-fav-btn {
+  white-space: nowrap;
+  padding: 0.38rem 0.52rem;
+  font-size: 0.7rem;
+  box-shadow: none;
+}
+
 .map-search-result span {
   font-size: 0.8rem;
   line-height: 1.25;
@@ -367,6 +385,23 @@
 .map-search-result small {
   color: var(--text-secondary);
   font-size: 0.72rem;
+}
+
+.map-place-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.map-place-chip {
+  padding: 0.28rem 0.52rem;
+  font-size: 0.68rem;
+  border-radius: 999px;
+  box-shadow: none;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .map-textarea {

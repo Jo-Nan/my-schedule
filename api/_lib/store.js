@@ -156,6 +156,39 @@ const sanitizeMapRecycleBin = (recycleBin) => (
     : []
 );
 
+const sanitizeMapPlaceBookmarks = (places, maxSize = 20) => {
+  const list = Array.isArray(places) ? places : [];
+  const seen = new Set();
+  const output = [];
+
+  for (const item of list) {
+    const latitude = Number.parseFloat(item?.latitude);
+    const longitude = Number.parseFloat(item?.longitude);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      continue;
+    }
+    const name = typeof item?.name === 'string' && item.name.trim()
+      ? item.name.trim()
+      : `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
+    const key = `${name.toLowerCase()}__${latitude.toFixed(4)}__${longitude.toFixed(4)}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    output.push({
+      id: typeof item?.id === 'string' ? item.id : `place_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
+      name,
+      latitude: Math.max(-90, Math.min(90, latitude)),
+      longitude: Math.max(-180, Math.min(180, longitude)),
+    });
+    if (output.length >= maxSize) {
+      break;
+    }
+  }
+
+  return output;
+};
+
 const sanitizeMapWorkspace = (workspace = {}) => {
   if (!workspace || typeof workspace !== 'object' || Array.isArray(workspace)) {
     return {
@@ -164,6 +197,8 @@ const sanitizeMapWorkspace = (workspace = {}) => {
       bubbleLayout: 'map',
       users: [],
       points: [],
+      searchHistory: [],
+      favoritePlaces: [],
       recycleBin: [],
       revision: 0,
       savedAt: new Date().toISOString(),
@@ -178,6 +213,8 @@ const sanitizeMapWorkspace = (workspace = {}) => {
     bubbleLayout: ['map', 'right', 'bottom'].includes(workspace.bubbleLayout) ? workspace.bubbleLayout : 'map',
     users: Array.isArray(workspace.users) ? workspace.users : [],
     points: Array.isArray(workspace.points) ? workspace.points : [],
+    searchHistory: sanitizeMapPlaceBookmarks(workspace.searchHistory, 12),
+    favoritePlaces: sanitizeMapPlaceBookmarks(workspace.favoritePlaces, 16),
     recycleBin: sanitizeMapRecycleBin(workspace.recycleBin),
     revision: Number.isInteger(rawRevision) && rawRevision >= 0 ? rawRevision : 0,
     savedAt: typeof workspace.savedAt === 'string' ? workspace.savedAt : new Date().toISOString(),
