@@ -107,8 +107,8 @@ const PlanCard = ({ plan, updatePlan, deletePlan, onEdit, onDragStart, onDragEnd
           ...(isSelected ? styles.cardSelected : {}),
         }}
         tabIndex={0}
-        onClick={() => onSelect?.(plan)}
-        onFocus={() => onSelect?.(plan)}
+        onClick={(event) => onSelect?.(plan, event)}
+        onFocus={(event) => onSelect?.(plan, event)}
         draggable
         onDragStart={(e) => {
           if (isDragging || e.target.closest(interactiveSelector)) {

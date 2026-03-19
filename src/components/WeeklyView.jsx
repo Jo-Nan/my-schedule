@@ -20,7 +20,7 @@ const getLocalDateStr = (date = new Date()) => {
   return `${year}-${month}-${day}`;
 };
 
-const WeeklyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t, activeUserId, onCopyPlan, onPastePlan, hasCopiedPlan }) => {
+const WeeklyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t, activeUserId, onCopyPlans, onCutPlans, onPastePlan, hasClipboard }) => {
   // Sliding window navigation state
   const [dayOffset, setDayOffset] = useState(0);
   const gridRef = useRef(null);
@@ -58,7 +58,7 @@ const WeeklyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t, ac
 
   const [modalState, setModalState] = useState({ isOpen: false, date: null, editingPlan: null });
   const [draggedPlan, setDraggedPlan] = useState(null);
-  const [selectedPlanId, setSelectedPlanId] = useState(null);
+  const [selectedPlanIds, setSelectedPlanIds] = useState([]);
   const [selectedDate, setSelectedDate] = useState(getLocalDateStr(new Date()));
 
   useEffect(() => {
@@ -68,7 +68,38 @@ const WeeklyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t, ac
   }, [days, selectedDate]);
 
   useEffect(() => {
-    const activePlan = selectedPlanId ? plans.find((plan) => plan.id === selectedPlanId) : null;
+    const visiblePlanIdSet = new Set(
+      plans
+        .filter((plan) => days.includes(plan.date))
+        .map((plan) => plan.id),
+    );
+    setSelectedPlanIds((prev) => prev.filter((id) => visiblePlanIdSet.has(id)));
+  }, [days, plans]);
+
+  const handlePlanSelect = (selectedPlan, event) => {
+    if (!selectedPlan?.id) {
+      return;
+    }
+
+    const useMultiSelect = Boolean(event?.metaKey || event?.ctrlKey);
+    if (!useMultiSelect) {
+      setSelectedPlanIds([selectedPlan.id]);
+      setSelectedDate(selectedPlan.date);
+      return;
+    }
+
+    setSelectedPlanIds((prev) => (
+      prev.includes(selectedPlan.id)
+        ? prev.filter((id) => id !== selectedPlan.id)
+        : [...prev, selectedPlan.id]
+    ));
+    setSelectedDate(selectedPlan.date);
+  };
+
+  useEffect(() => {
+    const selectedPlans = selectedPlanIds
+      .map((planId) => plans.find((plan) => plan.id === planId))
+      .filter(Boolean);
 
     const isTypingTarget = (target) => {
       const tag = target?.tagName;
@@ -81,12 +112,17 @@ const WeeklyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t, ac
       }
 
       const key = event.key.toLowerCase();
-      if (key === 'c' && activePlan) {
+      if (key === 'c' && selectedPlans.length > 0) {
         event.preventDefault();
-        onCopyPlan?.(activePlan);
+        onCopyPlans?.(selectedPlans);
       }
 
-      if (key === 'v' && hasCopiedPlan && selectedDate) {
+      if (key === 'x' && selectedPlans.length > 0) {
+        event.preventDefault();
+        onCutPlans?.(selectedPlans);
+      }
+
+      if (key === 'v' && hasClipboard && selectedDate) {
         event.preventDefault();
         onPastePlan?.(selectedDate);
       }
@@ -94,7 +130,7 @@ const WeeklyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t, ac
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [hasCopiedPlan, onCopyPlan, onPastePlan, plans, selectedDate, selectedPlanId]);
+  }, [hasClipboard, onCopyPlans, onCutPlans, onPastePlan, plans, selectedDate, selectedPlanIds]);
 
   const handleAddTask = (date) => {
     setModalState({ isOpen: true, date, editingPlan: null });
@@ -268,11 +304,8 @@ const WeeklyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t, ac
                     onDragStart={(e) => handleDragStart(e, plan)}
                     onDragEnd={handleDragEnd}
                     isDragging={draggedPlan?.id === plan.id}
-                    isSelected={selectedPlanId === plan.id}
-                    onSelect={(selectedPlan) => {
-                      setSelectedPlanId(selectedPlan.id);
-                      setSelectedDate(selectedPlan.date);
-                    }}
+                    isSelected={selectedPlanIds.includes(plan.id)}
+                    onSelect={handlePlanSelect}
                     t={t}
                   />
                 </div>

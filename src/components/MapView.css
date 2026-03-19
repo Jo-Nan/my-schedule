@@ -249,7 +249,7 @@
 }
 
 .map-dock-connectors-right {
-  width: calc(100% + 320px);
+  width: 100%;
 }
 
 .map-collapse-btn {
@@ -608,13 +608,18 @@
 
 .map-featured-dock-right {
   position: absolute;
-  top: 0.2rem;
-  left: calc(100% + 0.7rem);
-  width: min(260px, 27vw);
-  max-height: 72vh;
+  top: 2.9rem;
+  right: 0.7rem;
+  width: min(280px, 36%);
+  max-height: calc(72vh - 3.4rem);
   overflow-y: auto;
-  padding-right: 0.3rem;
+  padding: 0.2rem;
   flex-direction: column;
+  border: 1px solid var(--glass-border);
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.24);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 12px 28px rgba(2, 6, 23, 0.28);
 }
 
 .map-featured-dock-bottom {
@@ -634,7 +639,8 @@
   align-items: center;
   color: var(--text-primary);
   cursor: pointer;
-  min-width: 118px;
+  min-width: 112px;
+  width: 100%;
 }
 
 .map-featured-dock-item.active {
@@ -987,7 +993,12 @@
     width: 100%;
     max-height: none;
     overflow: visible;
-    padding-right: 0;
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
     flex-direction: row;
     overflow-x: auto;
   }

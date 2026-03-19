@@ -133,7 +133,7 @@ function App() {
   const [hasUnsavedProgress, setHasUnsavedProgress] = useState(false);
   const [pendingSaveType, setPendingSaveType] = useState('none');
   const [pendingImport, setPendingImport] = useState(null);
-  const [copiedPlan, setCopiedPlan] = useState(null);
+  const [planClipboard, setPlanClipboard] = useState({ items: [], mode: 'copy' });
   const buildLabel = useMemo(() => formatBuildTime(APP_BUILD_TIME), []);
 
   const t = translations[language];
@@ -562,11 +562,38 @@ function App() {
     setPendingSaveType('general');
   };
 
-  const copyPlan = (plan) => {
-    if (!plan) {
-      return;
+  const normalizeClipboardPlans = (selectedPlans) => (
+    Array.isArray(selectedPlans)
+      ? selectedPlans
+        .filter((plan) => plan && typeof plan === 'object' && typeof plan.id === 'string')
+        .map((plan) => ({ ...plan }))
+      : []
+  );
+
+  const copyPlans = (selectedPlans) => {
+    const normalizedPlans = normalizeClipboardPlans(selectedPlans);
+    if (normalizedPlans.length === 0) {
+      return false;
     }
-    setCopiedPlan({ ...plan });
+
+    setPlanClipboard({
+      items: normalizedPlans,
+      mode: 'copy',
+    });
+    return true;
+  };
+
+  const cutPlans = (selectedPlans) => {
+    const normalizedPlans = normalizeClipboardPlans(selectedPlans);
+    if (normalizedPlans.length === 0) {
+      return false;
+    }
+
+    setPlanClipboard({
+      items: normalizedPlans,
+      mode: 'cut',
+    });
+    return true;
   };
 
   const exportPlans = () => {
@@ -594,16 +621,36 @@ function App() {
   };
 
   const pastePlanToDate = (targetDate) => {
-    if (!copiedPlan || !targetDate) {
+    if (!targetDate || !Array.isArray(planClipboard.items) || planClipboard.items.length === 0) {
       return false;
     }
 
-    addPlan({
-      ...copiedPlan,
-      id: undefined,
+    const clippedPlans = normalizeClipboardPlans(planClipboard.items);
+    if (clippedPlans.length === 0) {
+      return false;
+    }
+
+    if (planClipboard.mode === 'cut') {
+      const cutIdSet = new Set(clippedPlans.map((plan) => plan.id));
+      setPlans((prev) => prev.map((plan) => (
+        cutIdSet.has(plan.id)
+          ? { ...plan, date: targetDate, updatedAt: Date.now() }
+          : plan
+      )));
+      setPendingSaveType('general');
+      setPlanClipboard({ items: [], mode: 'copy' });
+      return true;
+    }
+
+    const now = Date.now();
+    const pastedPlans = clippedPlans.map((plan, index) => ({
+      ...plan,
+      id: `${now}-${index}-${Math.random().toString(36).slice(2, 9)}`,
       date: targetDate,
-      updatedAt: Date.now(),
-    });
+      updatedAt: now + index,
+    }));
+    setPlans((prev) => [...prev, ...pastedPlans]);
+    setPendingSaveType('general');
     return true;
   };
 
@@ -636,6 +683,7 @@ function App() {
       setIsProfileModalOpen(false);
       setHasUnsavedProgress(false);
       setPendingSaveType('none');
+      setPlanClipboard({ items: [], mode: 'copy' });
       isInitializedRef.current = false;
       lastSyncedHashRef.current = null;
     }
@@ -775,9 +823,10 @@ function App() {
             weatherData={weatherData}
             t={t}
             activeUserId={activeUser?.id || ''}
-            onCopyPlan={copyPlan}
+            onCopyPlans={copyPlans}
+            onCutPlans={cutPlans}
             onPastePlan={pastePlanToDate}
-            hasCopiedPlan={Boolean(copiedPlan)}
+            hasClipboard={planClipboard.items.length > 0}
           />
         )}
         {viewMode === 'weekly' && (
@@ -789,9 +838,10 @@ function App() {
             weatherData={weatherData}
             t={t}
             activeUserId={activeUser?.id || ''}
-            onCopyPlan={copyPlan}
+            onCopyPlans={copyPlans}
+            onCutPlans={cutPlans}
             onPastePlan={pastePlanToDate}
-            hasCopiedPlan={Boolean(copiedPlan)}
+            hasClipboard={planClipboard.items.length > 0}
           />
         )}
         {viewMode === 'monthly' && <MonthlyView plans={plans} t={t} />}

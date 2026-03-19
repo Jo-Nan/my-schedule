@@ -9,7 +9,7 @@ const sharedCalendarNavText = {
   letterSpacing: '0.01em',
 };
 
-const DailyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t, activeUserId, onCopyPlan, onPastePlan, hasCopiedPlan }) => {
+const DailyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t, activeUserId, onCopyPlans, onCutPlans, onPastePlan, hasClipboard }) => {
   const [modalState, setModalState] = useState({ isOpen: false, date: null, editingPlan: null });
   // Start from Today
   const [currentDateObj, setCurrentDateObj] = useState(new Date());
@@ -17,7 +17,7 @@ const DailyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t, act
   const [currentTime, setCurrentTime] = useState(new Date());
   // Drag & drop state
   const [draggedPlan, setDraggedPlan] = useState(null);
-  const [selectedPlanId, setSelectedPlanId] = useState(null);
+  const [selectedPlanIds, setSelectedPlanIds] = useState([]);
 
   // Get local date string (handles timezone correctly)
   const getLocalDateStr = (date) => {
@@ -100,7 +100,32 @@ const DailyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t, act
   const progressRatio = totalCount === 0 ? 0 : Math.round((completedCount / totalCount) * 100);
 
   useEffect(() => {
-    const activePlan = selectedPlanId ? plans.find((plan) => plan.id === selectedPlanId) : null;
+    const currentDayPlanIdSet = new Set(dayPlans.map((plan) => plan.id));
+    setSelectedPlanIds((prev) => prev.filter((id) => currentDayPlanIdSet.has(id)));
+  }, [dayPlans]);
+
+  const handlePlanSelect = (selectedPlan, event) => {
+    if (!selectedPlan?.id) {
+      return;
+    }
+
+    const useMultiSelect = Boolean(event?.metaKey || event?.ctrlKey);
+    if (!useMultiSelect) {
+      setSelectedPlanIds([selectedPlan.id]);
+      return;
+    }
+
+    setSelectedPlanIds((prev) => (
+      prev.includes(selectedPlan.id)
+        ? prev.filter((id) => id !== selectedPlan.id)
+        : [...prev, selectedPlan.id]
+    ));
+  };
+
+  useEffect(() => {
+    const selectedPlans = selectedPlanIds
+      .map((planId) => plans.find((plan) => plan.id === planId))
+      .filter(Boolean);
 
     const isTypingTarget = (target) => {
       const tag = target?.tagName;
@@ -113,12 +138,17 @@ const DailyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t, act
       }
 
       const key = event.key.toLowerCase();
-      if (key === 'c' && activePlan) {
+      if (key === 'c' && selectedPlans.length > 0) {
         event.preventDefault();
-        onCopyPlan?.(activePlan);
+        onCopyPlans?.(selectedPlans);
       }
 
-      if (key === 'v' && hasCopiedPlan) {
+      if (key === 'x' && selectedPlans.length > 0) {
+        event.preventDefault();
+        onCutPlans?.(selectedPlans);
+      }
+
+      if (key === 'v' && hasClipboard) {
         event.preventDefault();
         onPastePlan?.(dateStr);
       }
@@ -126,7 +156,7 @@ const DailyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t, act
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [dateStr, hasCopiedPlan, onCopyPlan, onPastePlan, plans, selectedPlanId]);
+  }, [dateStr, hasClipboard, onCopyPlans, onCutPlans, onPastePlan, plans, selectedPlanIds]);
 
   return (
     <div className="animate-fade-in" style={styles.container}>
@@ -257,8 +287,8 @@ const DailyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t, act
                     onDragStart={(e) => handleDragStart(e, plan)}
                     onDragEnd={handleDragEnd}
                     isDragging={draggedPlan?.id === plan.id}
-                    isSelected={selectedPlanId === plan.id}
-                    onSelect={(selectedPlan) => setSelectedPlanId(selectedPlan.id)}
+                    isSelected={selectedPlanIds.includes(plan.id)}
+                    onSelect={handlePlanSelect}
                     t={t}
                   />
                 </div>
