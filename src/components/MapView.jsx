@@ -190,6 +190,9 @@ const TEXTS = {
     cannotDeleteLastUser: 'At least one user must be kept.',
     deleteUserConfirm: 'Delete this user?',
     userDeleteReassign: 'Points will be reassigned to',
+    dangerSecondConfirm: 'This action cannot be undone. Please confirm again.',
+    deletePointConfirm: 'Delete this map point?',
+    deletePhotoConfirm: 'Delete this photo?',
     invalidRgb: 'RGB must be in the format like 255, 120, 0.',
     invalidCoord: 'Please enter valid latitude/longitude.',
     invalidCoordRange: 'Latitude must be between -90 and 90, longitude between -180 and 180.',
@@ -273,6 +276,9 @@ const TEXTS = {
     cannotDeleteLastUser: '至少保留一个用户。',
     deleteUserConfirm: '确认删除该用户吗？',
     userDeleteReassign: '该用户点位将迁移到',
+    dangerSecondConfirm: '删除后不可恢复，请再次确认。',
+    deletePointConfirm: '确认删除这个点位吗？',
+    deletePhotoConfirm: '确认删除这张照片吗？',
     invalidRgb: 'RGB 格式应类似 255, 120, 0。',
     invalidCoord: '请输入有效的经纬度。',
     invalidCoordRange: '纬度范围需在 -90 到 90，经度需在 -180 到 180。',
@@ -990,6 +996,7 @@ function MapView({
   const lastServerHashRef = useRef('');
   const localLoadedAtRef = useRef(0);
   const addPointFileInputRef = useRef(null);
+  const bookmarkEditorRef = useRef(null);
   const mapCanvasColumnRef = useRef(null);
   const featuredDockRef = useRef(null);
   const featuredDockItemRefs = useRef(new Map());
@@ -1226,6 +1233,28 @@ function MapView({
       setSelectedPointId('');
     }
   }, [points, selectedPointId]);
+
+  useEffect(() => {
+    if (!selectedPointId) {
+      return undefined;
+    }
+
+    const handlePointerDownOutsideEditor = (event) => {
+      const editorNode = bookmarkEditorRef.current;
+      if (!editorNode) {
+        return;
+      }
+      if (editorNode.contains(event.target)) {
+        return;
+      }
+      setSelectedPointId('');
+    };
+
+    document.addEventListener('pointerdown', handlePointerDownOutsideEditor);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDownOutsideEditor);
+    };
+  }, [selectedPointId]);
 
   const userMap = useMemo(() => {
     const map = new Map();
@@ -1468,8 +1497,9 @@ function MapView({
       return;
     }
 
-    const shouldDelete = window.confirm(
+    const shouldDelete = confirmDangerAction(
       `${text.deleteUserConfirm} "${selectedUser.name}"\n${text.userDeleteReassign} "${fallbackUser.name}"`,
+      `${text.dangerSecondConfirm}\n"${selectedUser.name}"`,
     );
     if (!shouldDelete) {
       return;
@@ -1488,6 +1518,13 @@ function MapView({
 
   const handleEditPointFromUserList = (pointId) => {
     setSelectedPointId(pointId);
+  };
+
+  const confirmDangerAction = (firstMessage, secondMessage = text.dangerSecondConfirm) => {
+    if (!window.confirm(firstMessage)) {
+      return false;
+    }
+    return window.confirm(secondMessage);
   };
 
   const handleSearchCity = async () => {
@@ -1644,6 +1681,19 @@ function MapView({
 
   const deletePoint = (pointId) => {
     const point = points.find((item) => item.id === pointId);
+    if (!point) {
+      return;
+    }
+
+    const pointLabel = point.place || `${point.latitude.toFixed(4)}, ${point.longitude.toFixed(4)}`;
+    const shouldDelete = confirmDangerAction(
+      `${text.deletePointConfirm}\n"${pointLabel}"`,
+      `${text.dangerSecondConfirm}\n"${pointLabel}"`,
+    );
+    if (!shouldDelete) {
+      return;
+    }
+
     if (point?.photos?.length && activeUserId) {
       point.photos.forEach((photo) => {
         [photo?.pathname, photo?.thumbnailPathname].forEach((pathname) => {
@@ -1823,6 +1873,15 @@ function MapView({
   const deletePhoto = async (pointId, photoId) => {
     const point = points.find((item) => item.id === pointId);
     const photo = point?.photos?.find((item) => item.id === photoId);
+    const photoLabel = photo?.name || text.photosTitle;
+    const shouldDelete = confirmDangerAction(
+      `${text.deletePhotoConfirm}\n"${photoLabel}"`,
+      `${text.dangerSecondConfirm}\n"${photoLabel}"`,
+    );
+    if (!shouldDelete) {
+      return;
+    }
+
     if (activeUserId) {
       [photo?.pathname, photo?.thumbnailPathname].forEach((pathname) => {
         if (!isNonEmpty(pathname)) {
@@ -2408,7 +2467,7 @@ function MapView({
       </div>
 
       {selectedPoint && (
-        <aside className="glass-panel map-bookmark-editor-float">
+        <aside ref={bookmarkEditorRef} className="glass-panel map-bookmark-editor-float">
           <div className="map-editor-float-head">
             <strong>{text.editorTitle}</strong>
             <button
