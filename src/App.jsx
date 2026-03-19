@@ -17,6 +17,18 @@ import './index.css';
 const APP_VERSION = __APP_VERSION__;
 const APP_BUILD_TIME = __APP_BUILD_TIME__;
 
+const normalizeAttachment = (attachment, index = 0) => ({
+  id: typeof attachment?.id === 'string' && attachment.id.trim()
+    ? attachment.id
+    : `att_${Date.now()}_${index}_${Math.random().toString(36).slice(2, 8)}`,
+  name: typeof attachment?.name === 'string' ? attachment.name : '',
+  url: typeof attachment?.url === 'string' ? attachment.url : '',
+  pathname: typeof attachment?.pathname === 'string' ? attachment.pathname : '',
+  size: Number.isFinite(attachment?.size) ? Math.max(0, Math.round(attachment.size)) : 0,
+  contentType: typeof attachment?.contentType === 'string' ? attachment.contentType : '',
+  uploadedAt: typeof attachment?.uploadedAt === 'string' ? attachment.uploadedAt : new Date().toISOString(),
+});
+
 const formatBuildTime = (value) => {
   try {
     return new Intl.DateTimeFormat('zh-CN', {
@@ -41,6 +53,10 @@ const normalizeImportedPlan = (plan, index, fallbackDate) => ({
   time: typeof plan?.time === 'string' ? plan.time : '',
   person: typeof plan?.person === 'string' && plan.person ? plan.person : 'self',
   ddl: typeof plan?.ddl === 'string' ? plan.ddl : '',
+  details: typeof plan?.details === 'string' ? plan.details : '',
+  attachments: Array.isArray(plan?.attachments)
+    ? plan.attachments.map((attachment, attachmentIndex) => normalizeAttachment(attachment, attachmentIndex)).filter((attachment) => attachment.url)
+    : [],
   progress: Number.isFinite(plan?.progress) ? Math.max(0, Math.min(100, Math.round(plan.progress))) : 0,
   status: typeof plan?.status === 'string' && plan.status ? plan.status : 'uncompleted',
   updatedAt: Number.isFinite(plan?.updatedAt) ? plan.updatedAt : Date.now(),
@@ -145,7 +161,13 @@ function App() {
       setManagedUser(result.user);
     }
 
-    return result.plans || result.data || [];
+    const rawPlans = result.plans || result.data || [];
+    if (!Array.isArray(rawPlans)) {
+      return [];
+    }
+
+    const fallbackDate = getLocalDateStr();
+    return rawPlans.map((plan, index) => normalizeImportedPlan(plan, index, fallbackDate));
   };
 
   const refreshWorkspacePlans = async ({ silent = false } = {}) => {
@@ -220,8 +242,12 @@ function App() {
 
     const savedPlans = localStorage.getItem(cacheKey);
     const parsedPlans = savedPlans ? JSON.parse(savedPlans) : [];
-    setPlans(parsedPlans);
-    lastSyncedHashRef.current = JSON.stringify(parsedPlans);
+    const fallbackDate = getLocalDateStr();
+    const normalizedPlans = Array.isArray(parsedPlans)
+      ? parsedPlans.map((plan, index) => normalizeImportedPlan(plan, index, fallbackDate))
+      : [];
+    setPlans(normalizedPlans);
+    lastSyncedHashRef.current = JSON.stringify(normalizedPlans);
     isInitializedRef.current = false;
   }, [cacheKey]);
 
@@ -398,6 +424,10 @@ function App() {
       time: newPlan.time || '',
       person: newPlan.person || 'self',
       ddl: newPlan.ddl || '',
+      details: newPlan.details || '',
+      attachments: Array.isArray(newPlan.attachments)
+        ? newPlan.attachments.map((attachment, index) => normalizeAttachment(attachment, index)).filter((attachment) => attachment.url)
+        : [],
       progress: newPlan.progress || 0,
       status: newPlan.status || 'uncompleted',
       updatedAt: Date.now(),
@@ -571,6 +601,7 @@ function App() {
             deletePlan={deletePlan}
             weatherData={weatherData}
             t={t}
+            activeUserId={activeUser?.id || ''}
             onCopyPlan={copyPlan}
             onPastePlan={pastePlanToDate}
             hasCopiedPlan={Boolean(copiedPlan)}
@@ -584,6 +615,7 @@ function App() {
             deletePlan={deletePlan}
             weatherData={weatherData}
             t={t}
+            activeUserId={activeUser?.id || ''}
             onCopyPlan={copyPlan}
             onPastePlan={pastePlanToDate}
             hasCopiedPlan={Boolean(copiedPlan)}

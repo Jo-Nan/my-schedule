@@ -17,6 +17,8 @@ const AdminPanel = ({
   const [selectedUserPlans, setSelectedUserPlans] = useState([]);
   const [selectedUserSnapshots, setSelectedUserSnapshots] = useState([]);
   const [createForm, setCreateForm] = useState({ email: '', password: '', username: '' });
+  const [selfCheck, setSelfCheck] = useState(null);
+  const [selfCheckLoading, setSelfCheckLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -80,6 +82,23 @@ const AdminPanel = ({
       setCronTasks(result.tasks || []);
     } catch (loadError) {
       setError(loadError.message || 'Failed to load cron tasks');
+    }
+  };
+
+  const loadSelfCheck = async () => {
+    setSelfCheckLoading(true);
+    setError('');
+    try {
+      const response = await fetch('/api/admin?action=self-check', { credentials: 'same-origin' });
+      const result = await response.json();
+      if (!response.ok || result.status !== 'success') {
+        throw new Error(result.message || 'Failed to run self-check');
+      }
+      setSelfCheck(result);
+    } catch (loadError) {
+      setError(loadError.message || 'Failed to run self-check');
+    } finally {
+      setSelfCheckLoading(false);
     }
   };
 
@@ -462,6 +481,62 @@ const AdminPanel = ({
                 </button>
               </div>
             </div>
+
+            <div className="glass-panel" style={styles.card}>
+              <div style={styles.systemCheckHeader}>
+                <div>
+                  <div style={styles.sectionHeader}>{t.adminSelfCheck}</div>
+                  <div style={styles.planMeta}>{t.adminSelfCheckEmpty}</div>
+                </div>
+                <button className="glass-button" style={styles.triggerBtn} onClick={loadSelfCheck} disabled={selfCheckLoading}>
+                  {selfCheckLoading ? t.adminSelfCheckLoading : t.adminRunSelfCheck}
+                </button>
+              </div>
+
+              {selfCheck ? (
+                <div style={styles.systemCheckGrid}>
+                  {[
+                    ['email', t.adminSelfCheckEmail],
+                    ['cron', t.adminSelfCheckCron],
+                    ['storage', t.adminSelfCheckStorage],
+                    ['backup', t.adminSelfCheckBackup],
+                  ].map(([key, label]) => {
+                    const item = selfCheck.checks?.[key];
+                    if (!item) {
+                      return null;
+                    }
+
+                    return (
+                      <div key={key} style={styles.systemCheckItem}>
+                        <div style={styles.systemCheckItemTop}>
+                          <div style={styles.planTitle}>{label}</div>
+                          <span style={{ ...styles.checkBadge, ...getCheckBadgeStyle(item.status) }}>
+                            {getCheckStatusLabel(item.status, t)}
+                          </span>
+                        </div>
+                        <div style={styles.planMeta}>{item.details}</div>
+                        {Object.entries(item)
+                          .filter(([entryKey]) => !['status', 'details'].includes(entryKey))
+                          .map(([entryKey, entryValue]) => (
+                            <div key={entryKey} style={styles.checkRow}>
+                              <span style={styles.checkKey}>{entryKey}</span>
+                              <span style={styles.checkValue}>{formatCheckValue(entryValue)}</span>
+                            </div>
+                          ))}
+                      </div>
+                    );
+                  })}
+                  <div style={styles.systemCheckFooter}>
+                    <span style={{ ...styles.checkBadge, ...getCheckBadgeStyle(selfCheck.overall) }}>
+                      {getCheckStatusLabel(selfCheck.overall, t)}
+                    </span>
+                    <span style={styles.planMeta}>{t.adminSelfCheckCheckedAt}: {selfCheck.checkedAt}</span>
+                  </div>
+                </div>
+              ) : (
+                <div style={styles.empty}>{t.adminSelfCheckEmpty}</div>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -682,6 +757,109 @@ const styles = {
     color: 'var(--text-secondary)',
     fontSize: '0.9rem',
   },
+  systemCheckHeader: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: '1rem',
+    flexWrap: 'wrap',
+  },
+  systemCheckGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+    gap: '0.85rem',
+  },
+  systemCheckItem: {
+    border: '1px solid var(--glass-border)',
+    borderRadius: '14px',
+    padding: '0.85rem',
+    background: 'rgba(255,255,255,0.04)',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.45rem',
+  },
+  systemCheckItemTop: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: '0.75rem',
+  },
+  checkBadge: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: '999px',
+    padding: '0.18rem 0.55rem',
+    fontSize: '0.72rem',
+    fontWeight: 700,
+    whiteSpace: 'nowrap',
+  },
+  checkRow: {
+    display: 'grid',
+    gridTemplateColumns: '92px 1fr',
+    gap: '0.5rem',
+    alignItems: 'start',
+    fontSize: '0.78rem',
+  },
+  checkKey: {
+    color: 'var(--text-secondary)',
+    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace',
+  },
+  checkValue: {
+    lineBreak: 'anywhere',
+  },
+  systemCheckFooter: {
+    gridColumn: '1 / -1',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.75rem',
+    flexWrap: 'wrap',
+  },
+};
+
+const getCheckBadgeStyle = (status) => {
+  if (status === 'ok') {
+    return {
+      color: '#065f46',
+      background: 'rgba(16, 185, 129, 0.18)',
+      border: '1px solid rgba(16, 185, 129, 0.35)',
+    };
+  }
+  if (status === 'fail') {
+    return {
+      color: '#991b1b',
+      background: 'rgba(239, 68, 68, 0.16)',
+      border: '1px solid rgba(239, 68, 68, 0.32)',
+    };
+  }
+  return {
+    color: '#92400e',
+    background: 'rgba(245, 158, 11, 0.18)',
+    border: '1px solid rgba(245, 158, 11, 0.3)',
+  };
+};
+
+const getCheckStatusLabel = (status, t) => {
+  if (status === 'ok') {
+    return t.adminStatusOk;
+  }
+  if (status === 'fail') {
+    return t.adminStatusFail;
+  }
+  return t.adminStatusWarn;
+};
+
+const formatCheckValue = (value) => {
+  if (Array.isArray(value)) {
+    return value.join(', ');
+  }
+  if (typeof value === 'boolean') {
+    return value ? 'true' : 'false';
+  }
+  if (value === null || value === undefined || value === '') {
+    return '—';
+  }
+  return String(value);
 };
 
 export default AdminPanel;

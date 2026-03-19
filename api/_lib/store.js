@@ -85,6 +85,24 @@ export const hashResetCode = (code) => crypto.createHash('sha256').update(String
 
 export const generateResetCode = () => String(Math.floor(100000 + Math.random() * 900000));
 
+const sanitizeAttachment = (attachment = {}) => ({
+  id: String(attachment.id || `att_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`),
+  name: typeof attachment.name === 'string' ? attachment.name : '',
+  url: typeof attachment.url === 'string' ? attachment.url : '',
+  pathname: typeof attachment.pathname === 'string' ? attachment.pathname : '',
+  size: Number.isFinite(attachment.size) ? Math.max(0, Math.round(attachment.size)) : 0,
+  contentType: typeof attachment.contentType === 'string' ? attachment.contentType : '',
+  uploadedAt: typeof attachment.uploadedAt === 'string' ? attachment.uploadedAt : new Date().toISOString(),
+});
+
+const sanitizeAttachments = (attachments) => (
+  Array.isArray(attachments)
+    ? attachments
+      .map(sanitizeAttachment)
+      .filter((attachment) => attachment.url)
+    : []
+);
+
 const sanitizePlan = (plan = {}) => ({
   id: String(plan.id || `${Date.now()}-${crypto.randomBytes(4).toString('hex')}`),
   event: typeof plan.event === 'string' ? plan.event : '',
@@ -92,6 +110,8 @@ const sanitizePlan = (plan = {}) => ({
   time: typeof plan.time === 'string' ? plan.time : '',
   person: typeof plan.person === 'string' ? plan.person : '',
   ddl: typeof plan.ddl === 'string' ? plan.ddl : '',
+  details: typeof plan.details === 'string' ? plan.details : '',
+  attachments: sanitizeAttachments(plan.attachments),
   progress: Number.isFinite(plan.progress) ? plan.progress : 0,
   status: typeof plan.status === 'string' ? plan.status : 'uncompleted',
   updatedAt: Number.isFinite(plan.updatedAt) ? plan.updatedAt : Date.now(),

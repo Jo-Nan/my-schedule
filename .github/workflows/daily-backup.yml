@@ -1,4 +1,4 @@
-name: Daily Backup of Plans Data
+name: Daily Backup of Multi-User Data
 
 on:
   schedule:
@@ -30,6 +30,10 @@ jobs:
           GITHUB_OWNER: Jo-Nan
           GITHUB_REPO: day-data
           GITHUB_BRANCH: main
+          GITHUB_USERS_PATH: data/users.json
+          GITHUB_USER_PLANS_PATH: data/plans-by-user.json
+          GITHUB_SNAPSHOTS_PATH: data/plan-snapshots.json
+          GITHUB_MESSAGES_PATH: data/messages.json
           GITHUB_PLANS_PATH: data/plans.json
         run: node backup-daily.js
 
@@ -41,6 +45,6 @@ jobs:
           if git diff --cached --quiet; then
             echo "No changes to commit"
           else
-            git commit -m "backup: daily backup of plans.json (${{ github.run_id }})"
+            git commit -m "backup: daily multi-user data snapshot (${{ github.run_id }})"
             git push
           fi

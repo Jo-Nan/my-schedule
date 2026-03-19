@@ -9,7 +9,7 @@ const sharedCalendarNavText = {
   letterSpacing: '0.01em',
 };
 
-const DailyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t, onCopyPlan, onPastePlan, hasCopiedPlan }) => {
+const DailyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t, activeUserId, onCopyPlan, onPastePlan, hasCopiedPlan }) => {
   const [modalState, setModalState] = useState({ isOpen: false, date: null, editingPlan: null });
   // Start from Today
   const [currentDateObj, setCurrentDateObj] = useState(new Date());
@@ -253,6 +253,7 @@ const DailyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t, onC
                     updatePlan={updatePlan} 
                     deletePlan={deletePlan} 
                     onEdit={handleEdit}
+                    activeUserId={activeUserId}
                     onDragStart={(e) => handleDragStart(e, plan)}
                     onDragEnd={handleDragEnd}
                     isDragging={draggedPlan?.id === plan.id}

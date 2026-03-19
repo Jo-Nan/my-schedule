@@ -12,7 +12,8 @@ const PlanModal = ({ isOpen, onClose, onSave, date, initialData, t }) => {
     event: '',
     time: '',
     person: '',
-    ddl: ''
+    ddl: '',
+    details: '',
   });
 
   useEffect(() => {
@@ -21,10 +22,11 @@ const PlanModal = ({ isOpen, onClose, onSave, date, initialData, t }) => {
         event: initialData.event || '',
         time: initialData.time || '',
         person: initialData.person || '',
-        ddl: initialData.ddl || ''
+        ddl: initialData.ddl || '',
+        details: initialData.details || '',
       });
     } else {
-      setFormData({ event: '', time: '', person: '', ddl: '' });
+      setFormData({ event: '', time: '', person: '', ddl: '', details: '' });
     }
   }, [initialData, isOpen]);
 
@@ -54,7 +56,7 @@ const PlanModal = ({ isOpen, onClose, onSave, date, initialData, t }) => {
       });
     }
     
-    setFormData({ event: '', time: '', person: '', ddl: '' });
+    setFormData({ event: '', time: '', person: '', ddl: '', details: '' });
     onClose();
   };
 
@@ -107,6 +109,17 @@ const PlanModal = ({ isOpen, onClose, onSave, date, initialData, t }) => {
               value={formData.ddl}
               onChange={(e) => setFormData({ ...formData, ddl: e.target.value })}
               placeholder="Deadline details"
+            />
+          </div>
+
+          <div style={styles.field}>
+            <label style={styles.label}>{t.detailLabel || 'Details'}</label>
+            <textarea
+              className="glass-input"
+              value={formData.details}
+              onChange={(e) => setFormData({ ...formData, details: e.target.value })}
+              placeholder={t.detailPlaceholder || 'Add extra context for this task...'}
+              style={styles.detailsInput}
             />
           </div>
 
@@ -178,6 +191,11 @@ const styles = {
     justifyContent: 'flex-end',
     gap: '1rem',
     marginTop: '0.5rem',
+  },
+  detailsInput: {
+    minHeight: '108px',
+    resize: 'vertical',
+    lineHeight: 1.5,
   },
   cancelBtn: {
     border: 'none',

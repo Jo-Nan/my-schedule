@@ -1,8 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
+import PlanDetailModal from './PlanDetailModal';
 
-const PlanCard = ({ plan, updatePlan, deletePlan, onEdit, onDragStart, onDragEnd, isDragging: cardIsDragging, isSelected, onSelect, t }) => {
+const PlanCard = ({ plan, updatePlan, deletePlan, onEdit, onDragStart, onDragEnd, isDragging: cardIsDragging, isSelected, onSelect, t, activeUserId }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [localProgress, setLocalProgress] = useState(null);
+  const [isDetailOpen, setIsDetailOpen] = useState(false);
   const sliderRef = useRef(null);
   const rafRef = useRef(null);
   const interactiveSelector = 'button, select, input, textarea, a, .plan-slider, .progress-control';
@@ -16,10 +18,10 @@ const PlanCard = ({ plan, updatePlan, deletePlan, onEdit, onDragStart, onDragEnd
   // Status mapping: 'uncompleted', 'in-progress', 'completed'
   const isCompleted = plan.status === 'completed';
   const progressText = isDragging && localProgress !== null ? localProgress : (plan.progress || 0);
+  const detailPreview = typeof plan.details === 'string' ? plan.details.trim() : '';
 
   const handleMouseDown = (e) => {
     if (isCompleted) return;
-    const rect = sliderRef.current.getBoundingClientRect();
     setIsDragging(true);
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
@@ -96,114 +98,145 @@ const PlanCard = ({ plan, updatePlan, deletePlan, onEdit, onDragStart, onDragEnd
   };
 
   return (
-    <div 
-      className={`glass-panel plan-card ${isCompleted ? 'completed hover-disable' : ''}`} 
-      style={{
-        ...styles.card,
-        ...(cardIsDragging ? styles.cardDragging : {}),
-        ...(isSelected ? styles.cardSelected : {}),
-      }}
-      tabIndex={0}
-      onClick={() => onSelect?.(plan)}
-      onFocus={() => onSelect?.(plan)}
-      draggable
-      onDragStart={(e) => {
-        if (isDragging || e.target.closest(interactiveSelector)) {
-          e.preventDefault();
-          return;
-        }
-        if (onDragStart) onDragStart(e);
-        // Set drag image to the entire card
-        const card = e.target.closest('.plan-card');
-        if (card) {
-          e.dataTransfer.setDragImage(card, e.clientX - card.getBoundingClientRect().left, e.clientY - card.getBoundingClientRect().top);
-        }
-      }}
-      onDragEnd={onDragEnd ? onDragEnd : undefined}
-    >
-      <div style={styles.header}>
-        <h4 style={styles.event}>{plan.event}</h4>
-        
-        <div style={styles.headerActions}>
-          <button 
-            className="glass-button"
-            onClick={() => onEdit(plan)}
-            style={styles.editBtn}
-            title={t.editPlan}
-          >
-            ✏️
-          </button>
-          <button 
-            className="glass-button"
-            onClick={handleDelete}
-            style={styles.deleteBtn}
-            title={t.deletePlan}
-          >
-            🗑️
-          </button>
-        </div>
-      </div>
-      
-      <div style={styles.metaRow}>
-        {plan.time && <span style={styles.tag}>🕒 {plan.time}</span>}
-        {plan.person && plan.person.toLowerCase() !== 'self' && (
-          <span style={styles.tag}>👤 {plan.person}</span>
-        )}
-        {plan.ddl && <span style={styles.tag} className="ddl-tag">⚠️ {plan.ddl}</span>}
-      </div>
+    <>
+      <div
+        className={`glass-panel plan-card ${isCompleted ? 'completed hover-disable' : ''}`}
+        style={{
+          ...styles.card,
+          ...(cardIsDragging ? styles.cardDragging : {}),
+          ...(isSelected ? styles.cardSelected : {}),
+        }}
+        tabIndex={0}
+        onClick={() => onSelect?.(plan)}
+        onFocus={() => onSelect?.(plan)}
+        draggable
+        onDragStart={(e) => {
+          if (isDragging || e.target.closest(interactiveSelector)) {
+            e.preventDefault();
+            return;
+          }
+          if (onDragStart) onDragStart(e);
+          // Set drag image to the entire card
+          const card = e.target.closest('.plan-card');
+          if (card) {
+            e.dataTransfer.setDragImage(card, e.clientX - card.getBoundingClientRect().left, e.clientY - card.getBoundingClientRect().top);
+          }
+        }}
+        onDragEnd={onDragEnd ? onDragEnd : undefined}
+      >
+        <div style={styles.header}>
+          <h4 style={styles.event}>{plan.event}</h4>
 
-      <div style={styles.bottomRow}>
-        <div 
-          className="progress-control"
-          onClick={toggleStatus}
-          style={{
-            ...styles.checkBtn,
-            background: isCompleted ? 'var(--success-color)' : 'transparent',
-            borderColor: isCompleted ? 'var(--success-color)' : 'var(--text-tertiary)'
-          }}
-          title={isCompleted ? "Mark uncompleted" : "Mark completed"}
-        >
-          {isCompleted && '✓'}
-        </div>
-
-        <div style={styles.progressContainer}>
-          <div 
-            ref={sliderRef}
-            className="plan-slider"
-            style={styles.sliderTrack} 
-            onClick={handleTrackClick}
-            onMouseDown={handleMouseDown}
-          >
-            <div style={styles.sliderBase} />
-            <div style={{...styles.sliderFill, width: `${progressText}%`}} />
-            <div 
-              style={{
-                ...styles.sliderThumb, 
-                left: `${progressText}%`,
-                cursor: isCompleted ? 'default' : (isDragging ? 'grabbing' : 'grab'),
-                transform: `translate(-50%, -50%) scale(${isDragging ? 1.2 : 1})`,
-              }} 
-            />
+          <div style={styles.headerActions}>
+            <button
+              className="glass-button"
+              onClick={(event) => {
+                event.stopPropagation();
+                setIsDetailOpen(true);
+              }}
+              style={styles.detailBtn}
+              title={t.viewDetail || 'View Detail'}
+              type="button"
+            >
+              🔍
+            </button>
+            <button
+              className="glass-button"
+              onClick={() => onEdit(plan)}
+              style={styles.editBtn}
+              title={t.editPlan}
+              type="button"
+            >
+              ✏️
+            </button>
+            <button
+              className="glass-button"
+              onClick={handleDelete}
+              style={styles.deleteBtn}
+              title={t.deletePlan}
+              type="button"
+            >
+              🗑️
+            </button>
           </div>
         </div>
 
-        <button 
-          className="glass-button drag-handle"
-          style={styles.dragBtn}
-          title="拖拽移动任务"
-          type="button"
-        >
-          <span style={styles.dragGrip} aria-hidden="true">
-            <span style={styles.dragDot} />
-            <span style={styles.dragDot} />
-            <span style={styles.dragDot} />
-            <span style={styles.dragDot} />
-            <span style={styles.dragDot} />
-            <span style={styles.dragDot} />
-          </span>
-        </button>
+        <div style={styles.metaRow}>
+          {plan.time && <span style={styles.tag}>🕒 {plan.time}</span>}
+          {plan.person && plan.person.toLowerCase() !== 'self' && (
+            <span style={styles.tag}>👤 {plan.person}</span>
+          )}
+          {plan.ddl && <span style={styles.tag} className="ddl-tag">⚠️ {plan.ddl}</span>}
+        </div>
+
+        {detailPreview && (
+          <div style={styles.detailPreview} title={detailPreview}>
+            {detailPreview}
+          </div>
+        )}
+
+        <div style={styles.bottomRow}>
+          <div
+            className="progress-control"
+            onClick={toggleStatus}
+            style={{
+              ...styles.checkBtn,
+              background: isCompleted ? 'var(--success-color)' : 'transparent',
+              borderColor: isCompleted ? 'var(--success-color)' : 'var(--text-tertiary)',
+            }}
+            title={isCompleted ? 'Mark uncompleted' : 'Mark completed'}
+          >
+            {isCompleted && '✓'}
+          </div>
+
+          <div style={styles.progressContainer}>
+            <div
+              ref={sliderRef}
+              className="plan-slider"
+              style={styles.sliderTrack}
+              onClick={handleTrackClick}
+              onMouseDown={handleMouseDown}
+            >
+              <div style={styles.sliderBase} />
+              <div style={{ ...styles.sliderFill, width: `${progressText}%` }} />
+              <div
+                style={{
+                  ...styles.sliderThumb,
+                  left: `${progressText}%`,
+                  cursor: isCompleted ? 'default' : (isDragging ? 'grabbing' : 'grab'),
+                  transform: `translate(-50%, -50%) scale(${isDragging ? 1.2 : 1})`,
+                }}
+              />
+            </div>
+          </div>
+
+          <button
+            className="glass-button drag-handle"
+            style={styles.dragBtn}
+            title="拖拽移动任务"
+            type="button"
+          >
+            <span style={styles.dragGrip} aria-hidden="true">
+              <span style={styles.dragDot} />
+              <span style={styles.dragDot} />
+              <span style={styles.dragDot} />
+              <span style={styles.dragDot} />
+              <span style={styles.dragDot} />
+              <span style={styles.dragDot} />
+            </span>
+          </button>
+        </div>
       </div>
-    </div>
+
+      <PlanDetailModal
+        isOpen={isDetailOpen}
+        onClose={() => setIsDetailOpen(false)}
+        plan={plan}
+        updatePlan={updatePlan}
+        t={t}
+        activeUserId={activeUserId}
+      />
+    </>
   );
 };
 
@@ -287,11 +320,29 @@ const styles = {
     color: 'var(--text-secondary)',
     opacity: 0.6,
   },
+  detailBtn: {
+    padding: '0.2rem',
+    background: 'none',
+    border: 'none',
+    boxShadow: 'none',
+    color: 'var(--text-secondary)',
+    opacity: 0.7,
+  },
   metaRow: {
     display: 'flex',
     flexWrap: 'wrap',
     gap: '0.4rem',
     minHeight: '1.6rem',
+  },
+  detailPreview: {
+    fontSize: '0.82rem',
+    color: 'var(--text-secondary)',
+    lineHeight: 1.45,
+    borderLeft: '2px solid var(--glass-border)',
+    paddingLeft: '0.55rem',
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
   },
   bottomRow: {
     display: 'flex',

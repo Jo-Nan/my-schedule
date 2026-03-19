@@ -17,7 +17,7 @@ const getLocalDateStr = (date = new Date()) => {
   return `${year}-${month}-${day}`;
 };
 
-const WeeklyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t, onCopyPlan, onPastePlan, hasCopiedPlan }) => {
+const WeeklyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t, activeUserId, onCopyPlan, onPastePlan, hasCopiedPlan }) => {
   // Sliding window navigation state
   const [dayOffset, setDayOffset] = useState(0);
   const gridRef = useRef(null);
@@ -254,6 +254,7 @@ const WeeklyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t, on
                     updatePlan={updatePlan} 
                     deletePlan={deletePlan} 
                     onEdit={handleEditTask}
+                    activeUserId={activeUserId}
                     onDragStart={(e) => handleDragStart(e, plan)}
                     onDragEnd={handleDragEnd}
                     isDragging={draggedPlan?.id === plan.id}

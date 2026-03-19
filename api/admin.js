@@ -17,6 +17,31 @@ import {
   withDataStoreLock,
 } from './_lib/store.js';
 
+const buildBaseUrl = (req) => {
+  const forwardedProto = req.headers['x-forwarded-proto'];
+  const forwardedHost = req.headers['x-forwarded-host'];
+  const host = forwardedHost || req.headers.host || process.env.VERCEL_URL || '';
+
+  if (!host) {
+    return '';
+  }
+
+  const protocol = forwardedProto || (host.includes('localhost') || host.startsWith('127.0.0.1') ? 'http' : 'https');
+  return `${protocol}://${host}`;
+};
+
+const normalizeAppUrl = (value = '') => String(value || '').trim().replace(/\/+$/, '');
+
+const summarizeStatus = (statuses) => {
+  if (statuses.includes('fail')) {
+    return 'fail';
+  }
+  if (statuses.includes('warn')) {
+    return 'warn';
+  }
+  return 'ok';
+};
+
 /**
  * Unified Admin Endpoint
  * Routes:
@@ -56,6 +81,82 @@ export default async function handler(req, res) {
         });
 
       return res.status(200).json({ status: 'success', users });
+    }
+
+    // GET /api/admin?action=self-check - Check runtime config completeness
+    if (req.method === 'GET' && action === 'self-check') {
+      const detectedBaseUrl = buildBaseUrl(req);
+      const inferredRuntimeUrl = normalizeAppUrl(
+        process.env.APP_URL
+        || process.env.SITE_URL
+        || process.env.NEXT_PUBLIC_APP_URL
+        || (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : '')
+        || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '')
+        || detectedBaseUrl
+      );
+      const mailFrom = process.env.MAIL_FROM || process.env.RESEND_FROM || '';
+      const emailStatus = process.env.RESEND_API_KEY && mailFrom ? 'ok' : 'fail';
+      const storageStatus = auth.config.mode === 'github'
+        ? (auth.config.token && auth.config.owner && auth.config.repo ? 'ok' : 'fail')
+        : 'warn';
+      const cronStatus = detectedBaseUrl ? (inferredRuntimeUrl ? 'warn' : 'warn') : 'fail';
+      const backupStatus = auth.config.mode === 'github' ? 'ok' : 'warn';
+
+      const checks = {
+        email: {
+          status: emailStatus,
+          provider: 'Resend',
+          apiKeyConfigured: Boolean(process.env.RESEND_API_KEY),
+          senderConfigured: Boolean(mailFrom),
+          senderAddress: mailFrom || null,
+          details: emailStatus === 'ok'
+            ? 'Runtime email settings look complete.'
+            : 'Missing RESEND_API_KEY or MAIL_FROM/RESEND_FROM.',
+        },
+        cron: {
+          status: cronStatus,
+          detectedBaseUrl: detectedBaseUrl || null,
+          suggestedCronApiUrl: detectedBaseUrl ? `${detectedBaseUrl}/api/cron` : null,
+          runtimeAppUrl: inferredRuntimeUrl || null,
+          workflowFilesPresent: true,
+          details: detectedBaseUrl
+            ? 'GitHub Actions APP_URL secret cannot be read from runtime. Make sure it matches the detected base URL.'
+            : 'Could not infer the current runtime host, so the cron target URL could not be verified.',
+        },
+        storage: {
+          status: storageStatus,
+          mode: auth.config.mode,
+          githubConfigured: auth.config.mode === 'github',
+          usersPath: auth.config.usersPath,
+          plansPath: auth.config.userPlansPath,
+          snapshotsPath: auth.config.snapshotsPath,
+          messagesPath: auth.config.messagesPath,
+          details: auth.config.mode === 'github'
+            ? 'Persistent multi-user storage is backed by GitHub JSON files.'
+            : 'Storage is currently local. That is okay for local development but risky for deployed persistence.',
+        },
+        backup: {
+          status: backupStatus,
+          architecture: 'backups/multi-user/YYYYMMDD/{users,plans-by-user,plan-snapshots,messages,manifest}.json',
+          sourcePaths: [
+            auth.config.usersPath,
+            auth.config.userPlansPath,
+            auth.config.snapshotsPath,
+            auth.config.messagesPath,
+          ],
+          details: auth.config.mode === 'github'
+            ? 'Daily backup workflow is designed for the multi-user GitHub data store.'
+            : 'Backup workflow is intended for GitHub-backed storage and may not reflect local-only runtime data.',
+        },
+      };
+
+      const overall = summarizeStatus(Object.values(checks).map((item) => item.status));
+      return res.status(200).json({
+        status: 'success',
+        overall,
+        checkedAt: new Date().toISOString(),
+        checks,
+      });
     }
 
     // POST /api/admin?action=users - Create user
