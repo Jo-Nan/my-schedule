@@ -239,6 +239,72 @@
   font-size: 0.84rem;
 }
 
+.map-user-edit-box {
+  margin-top: 0.45rem;
+  padding-top: 0.55rem;
+  border-top: 1px dashed rgba(148, 163, 184, 0.35);
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.map-user-places-box {
+  margin-top: 0.45rem;
+  padding-top: 0.55rem;
+  border-top: 1px dashed rgba(148, 163, 184, 0.35);
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.map-user-places-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.map-user-places-list li {
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 10px;
+  padding: 0.38rem 0.45rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.4rem;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.map-user-place-name {
+  font-size: 0.74rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.map-user-place-actions {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.map-user-place-actions .glass-button {
+  padding: 0.28rem 0.44rem;
+  font-size: 0.68rem;
+  box-shadow: none;
+}
+
+.map-user-edit-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.45rem;
+}
+
+.map-user-rename-btn {
+  box-shadow: none;
+}
+
 .map-user-count,
 .map-marker-owner {
   font-size: 0.74rem;

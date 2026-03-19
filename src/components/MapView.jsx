@@ -54,9 +54,60 @@ const FEATURED_BUBBLE_ANCHOR_ICON = divIcon({
   iconAnchor: [0, 0],
 });
 
-const MAX_UPLOAD_FILE_MB = 18;
+const MAP_DB_NAME = 'nanmuz_map_workspace_db';
+const MAP_DB_VERSION = 1;
+const MAP_DB_STORE = 'workspace';
+
+const MAX_UPLOAD_FILE_MB = 12;
 const MAX_CANVAS_EDGE = 1920;
 const MAX_PHOTO_COUNT_PER_POINT = 24;
+
+const openMapDatabase = () => new Promise((resolve, reject) => {
+  if (typeof window === 'undefined' || !window.indexedDB) {
+    resolve(null);
+    return;
+  }
+
+  const request = window.indexedDB.open(MAP_DB_NAME, MAP_DB_VERSION);
+  request.onupgradeneeded = () => {
+    const database = request.result;
+    if (!database.objectStoreNames.contains(MAP_DB_STORE)) {
+      database.createObjectStore(MAP_DB_STORE);
+    }
+  };
+  request.onsuccess = () => resolve(request.result);
+  request.onerror = () => reject(request.error || new Error('IndexedDB open failed'));
+});
+
+const readWorkspaceFromDb = async (storageKey) => {
+  const database = await openMapDatabase();
+  if (!database) {
+    return null;
+  }
+
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(MAP_DB_STORE, 'readonly');
+    const store = transaction.objectStore(MAP_DB_STORE);
+    const request = store.get(storageKey);
+    request.onsuccess = () => resolve(request.result || null);
+    request.onerror = () => reject(request.error || new Error('IndexedDB read failed'));
+  });
+};
+
+const writeWorkspaceToDb = async (storageKey, payload) => {
+  const database = await openMapDatabase();
+  if (!database) {
+    throw new Error('IndexedDB unavailable');
+  }
+
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(MAP_DB_STORE, 'readwrite');
+    const store = transaction.objectStore(MAP_DB_STORE);
+    const request = store.put(payload, storageKey);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error || new Error('IndexedDB write failed'));
+  });
+};
 
 const TEXTS = {
   en: {
@@ -66,13 +117,21 @@ const TEXTS = {
     worldScope: 'World',
     backToSchedule: 'Back to schedule',
     legendTitle: 'Users',
-    legendHint: 'Pick the active user before adding a point.',
+    legendHint: 'Pick a user to view/edit their points.',
+    userPlacesTitle: 'User places',
+    placeEditBtn: 'Edit',
+    placeDeleteBtn: 'Delete',
+    noUserPlaces: 'No places under this user.',
     addUserTitle: 'Add User',
+    editUserTitle: 'Edit Selected User',
     addUserName: 'Username',
     addUserNamePlaceholder: 'e.g. Alice',
+    editUserNamePlaceholder: 'Rename selected user',
     colorHexLabel: 'Color block',
     colorRgbLabel: 'RGB',
     addUserBtn: 'Add user',
+    renameUserBtn: 'Rename',
+    deleteUserBtn: 'Delete user',
     cityTitle: 'City / Coordinates',
     cityInputLabel: 'Search city',
     cityInputPlaceholder: 'e.g. Shanghai, London, Tokyo',
@@ -117,8 +176,11 @@ const TEXTS = {
     noGeocodeResult: 'No city result found.',
     needUserName: 'Please enter a username first.',
     duplicateUserName: 'This username already exists.',
-    invalidRgb: 'RGB must be in the format like 255, 120, 0.',
     needUserSelect: 'Please create/select a user first.',
+    cannotDeleteLastUser: 'At least one user must be kept.',
+    deleteUserConfirm: 'Delete this user?',
+    userDeleteReassign: 'Points will be reassigned to',
+    invalidRgb: 'RGB must be in the format like 255, 120, 0.',
     invalidCoord: 'Please enter valid latitude/longitude.',
     invalidCoordRange: 'Latitude must be between -90 and 90, longitude between -180 and 180.',
     markerCountLabel: 'points',
@@ -131,13 +193,21 @@ const TEXTS = {
     worldScope: '世界地图',
     backToSchedule: '返回日程',
     legendTitle: '用户',
-    legendHint: '先选择当前用户，再添加地点。',
+    legendHint: '点击用户查看并管理名下地点。',
+    userPlacesTitle: '用户地点',
+    placeEditBtn: '编辑',
+    placeDeleteBtn: '删除',
+    noUserPlaces: '该用户下暂无地点。',
     addUserTitle: '添加用户',
+    editUserTitle: '编辑当前用户',
     addUserName: '用户名',
     addUserNamePlaceholder: '例如：小李',
+    editUserNamePlaceholder: '修改当前选中用户名',
     colorHexLabel: '色块选择',
     colorRgbLabel: 'RGB',
     addUserBtn: '添加用户',
+    renameUserBtn: '修改用户名',
+    deleteUserBtn: '删除用户',
     cityTitle: '城市 / 经纬度',
     cityInputLabel: '输入城市',
     cityInputPlaceholder: '例如：上海、北京、London',
@@ -182,8 +252,11 @@ const TEXTS = {
     noGeocodeResult: '没有匹配到城市结果。',
     needUserName: '请先输入用户名。',
     duplicateUserName: '该用户名已存在。',
-    invalidRgb: 'RGB 格式应类似 255, 120, 0。',
     needUserSelect: '请先创建或选择用户。',
+    cannotDeleteLastUser: '至少保留一个用户。',
+    deleteUserConfirm: '确认删除该用户吗？',
+    userDeleteReassign: '该用户点位将迁移到',
+    invalidRgb: 'RGB 格式应类似 255, 120, 0。',
     invalidCoord: '请输入有效的经纬度。',
     invalidCoordRange: '纬度范围需在 -90 到 90，经度需在 -180 到 180。',
     markerCountLabel: '个点位',
@@ -609,6 +682,8 @@ function MapView({
   const [newUserName, setNewUserName] = useState('');
   const [newUserColor, setNewUserColor] = useState(COLOR_PALETTE[0]);
   const [newUserRgb, setNewUserRgb] = useState(hexToRgbString(COLOR_PALETTE[0]));
+  const [editUserName, setEditUserName] = useState('');
+  const [expandedUserId, setExpandedUserId] = useState('');
 
   const [cityQuery, setCityQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
@@ -624,55 +699,71 @@ function MapView({
   const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
-    const defaultName = activeUserName || (language === 'zh' ? '用户' : 'User');
-    const fallbackUser = {
-      id: makeId('user'),
-      name: defaultName,
-      color: COLOR_PALETTE[0],
+    let cancelled = false;
+
+    const loadWorkspace = async () => {
+      const defaultName = activeUserName || (language === 'zh' ? '用户' : 'User');
+      const fallbackUser = {
+        id: makeId('user'),
+        name: defaultName,
+        color: COLOR_PALETTE[0],
+      };
+
+      let loadedScope = 'china';
+      let loadedUsers = [fallbackUser];
+      let loadedPoints = [];
+      let loadedShowFeaturedBubbles = true;
+      let loadedBubbleLayout = 'map';
+
+      if (storageKey) {
+        try {
+          const fromDb = await readWorkspaceFromDb(storageKey);
+          const localBackup = localStorage.getItem(storageKey);
+          const parsed = fromDb || (localBackup ? JSON.parse(localBackup) : null);
+          if (parsed) {
+            loadedScope = parsed?.scope === 'world' ? 'world' : 'china';
+            loadedShowFeaturedBubbles = parsed?.showFeaturedBubbles !== false;
+            loadedBubbleLayout = ['map', 'right', 'bottom'].includes(parsed?.bubbleLayout)
+              ? parsed.bubbleLayout
+              : 'map';
+            loadedUsers = Array.isArray(parsed?.users) && parsed.users.length
+              ? parsed.users.map((user, index) => normalizeUser(user, index, defaultName))
+              : [fallbackUser];
+            loadedPoints = Array.isArray(parsed?.points)
+              ? parsed.points
+                  .map((point, index) => normalizePoint(point, index, loadedUsers))
+                  .filter(Boolean)
+              : [];
+          }
+        } catch {
+          loadedScope = 'china';
+          loadedUsers = [fallbackUser];
+          loadedPoints = [];
+        }
+      }
+
+      if (cancelled) {
+        return;
+      }
+
+      setScope(loadedScope);
+      setUsers(loadedUsers);
+      setPoints(loadedPoints);
+      setShowFeaturedBubbles(loadedShowFeaturedBubbles);
+      setBubbleLayout(loadedBubbleLayout);
+      setSelectedUserId(loadedUsers[0]?.id || '');
+      setExpandedUserId(loadedUsers[0]?.id || '');
+      setSelectedPointId('');
+      setNewUserColor(COLOR_PALETTE[1]);
+      setNewUserRgb(hexToRgbString(COLOR_PALETTE[1]));
+      setIsLoaded(true);
     };
 
-    let loadedScope = 'china';
-    let loadedUsers = [fallbackUser];
-    let loadedPoints = [];
-    let loadedShowFeaturedBubbles = true;
-    let loadedBubbleLayout = 'map';
+    loadWorkspace();
 
-    if (storageKey) {
-      try {
-        const raw = localStorage.getItem(storageKey);
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          loadedScope = parsed?.scope === 'world' ? 'world' : 'china';
-          loadedShowFeaturedBubbles = parsed?.showFeaturedBubbles !== false;
-          loadedBubbleLayout = ['map', 'right', 'bottom'].includes(parsed?.bubbleLayout)
-            ? parsed.bubbleLayout
-            : 'map';
-          loadedUsers = Array.isArray(parsed?.users) && parsed.users.length
-            ? parsed.users.map((user, index) => normalizeUser(user, index, defaultName))
-            : [fallbackUser];
-          loadedPoints = Array.isArray(parsed?.points)
-            ? parsed.points
-                .map((point, index) => normalizePoint(point, index, loadedUsers))
-                .filter(Boolean)
-            : [];
-        }
-      } catch {
-        loadedScope = 'china';
-        loadedUsers = [fallbackUser];
-        loadedPoints = [];
-      }
-    }
-
-    setScope(loadedScope);
-    setUsers(loadedUsers);
-    setPoints(loadedPoints);
-    setShowFeaturedBubbles(loadedShowFeaturedBubbles);
-    setBubbleLayout(loadedBubbleLayout);
-    setSelectedUserId(loadedUsers[0]?.id || '');
-    setSelectedPointId(loadedPoints[0]?.id || '');
-    setNewUserColor(COLOR_PALETTE[1]);
-    setNewUserRgb(hexToRgbString(COLOR_PALETTE[1]));
-    setIsLoaded(true);
+    return () => {
+      cancelled = true;
+    };
   }, [activeUserName, language, storageKey]);
 
   useEffect(() => {
@@ -689,23 +780,41 @@ function MapView({
       savedAt: new Date().toISOString(),
     };
 
-    try {
-      localStorage.setItem(storageKey, JSON.stringify(payload));
-    } catch {
-      setFormMessage(text.storageLimitError);
-    }
-  }, [bubbleLayout, isLoaded, scope, users, points, showFeaturedBubbles, storageKey, text.storageLimitError]);
+    (async () => {
+      try {
+        await writeWorkspaceToDb(storageKey, payload);
+        localStorage.setItem(storageKey, JSON.stringify({
+          scope,
+          showFeaturedBubbles,
+          bubbleLayout,
+          users,
+          points: [],
+          savedAt: payload.savedAt,
+        }));
+      } catch {
+        try {
+          localStorage.setItem(storageKey, JSON.stringify(payload));
+        } catch {
+          setFormMessage(text.storageLimitError);
+        }
+      }
+    })();
+  }, [bubbleLayout, isLoaded, points, scope, showFeaturedBubbles, storageKey, text.storageLimitError, users]);
 
   useEffect(() => {
     if (!users.length) {
       setSelectedUserId('');
+      setExpandedUserId('');
       return;
     }
 
     if (!users.some((user) => user.id === selectedUserId)) {
       setSelectedUserId(users[0].id);
     }
-  }, [users, selectedUserId]);
+    if (!users.some((user) => user.id === expandedUserId)) {
+      setExpandedUserId(users[0].id);
+    }
+  }, [expandedUserId, selectedUserId, users]);
 
   useEffect(() => {
     if (!selectedPointId) {
@@ -728,6 +837,14 @@ function MapView({
     accumulator[point.userId] = (accumulator[point.userId] || 0) + 1;
     return accumulator;
   }, {}), [points]);
+  const selectedUser = useMemo(
+    () => users.find((user) => user.id === selectedUserId) || null,
+    [users, selectedUserId],
+  );
+  const expandedUserPoints = useMemo(
+    () => points.filter((point) => point.userId === expandedUserId),
+    [expandedUserId, points],
+  );
 
   const featuredPoints = useMemo(() => points
     .map((point) => {
@@ -748,6 +865,10 @@ function MapView({
     [points, selectedPointId],
   );
   const selectedPointOwner = selectedPoint ? userMap.get(selectedPoint.userId) : null;
+
+  useEffect(() => {
+    setEditUserName(selectedUser?.name || '');
+  }, [selectedUser?.id, selectedUser?.name]);
 
   const handleNewRgbChange = (value) => {
     setNewUserRgb(value);
@@ -784,12 +905,77 @@ function MapView({
 
     setUsers((previous) => [...previous, user]);
     setSelectedUserId(user.id);
+    setExpandedUserId(user.id);
     setNewUserName('');
 
     const nextColor = COLOR_PALETTE[(users.length + 1) % COLOR_PALETTE.length];
     setNewUserColor(nextColor);
     setNewUserRgb(hexToRgbString(nextColor));
     setFormMessage('');
+  };
+
+  const handleRenameUser = () => {
+    if (!selectedUser) {
+      setFormMessage(text.needUserSelect);
+      return;
+    }
+
+    const nextName = editUserName.trim();
+    if (!nextName) {
+      setFormMessage(text.needUserName);
+      return;
+    }
+
+    if (users.some((user) => user.id !== selectedUser.id && user.name.toLowerCase() === nextName.toLowerCase())) {
+      setFormMessage(text.duplicateUserName);
+      return;
+    }
+
+    setUsers((previous) => previous.map((user) => (
+      user.id === selectedUser.id
+        ? { ...user, name: nextName }
+        : user
+    )));
+    setFormMessage('');
+  };
+
+  const handleDeleteUser = () => {
+    if (!selectedUser) {
+      setFormMessage(text.needUserSelect);
+      return;
+    }
+
+    if (users.length <= 1) {
+      setFormMessage(text.cannotDeleteLastUser);
+      return;
+    }
+
+    const fallbackUser = users.find((user) => user.id !== selectedUser.id);
+    if (!fallbackUser) {
+      setFormMessage(text.cannotDeleteLastUser);
+      return;
+    }
+
+    const shouldDelete = window.confirm(
+      `${text.deleteUserConfirm} "${selectedUser.name}"\n${text.userDeleteReassign} "${fallbackUser.name}"`,
+    );
+    if (!shouldDelete) {
+      return;
+    }
+
+    setPoints((previous) => previous.map((point) => (
+      point.userId === selectedUser.id
+        ? { ...point, userId: fallbackUser.id }
+        : point
+    )));
+    setUsers((previous) => previous.filter((user) => user.id !== selectedUser.id));
+    setSelectedUserId(fallbackUser.id);
+    setExpandedUserId(fallbackUser.id);
+    setFormMessage('');
+  };
+
+  const handleEditPointFromUserList = (pointId) => {
+    setSelectedPointId(pointId);
   };
 
   const handleSearchCity = async () => {
@@ -1104,27 +1290,98 @@ function MapView({
             <ul className="map-user-list">
               {users.map((user) => {
                 const markerCount = markerCountByUser[user.id] || 0;
+                const isExpanded = expandedUserId === user.id;
                 return (
                   <li
                     key={user.id}
                     className={`map-user-item ${selectedUserId === user.id ? 'active' : ''}`}
-                    onClick={() => setSelectedUserId(user.id)}
+                    onClick={() => {
+                      setSelectedUserId(user.id);
+                      setExpandedUserId((previous) => (previous === user.id ? '' : user.id));
+                    }}
                     role="button"
                     tabIndex={0}
                     onKeyDown={(event) => {
                       if (event.key === 'Enter' || event.key === ' ') {
                         event.preventDefault();
                         setSelectedUserId(user.id);
+                        setExpandedUserId((previous) => (previous === user.id ? '' : user.id));
                       }
                     }}
                   >
                     <span className="map-user-dot" style={{ backgroundColor: user.color }} />
                     <span className="map-user-name">{user.name}</span>
-                    <span className="map-user-count">{markerCount} {text.userPointsLabel}</span>
+                    <span className="map-user-count">
+                      {markerCount} {text.userPointsLabel} {isExpanded ? '▾' : '▸'}
+                    </span>
                   </li>
                 );
               })}
             </ul>
+
+            {expandedUserId && (
+              <div className="map-user-places-box">
+                <p className="map-label">{text.userPlacesTitle}</p>
+                {expandedUserPoints.length === 0 && <p className="map-muted">{text.noUserPlaces}</p>}
+                {expandedUserPoints.length > 0 && (
+                  <ul className="map-user-places-list">
+                    {expandedUserPoints.map((point) => (
+                      <li key={`user_place_${point.id}`}>
+                        <span className="map-user-place-name">
+                          {point.place || `${point.latitude.toFixed(4)}, ${point.longitude.toFixed(4)}`}
+                        </span>
+                        <div className="map-user-place-actions">
+                          <button
+                            type="button"
+                            className="glass-button"
+                            onClick={() => handleEditPointFromUserList(point.id)}
+                          >
+                            {text.placeEditBtn}
+                          </button>
+                          <button
+                            type="button"
+                            className="glass-button map-danger-btn"
+                            onClick={() => deletePoint(point.id)}
+                          >
+                            {text.placeDeleteBtn}
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+
+            <div className="map-user-edit-box">
+              <label className="map-label" htmlFor="map_edit_user_name">{text.editUserTitle}</label>
+              <input
+                id="map_edit_user_name"
+                className="glass-input"
+                value={editUserName}
+                placeholder={text.editUserNamePlaceholder}
+                onChange={(event) => setEditUserName(event.target.value)}
+                disabled={!selectedUser}
+              />
+              <div className="map-user-edit-actions">
+                <button
+                  type="button"
+                  className="glass-button map-user-rename-btn"
+                  onClick={handleRenameUser}
+                  disabled={!selectedUser}
+                >
+                  {text.renameUserBtn}
+                </button>
+                <button
+                  type="button"
+                  className="glass-button map-danger-btn"
+                  onClick={handleDeleteUser}
+                  disabled={!selectedUser || users.length <= 1}
+                >
+                  {text.deleteUserBtn}
+                </button>
+              </div>
+            </div>
           </section>
 
           <section className="map-panel">
