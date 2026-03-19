@@ -276,24 +276,23 @@ const Header = ({
   );
 };
 
-const getStatusColor = (status) => {
-  switch (status) {
-    case 'loading': return 'var(--accent-color)';
-    case 'uploading': return '#fbbf24';
-    case 'synced': return '#10b981';
-    case 'error': return 'var(--danger-color)';
-    default: return 'var(--text-secondary)';
-  }
+const STATUS_COLOR_MAP = {
+  loading: 'var(--accent-color)',
+  uploading: '#fbbf24',
+  synced: '#10b981',
+  error: 'var(--danger-color)',
 };
 
+const getStatusColor = (status) => STATUS_COLOR_MAP[status] || 'var(--text-secondary)';
+
 const getStatusLabel = (status, t) => {
-  switch (status) {
-    case 'loading': return t.syncStatusLoading;
-    case 'uploading': return t.syncStatusUploading;
-    case 'synced': return t.syncStatusSynced;
-    case 'error': return t.syncStatusError;
-    default: return t.syncStatusIdle;
-  }
+  const statusLabelMap = {
+    loading: t.syncStatusLoading,
+    uploading: t.syncStatusUploading,
+    synced: t.syncStatusSynced,
+    error: t.syncStatusError,
+  };
+  return statusLabelMap[status] || t.syncStatusIdle;
 };
 
 const sharedHeaderControlText = {
