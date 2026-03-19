@@ -61,6 +61,7 @@ const MAP_DB_STORE = 'workspace';
 
 const MAX_UPLOAD_FILE_MB = 12;
 const MAX_CANVAS_EDGE = 1920;
+const MAX_THUMBNAIL_EDGE = 560;
 const MAX_PHOTO_COUNT_PER_POINT = 24;
 const MAP_AUTO_UPLOAD_DELAY_MS = 1200;
 
@@ -335,6 +336,8 @@ const normalizePhoto = (photo, index) => ({
   name: isNonEmpty(photo?.name) ? photo.name.trim() : '',
   url: isNonEmpty(photo?.url) ? photo.url.trim() : '',
   pathname: isNonEmpty(photo?.pathname) ? photo.pathname.trim() : '',
+  thumbnailUrl: isNonEmpty(photo?.thumbnailUrl) ? photo.thumbnailUrl.trim() : '',
+  thumbnailPathname: isNonEmpty(photo?.thumbnailPathname) ? photo.thumbnailPathname.trim() : '',
   contentType: isNonEmpty(photo?.contentType) ? photo.contentType.trim() : '',
   width: Number.isFinite(photo?.width) ? Math.max(1, Math.round(photo.width)) : null,
   height: Number.isFinite(photo?.height) ? Math.max(1, Math.round(photo.height)) : null,
@@ -407,30 +410,17 @@ const loadImageFromBlob = (blob) => new Promise((resolve, reject) => {
   image.src = objectUrl;
 });
 
-const renderCanvasToDataUrl = (canvas, mimeType, quality) => canvas.toDataURL(mimeType, quality);
+const canvasToBlob = (canvas, mimeType, quality) => new Promise((resolve, reject) => {
+  canvas.toBlob((blob) => {
+    if (!blob) {
+      reject(new Error('Canvas export failed'));
+      return;
+    }
+    resolve(blob);
+  }, mimeType, quality);
+});
 
-const dataUrlToBlob = (value) => {
-  if (!isNonEmpty(value)) {
-    return null;
-  }
-
-  const matched = value.match(/^data:([^;,]+)?(;base64)?,(.*)$/);
-  if (!matched) {
-    return null;
-  }
-
-  const mimeType = matched[1] || 'application/octet-stream';
-  const isBase64 = Boolean(matched[2]);
-  const payload = matched[3] || '';
-  const binary = isBase64 ? atob(payload) : decodeURIComponent(payload);
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index);
-  }
-  return new Blob([bytes], { type: mimeType });
-};
-
-const compressImageFile = async (file) => {
+const renderCompressedBlob = async (file, maxEdge, targetBytes) => {
   const image = await loadImageFromBlob(file);
   const originalWidth = image.naturalWidth || image.width;
   const originalHeight = image.naturalHeight || image.height;
@@ -439,7 +429,7 @@ const compressImageFile = async (file) => {
     throw new Error('Invalid image dimensions');
   }
 
-  const scale = Math.min(1, MAX_CANVAS_EDGE / Math.max(originalWidth, originalHeight));
+  const scale = Math.min(1, maxEdge / Math.max(originalWidth, originalHeight));
   const width = Math.max(1, Math.round(originalWidth * scale));
   const height = Math.max(1, Math.round(originalHeight * scale));
 
@@ -454,21 +444,40 @@ const compressImageFile = async (file) => {
 
   const preferredType = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
   let quality = preferredType === 'image/png' ? undefined : 0.9;
-  let url = renderCanvasToDataUrl(canvas, preferredType, quality);
+  let blob = await canvasToBlob(canvas, preferredType, quality);
 
-  if (preferredType !== 'image/png') {
-    while (url.length > 2_000_000 && quality > 0.58) {
+  if (preferredType !== 'image/png' && targetBytes > 0) {
+    while (blob.size > targetBytes && quality > 0.58) {
       quality -= 0.08;
-      url = renderCanvasToDataUrl(canvas, preferredType, quality);
+      blob = await canvasToBlob(canvas, preferredType, quality);
     }
   }
 
   return {
-    id: makeId('photo'),
-    name: file.name,
-    url,
+    blob,
     width,
     height,
+  };
+};
+
+const blobToDataUrl = (blob) => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '');
+  reader.onerror = () => reject(reader.error || new Error('FileReader failed'));
+  reader.readAsDataURL(blob);
+});
+
+const compressImageFile = async (file) => {
+  const full = await renderCompressedBlob(file, MAX_CANVAS_EDGE, 1_700_000);
+  const thumb = await renderCompressedBlob(file, MAX_THUMBNAIL_EDGE, 320_000);
+
+  return {
+    id: makeId('photo'),
+    name: file.name,
+    width: full.width,
+    height: full.height,
+    fullBlob: full.blob,
+    thumbBlob: thumb.blob,
   };
 };
 
@@ -560,8 +569,14 @@ const workspaceHash = ({ scope, users, points, showFeaturedBubbles, bubbleLayout
   bubbleLayout: ['map', 'right', 'bottom'].includes(bubbleLayout) ? bubbleLayout : 'right',
 });
 
-const buildPhotoReadUrl = (photo, ownerId) => {
-  const pathname = isNonEmpty(photo?.pathname) ? photo.pathname.trim() : '';
+const buildPhotoReadUrl = (photo, ownerId, options = {}) => {
+  const { preferThumbnail = false } = options;
+  const preferredPathname = preferThumbnail
+    ? (isNonEmpty(photo?.thumbnailPathname) ? photo.thumbnailPathname.trim() : '')
+    : '';
+  const fallbackPathname = isNonEmpty(photo?.pathname) ? photo.pathname.trim() : '';
+  const pathname = preferredPathname || fallbackPathname;
+
   if (pathname && ownerId) {
     const params = new URLSearchParams({
       action: 'read',
@@ -571,7 +586,10 @@ const buildPhotoReadUrl = (photo, ownerId) => {
     });
     return `/api/attachments?${params.toString()}`;
   }
-  return isNonEmpty(photo?.url) ? photo.url.trim() : '';
+  const preferredUrl = preferThumbnail
+    ? (isNonEmpty(photo?.thumbnailUrl) ? photo.thumbnailUrl.trim() : '')
+    : '';
+  return preferredUrl || (isNonEmpty(photo?.url) ? photo.url.trim() : '');
 };
 
 function MapViewportController({ scope }) {
@@ -628,6 +646,7 @@ function MapBookmarkCard({
   onDeletePoint,
 }) {
   const [lightboxPhotoId, setLightboxPhotoId] = useState('');
+  const [lightboxImageSrc, setLightboxImageSrc] = useState('');
   const swipeStartXRef = useRef(0);
   const swipeDeltaXRef = useRef(0);
   const hasPhotos = point.photos.length > 0;
@@ -690,6 +709,58 @@ function MapBookmarkCard({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [activeLightboxPhoto, closeLightbox, shiftLightboxPhoto]);
 
+  useEffect(() => {
+    if (!activeLightboxPhoto) {
+      setLightboxImageSrc('');
+      return undefined;
+    }
+
+    let cancelled = false;
+    const thumbSrc = photoSrcResolver(activeLightboxPhoto, ownerId, { preferThumbnail: true });
+    const fullSrc = photoSrcResolver(activeLightboxPhoto, ownerId);
+    setLightboxImageSrc(thumbSrc || fullSrc);
+
+    if (!fullSrc || fullSrc === thumbSrc) {
+      return undefined;
+    }
+
+    const fullImage = new Image();
+    fullImage.onload = () => {
+      if (!cancelled) {
+        setLightboxImageSrc(fullSrc);
+      }
+    };
+    fullImage.src = fullSrc;
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeLightboxPhoto, ownerId, photoSrcResolver]);
+
+  useEffect(() => {
+    if (!activeLightboxPhoto || point.photos.length < 2) {
+      return;
+    }
+
+    const index = point.photos.findIndex((photo) => photo.id === activeLightboxPhoto.id);
+    if (index < 0) {
+      return;
+    }
+
+    const nearPhotos = [
+      point.photos[(index - 1 + point.photos.length) % point.photos.length],
+      point.photos[(index + 1) % point.photos.length],
+    ];
+    nearPhotos.forEach((photo) => {
+      const src = photoSrcResolver(photo, ownerId);
+      if (!src) {
+        return;
+      }
+      const image = new Image();
+      image.src = src;
+    });
+  }, [activeLightboxPhoto, ownerId, photoSrcResolver, point.photos]);
+
   const handleLightboxTouchStart = (event) => {
     const touch = event.changedTouches?.[0];
     if (!touch) {
@@ -751,7 +822,7 @@ function MapBookmarkCard({
               onTouchEnd={handleLightboxTouchEnd}
             >
               <img
-                src={photoSrcResolver(activeLightboxPhoto, ownerId)}
+                src={lightboxImageSrc || photoSrcResolver(activeLightboxPhoto, ownerId)}
                 alt={activeLightboxPhoto.name || text.photosTitle}
               />
             </div>
@@ -832,7 +903,7 @@ function MapBookmarkCard({
             const isFeatured = photo.id === point.featuredPhotoId;
             return (
               <figure key={photo.id} className={`map-photo-card ${isFeatured ? 'is-featured' : ''}`}>
-                <img src={photoSrcResolver(photo, ownerId)} alt={photo.name || text.photosTitle} />
+                <img src={photoSrcResolver(photo, ownerId, { preferThumbnail: true })} alt={photo.name || text.photosTitle} loading="lazy" />
                 <figcaption title={photo.name}>{photo.name || 'image'}</figcaption>
                 <div className="map-photo-actions">
                   <button
@@ -1197,7 +1268,7 @@ function MapView({
   );
   const selectedPointOwner = selectedPoint ? userMap.get(selectedPoint.userId) : null;
   const resolvePhotoSrc = useCallback(
-    (photo, ownerId) => buildPhotoReadUrl(photo, ownerId || activeUserId),
+    (photo, ownerId, options = {}) => buildPhotoReadUrl(photo, ownerId || activeUserId, options),
     [activeUserId],
   );
   const setDockItemRef = useCallback((pointId, node) => {
@@ -1575,19 +1646,21 @@ function MapView({
     const point = points.find((item) => item.id === pointId);
     if (point?.photos?.length && activeUserId) {
       point.photos.forEach((photo) => {
-        if (!isNonEmpty(photo?.pathname)) {
-          return;
-        }
-        fetch('/api/attachments?action=delete', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'same-origin',
-          body: JSON.stringify({
-            targetUserId: activeUserId,
-            pathname: photo.pathname,
-            url: photo.url || '',
-          }),
-        }).catch(() => {});
+        [photo?.pathname, photo?.thumbnailPathname].forEach((pathname) => {
+          if (!isNonEmpty(pathname)) {
+            return;
+          }
+          fetch('/api/attachments?action=delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({
+              targetUserId: activeUserId,
+              pathname,
+              url: photo.url || '',
+            }),
+          }).catch(() => {});
+        });
       });
     }
 
@@ -1599,32 +1672,56 @@ function MapView({
     const compressed = await compressImageFile(file);
 
     if (!activeUserId) {
+      const fullUrl = await blobToDataUrl(compressed.fullBlob);
+      const thumbUrl = await blobToDataUrl(compressed.thumbBlob);
       return {
-        ...compressed,
+        id: compressed.id,
+        name: compressed.name,
+        width: compressed.width,
+        height: compressed.height,
+        url: fullUrl,
         pathname: '',
+        thumbnailUrl: thumbUrl,
+        thumbnailPathname: '',
         contentType: file.type || '',
       };
     }
 
     const safeFilename = sanitizeFilename(file.name || 'image.jpg');
-    const pathname = `attachments/${activeUserId}/map/${pointId}/${Date.now()}-${safeFilename}`;
-    const uploadBlob = dataUrlToBlob(compressed.url) || file;
-
-    const blob = await upload(pathname, uploadBlob, {
-      access: 'private',
-      handleUploadUrl: '/api/attachments?action=upload',
-      clientPayload: JSON.stringify({
-        targetUserId: activeUserId,
-        planId: `map_${pointId}`,
+    const stamp = Date.now();
+    const pathname = `attachments/${activeUserId}/map/${pointId}/${stamp}-${safeFilename}`;
+    const thumbPathname = `attachments/${activeUserId}/map/${pointId}/${stamp}-thumb-${safeFilename}`;
+    const [blob, thumbBlob] = await Promise.all([
+      upload(pathname, compressed.fullBlob, {
+        access: 'private',
+        handleUploadUrl: '/api/attachments?action=upload',
+        clientPayload: JSON.stringify({
+          targetUserId: activeUserId,
+          planId: `map_${pointId}`,
+        }),
+        multipart: compressed.fullBlob.size > 5 * 1024 * 1024,
       }),
-      multipart: uploadBlob.size > 5 * 1024 * 1024,
-    });
+      upload(thumbPathname, compressed.thumbBlob, {
+        access: 'private',
+        handleUploadUrl: '/api/attachments?action=upload',
+        clientPayload: JSON.stringify({
+          targetUserId: activeUserId,
+          planId: `map_${pointId}`,
+        }),
+        multipart: false,
+      }),
+    ]);
 
     return {
-      ...compressed,
+      id: compressed.id,
+      name: compressed.name,
+      width: compressed.width,
+      height: compressed.height,
       url: blob.url,
       pathname: blob.pathname || pathname,
-      contentType: blob.contentType || uploadBlob.type || file.type || '',
+      thumbnailUrl: thumbBlob.url,
+      thumbnailPathname: thumbBlob.pathname || thumbPathname,
+      contentType: blob.contentType || compressed.fullBlob.type || file.type || '',
     };
   };
 
@@ -1726,17 +1823,22 @@ function MapView({
   const deletePhoto = async (pointId, photoId) => {
     const point = points.find((item) => item.id === pointId);
     const photo = point?.photos?.find((item) => item.id === photoId);
-    if (photo?.pathname && activeUserId) {
-      fetch('/api/attachments?action=delete', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify({
-          targetUserId: activeUserId,
-          pathname: photo.pathname,
-          url: photo.url || '',
-        }),
-      }).catch(() => {});
+    if (activeUserId) {
+      [photo?.pathname, photo?.thumbnailPathname].forEach((pathname) => {
+        if (!isNonEmpty(pathname)) {
+          return;
+        }
+        fetch('/api/attachments?action=delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({
+            targetUserId: activeUserId,
+            pathname,
+            url: photo?.url || '',
+          }),
+        }).catch(() => {});
+      });
     }
 
     setPoints((previous) => previous.map((point) => {
@@ -2220,8 +2322,9 @@ function MapView({
                         }}
                       >
                         <img
-                          src={resolvePhotoSrc(featuredPhoto, activeUserId)}
+                          src={resolvePhotoSrc(featuredPhoto, activeUserId, { preferThumbnail: true })}
                           alt={featuredPhoto.name || text.featuredPhotoAlt}
+                          loading="lazy"
                         />
                       </div>
                     </Tooltip>
@@ -2288,8 +2391,9 @@ function MapView({
                       }}
                     >
                       <img
-                        src={resolvePhotoSrc(featuredPhoto, activeUserId)}
+                        src={resolvePhotoSrc(featuredPhoto, activeUserId, { preferThumbnail: true })}
                         alt={featuredPhoto.name || text.featuredPhotoAlt}
+                        loading="lazy"
                       />
                     </div>
                     <span className="map-featured-dock-caption">

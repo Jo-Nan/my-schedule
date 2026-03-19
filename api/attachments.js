@@ -205,7 +205,12 @@ export default async function handler(req, res) {
       if (Number.isFinite(blobResult.blob.size)) {
         res.setHeader('Content-Length', String(blobResult.blob.size));
       }
-      res.setHeader('Cache-Control', 'private, no-store');
+      res.setHeader(
+        'Cache-Control',
+        mode === 'inline'
+          ? 'private, max-age=120, stale-while-revalidate=600'
+          : 'private, no-store',
+      );
 
       const stream = Readable.fromWeb(blobResult.stream);
       stream.on('error', () => {
