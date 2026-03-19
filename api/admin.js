@@ -15,6 +15,7 @@ import {
   restoreUserSnapshot,
   getMessages,
   withDataStoreLock,
+  assertUserWorkspaceQuota,
 } from './_lib/store.js';
 
 const buildBaseUrl = (req) => {
@@ -165,6 +166,7 @@ export default async function handler(req, res) {
       const email = (body.email || '').trim();
       const password = body.password || '';
       const username = (body.username || '').trim();
+      const role = body.role === 'admin' ? 'admin' : 'user';
 
       if (!email || !password) {
         return res.status(400).json({ status: 'error', message: 'Email and password are required' });
@@ -181,7 +183,7 @@ export default async function handler(req, res) {
           return res.status(409).json({ status: 'error', message: 'Email is already registered' });
         }
 
-        const user = createUserRecord({ email, username, password, role: 'user' });
+        const user = createUserRecord({ email, username, password, role });
         store.users.push(user);
         store.plansByUser[user.id] = [];
 
@@ -277,6 +279,14 @@ export default async function handler(req, res) {
         return res.status(400).json({ status: 'error', message: 'Plans must be an array' });
       }
 
+      assertUserWorkspaceQuota({
+        users: auth.users,
+        plansByUser: auth.plansByUser,
+        mapsByUser: auth.mapsByUser,
+        userId,
+        nextPlans: plans,
+      });
+
       const savedPlans = setUserPlans(auth.plansByUser, userId, plans);
       upsertUserSnapshot(auth.snapshotsByUser, userId, savedPlans, 'admin_save');
       await savePlansByUser(auth.config, auth.plansByUser);
@@ -324,6 +334,19 @@ export default async function handler(req, res) {
         return res.status(404).json({ status: 'error', message: 'User not found' });
       }
 
+      const targetSnapshot = getUserSnapshots(auth.snapshotsByUser, userId).find((item) => item.id === snapshotId);
+      if (!targetSnapshot) {
+        return res.status(404).json({ status: 'error', message: 'Snapshot not found' });
+      }
+
+      assertUserWorkspaceQuota({
+        users: auth.users,
+        plansByUser: auth.plansByUser,
+        mapsByUser: auth.mapsByUser,
+        userId,
+        nextPlans: targetSnapshot.plans,
+      });
+
       upsertUserSnapshot(auth.snapshotsByUser, userId, auth.plansByUser[userId] || [], 'pre_restore');
       const restoredSnapshot = restoreUserSnapshot(auth.plansByUser, auth.snapshotsByUser, userId, snapshotId);
 
@@ -350,6 +373,15 @@ export default async function handler(req, res) {
     res.setHeader('Allow', 'GET, POST, DELETE');
     return res.status(400).json({ status: 'error', message: `Unknown admin action or method: ${action} ${req.method}` });
   } catch (error) {
+    if (error?.code === 'USER_STORAGE_LIMIT_EXCEEDED') {
+      const limitMB = (Number(error.limitBytes) / (1024 * 1024)).toFixed(0);
+      const totalMB = (Number(error.totalBytes) / (1024 * 1024)).toFixed(2);
+      return res.status(400).json({
+        status: 'error',
+        code: error.code,
+        message: `普通用户总数据不能超过 ${limitMB}MB（含日程与地图）。当前约 ${totalMB}MB，请精简后再保存。`,
+      });
+    }
     return res.status(500).json({ status: 'error', message: error.message || 'Admin operation failed' });
   }
 }

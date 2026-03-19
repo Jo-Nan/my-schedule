@@ -16,7 +16,7 @@ const AdminPanel = ({
   const [selectedUserId, setSelectedUserId] = useState('');
   const [selectedUserPlans, setSelectedUserPlans] = useState([]);
   const [selectedUserSnapshots, setSelectedUserSnapshots] = useState([]);
-  const [createForm, setCreateForm] = useState({ email: '', password: '', username: '' });
+  const [createForm, setCreateForm] = useState({ email: '', password: '', username: '', role: 'user' });
   const [selfCheck, setSelfCheck] = useState(null);
   const [selfCheckLoading, setSelfCheckLoading] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -186,7 +186,7 @@ const AdminPanel = ({
       if (!response.ok || result.status !== 'success') {
         throw new Error(result.message || t.adminCreateError);
       }
-      setCreateForm({ email: '', password: '', username: '' });
+      setCreateForm({ email: '', password: '', username: '', role: 'user' });
       setMessage(t.adminCreateSuccess);
       await loadUsers();
       await loadMessages();
@@ -334,6 +334,14 @@ const AdminPanel = ({
                 <input className="glass-input" placeholder={t.emailPlaceholder} value={createForm.email} onChange={(e) => setCreateForm((prev) => ({ ...prev, email: e.target.value }))} required />
                 <input className="glass-input" placeholder={t.usernamePlaceholder} value={createForm.username} onChange={(e) => setCreateForm((prev) => ({ ...prev, username: e.target.value }))} />
                 <input className="glass-input" type="password" placeholder={t.passwordPlaceholder} value={createForm.password} onChange={(e) => setCreateForm((prev) => ({ ...prev, password: e.target.value }))} required />
+                <select
+                  className="glass-input"
+                  value={createForm.role}
+                  onChange={(e) => setCreateForm((prev) => ({ ...prev, role: e.target.value === 'admin' ? 'admin' : 'user' }))}
+                >
+                  <option value="user">{t.adminUserRoleNormal || 'Normal User'}</option>
+                  <option value="admin">{t.adminUserRoleSuper || 'Super User'}</option>
+                </select>
                 <button className="glass-button active-tab" type="submit">{t.adminCreateUser}</button>
               </form>
             </div>
@@ -348,7 +356,7 @@ const AdminPanel = ({
                     <div style={styles.userDetailWide}><b>{t.adminManagementId}:</b> <span style={styles.detailMono}>{selectedUser.managementId || '—'}</span></div>
                     <div><b>{t.usernamePlaceholder}:</b> {selectedUser.username || '—'}</div>
                     <div><b>{t.emailPlaceholder}:</b> {selectedUser.email}</div>
-                    <div><b>{t.adminRole}:</b> {selectedUser.role}</div>
+                    <div><b>{t.adminRole}:</b> {getUserRoleLabel(selectedUser.role, t)}</div>
                     <div><b>{t.adminPlanCount}:</b> {selectedUserPlans.length}</div>
                   </div>
                   <div style={styles.actionRow}>
@@ -653,7 +661,7 @@ const styles = {
   },
   createForm: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+    gridTemplateColumns: 'repeat(5, minmax(0, 1fr))',
     gap: '0.75rem',
   },
   userDetails: {
@@ -847,6 +855,13 @@ const getCheckStatusLabel = (status, t) => {
     return t.adminStatusFail;
   }
   return t.adminStatusWarn;
+};
+
+const getUserRoleLabel = (role, t) => {
+  if (role === 'admin') {
+    return t.adminUserRoleSuper || 'Super User';
+  }
+  return t.adminUserRoleNormal || 'Normal User';
 };
 
 const formatCheckValue = (value) => {

@@ -1,5 +1,12 @@
 import { requireAuth, parseJsonBody } from './_lib/auth.js';
-import { getUserPlans, setUserPlans, savePlansByUser, saveSnapshotsByUser, upsertUserSnapshot } from './_lib/store.js';
+import {
+  getUserPlans,
+  setUserPlans,
+  savePlansByUser,
+  saveSnapshotsByUser,
+  upsertUserSnapshot,
+  assertUserWorkspaceQuota,
+} from './_lib/store.js';
 
 /**
  * Unified Plans Endpoint
@@ -44,6 +51,14 @@ export default async function handler(req, res) {
         });
       }
 
+      assertUserWorkspaceQuota({
+        users: auth.users,
+        plansByUser: auth.plansByUser,
+        mapsByUser: auth.mapsByUser,
+        userId: auth.user.id,
+        nextPlans: plans,
+      });
+
       const savedPlans = setUserPlans(auth.plansByUser, auth.user.id, plans);
       upsertUserSnapshot(auth.snapshotsByUser, auth.user.id, savedPlans, 'save');
       await savePlansByUser(auth.config, auth.plansByUser);
@@ -56,6 +71,15 @@ export default async function handler(req, res) {
         count: savedPlans.length,
       });
     } catch (error) {
+      if (error?.code === 'USER_STORAGE_LIMIT_EXCEEDED') {
+        const limitMB = (Number(error.limitBytes) / (1024 * 1024)).toFixed(0);
+        const totalMB = (Number(error.totalBytes) / (1024 * 1024)).toFixed(2);
+        return res.status(400).json({
+          status: 'error',
+          code: error.code,
+          message: `普通用户总数据不能超过 ${limitMB}MB（含日程与地图）。当前约 ${totalMB}MB，请精简后再保存。`,
+        });
+      }
       return res.status(500).json({
         status: 'error',
         message: error.message || 'Unexpected error while saving plans',

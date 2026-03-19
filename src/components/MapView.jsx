@@ -937,12 +937,12 @@ function MapView({
           credentials: 'same-origin',
           body: JSON.stringify(nextPayload),
         });
-        if (!response.ok) {
-          return;
-        }
 
-        const result = await response.json();
-        if (result?.status !== 'success') {
+        const result = await response.json().catch(() => null);
+        if (!response.ok || result?.status !== 'success') {
+          if (result?.message) {
+            setFormMessage(result.message);
+          }
           return;
         }
 

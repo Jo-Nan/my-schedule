@@ -9,6 +9,7 @@ const __dirname = path.dirname(__filename);
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
 const LOCAL_DATA_DIR = path.join(PROJECT_ROOT, '.local-data');
 let dataStoreMutationQueue = Promise.resolve();
+export const NORMAL_USER_STORAGE_LIMIT_BYTES = 15 * 1024 * 1024;
 
 const ADMIN_SEED = {
   id: 'admin-nanmuz',
@@ -163,6 +164,8 @@ const sanitizeMapWorkspace = (workspace = {}) => {
     savedAt: typeof workspace.savedAt === 'string' ? workspace.savedAt : new Date().toISOString(),
   };
 };
+
+const estimateJsonBytes = (value) => Buffer.byteLength(JSON.stringify(value ?? null), 'utf-8');
 
 const sanitizeUser = (user = {}) => {
   const createdAt = typeof user.createdAt === 'string' ? user.createdAt : new Date().toISOString();
@@ -567,6 +570,71 @@ export const getUserMapWorkspace = (mapsByUser, userId) => sanitizeMapWorkspace(
 export const setUserMapWorkspace = (mapsByUser, userId, workspace) => {
   mapsByUser[userId] = sanitizeMapWorkspace(workspace);
   return mapsByUser[userId];
+};
+
+export const getUserWorkspaceDataSizeBytes = ({
+  plansByUser,
+  mapsByUser,
+  userId,
+  nextPlans,
+  nextMapWorkspace,
+}) => {
+  const normalizedPlans = nextPlans === undefined ? getUserPlans(plansByUser, userId) : sanitizePlans(nextPlans);
+  const normalizedMapWorkspace = nextMapWorkspace === undefined
+    ? getUserMapWorkspace(mapsByUser, userId)
+    : sanitizeMapWorkspace(nextMapWorkspace);
+
+  return estimateJsonBytes({
+    plans: normalizedPlans,
+    mapWorkspace: normalizedMapWorkspace,
+  });
+};
+
+export const assertUserWorkspaceQuota = ({
+  users,
+  plansByUser,
+  mapsByUser,
+  userId,
+  nextPlans,
+  nextMapWorkspace,
+  limitBytes = NORMAL_USER_STORAGE_LIMIT_BYTES,
+}) => {
+  const user = findUserById(users, userId);
+  if (!user) {
+    const error = new Error('User not found');
+    error.code = 'USER_NOT_FOUND';
+    throw error;
+  }
+
+  const totalBytes = getUserWorkspaceDataSizeBytes({
+    plansByUser,
+    mapsByUser,
+    userId,
+    nextPlans,
+    nextMapWorkspace,
+  });
+
+  if (user.role === 'admin') {
+    return {
+      limited: false,
+      totalBytes,
+      limitBytes,
+    };
+  }
+
+  if (totalBytes > limitBytes) {
+    const error = new Error('User storage quota exceeded');
+    error.code = 'USER_STORAGE_LIMIT_EXCEEDED';
+    error.totalBytes = totalBytes;
+    error.limitBytes = limitBytes;
+    throw error;
+  }
+
+  return {
+    limited: true,
+    totalBytes,
+    limitBytes,
+  };
 };
 
 export const withDataStoreLock = async (callback) => {
