@@ -1761,34 +1761,6 @@ function MapView({
   }, [points, selectedPointId]);
 
   useEffect(() => {
-    if (!recycleBin.length) {
-      return;
-    }
-    const now = Date.now();
-    const expired = recycleBin.filter((item) => {
-      const stamp = new Date(item.deletedAt).getTime();
-      if (Number.isNaN(stamp)) {
-        return true;
-      }
-      return now - stamp > RECYCLE_BIN_RETENTION_MS;
-    });
-    if (!expired.length) {
-      return;
-    }
-
-    expired.forEach((item) => {
-      if (item.kind === 'photo') {
-        cleanupPhotoStorage(item.payload?.photo);
-      } else if (item.kind === 'point') {
-        const photos = Array.isArray(item.payload?.point?.photos) ? item.payload.point.photos : [];
-        photos.forEach((photo) => cleanupPhotoStorage(photo));
-      }
-    });
-
-    setRecycleBin((previous) => pruneRecycleItems(previous));
-  }, [cleanupPhotoStorage, recycleBin]);
-
-  useEffect(() => {
     if (!selectedPointId) {
       return undefined;
     }
@@ -1826,6 +1798,55 @@ function MapView({
       document.removeEventListener('keydown', handleEscCloseEditor);
     };
   }, [selectedPointId]);
+
+  const cleanupPhotoStorage = useCallback((photo) => {
+    if (!activeUserId) {
+      return;
+    }
+    [photo?.pathname, photo?.thumbnailPathname].forEach((pathname) => {
+      if (!isNonEmpty(pathname)) {
+        return;
+      }
+      fetch('/api/attachments?action=delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          targetUserId: activeUserId,
+          pathname,
+          url: photo?.url || '',
+        }),
+      }).catch(() => {});
+    });
+  }, [activeUserId]);
+
+  useEffect(() => {
+    if (!recycleBin.length) {
+      return;
+    }
+    const now = Date.now();
+    const expired = recycleBin.filter((item) => {
+      const stamp = new Date(item.deletedAt).getTime();
+      if (Number.isNaN(stamp)) {
+        return true;
+      }
+      return now - stamp > RECYCLE_BIN_RETENTION_MS;
+    });
+    if (!expired.length) {
+      return;
+    }
+
+    expired.forEach((item) => {
+      if (item.kind === 'photo') {
+        cleanupPhotoStorage(item.payload?.photo);
+      } else if (item.kind === 'point') {
+        const photos = Array.isArray(item.payload?.point?.photos) ? item.payload.point.photos : [];
+        photos.forEach((photo) => cleanupPhotoStorage(photo));
+      }
+    });
+
+    setRecycleBin((previous) => pruneRecycleItems(previous));
+  }, [cleanupPhotoStorage, recycleBin]);
 
   const userMap = useMemo(() => {
     const map = new Map();
@@ -2178,27 +2199,6 @@ function MapView({
     }
     return window.confirm(secondMessage);
   };
-
-  const cleanupPhotoStorage = useCallback((photo) => {
-    if (!activeUserId) {
-      return;
-    }
-    [photo?.pathname, photo?.thumbnailPathname].forEach((pathname) => {
-      if (!isNonEmpty(pathname)) {
-        return;
-      }
-      fetch('/api/attachments?action=delete', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify({
-          targetUserId: activeUserId,
-          pathname,
-          url: photo?.url || '',
-        }),
-      }).catch(() => {});
-    });
-  }, [activeUserId]);
 
   const pushRecycleItem = useCallback((item) => {
     setRecycleBin((previous) => pruneRecycleItems([

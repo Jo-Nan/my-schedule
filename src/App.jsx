@@ -266,6 +266,7 @@ function App() {
 
     const url = new URL(window.location.href);
     const isMapInUrl = url.searchParams.get('page') === 'map';
+    const hasShareInUrl = url.searchParams.has('share');
 
     if (viewMode === 'map' && !isMapInUrl) {
       url.searchParams.set('page', 'map');
@@ -278,8 +279,9 @@ function App() {
       return;
     }
 
-    if (viewMode !== 'map' && isMapInUrl) {
+    if (viewMode !== 'map' && (isMapInUrl || hasShareInUrl)) {
       url.searchParams.delete('page');
+      url.searchParams.delete('share');
       const nextSearch = url.searchParams.toString();
       window.history.pushState(
         { page: 'schedule' },
@@ -313,7 +315,7 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (!shareTokenInUrl) {
+    if (!shareTokenInUrl || viewMode !== 'map') {
       setSharedMapWorkspace(null);
       setSharedMapOwnerName('');
       setSharedMapStatus('idle');
@@ -355,7 +357,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [shareTokenInUrl]);
+  }, [shareTokenInUrl, viewMode]);
 
   useEffect(() => {
     if (!cacheKey) {
@@ -649,7 +651,7 @@ function App() {
         invalid: 'Share link is invalid or disabled.',
       };
 
-  if (shareTokenInUrl) {
+  if (viewMode === 'map' && shareTokenInUrl) {
     if (sharedMapStatus === 'loading' || (sharedMapStatus !== 'error' && !sharedMapWorkspace)) {
       return <div style={styles.loading}>{sharedPageText.loading}</div>;
     }
