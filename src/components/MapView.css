@@ -8,10 +8,20 @@
 .map-view-header {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   gap: 1rem;
   margin-bottom: 0.72rem;
   flex-wrap: wrap;
+}
+
+.map-readonly-banner {
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.16), rgba(14, 116, 144, 0.14));
+  color: var(--text-primary);
+  font-size: 0.78rem;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 0.38rem 0.72rem;
 }
 
 .map-view-actions {
@@ -19,6 +29,18 @@
   gap: 0.6rem;
   align-items: center;
   flex-wrap: wrap;
+}
+
+.map-share-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.map-share-actions .glass-button {
+  font-size: 0.72rem;
+  padding: 0.32rem 0.56rem;
+  box-shadow: none;
 }
 
 .map-featured-toggle-btn {

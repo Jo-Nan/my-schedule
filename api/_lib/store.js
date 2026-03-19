@@ -156,6 +156,11 @@ const sanitizeMapRecycleBin = (recycleBin) => (
     : []
 );
 
+const sanitizeMapShare = (share = {}) => ({
+  enabled: share?.enabled === true,
+  token: typeof share?.token === 'string' ? share.token.trim() : '',
+});
+
 const sanitizeMapPlaceBookmarks = (places, maxSize = 20) => {
   const list = Array.isArray(places) ? places : [];
   const seen = new Set();
@@ -200,6 +205,7 @@ const sanitizeMapWorkspace = (workspace = {}) => {
       searchHistory: [],
       favoritePlaces: [],
       recycleBin: [],
+      share: sanitizeMapShare(),
       revision: 0,
       savedAt: new Date().toISOString(),
     };
@@ -216,6 +222,7 @@ const sanitizeMapWorkspace = (workspace = {}) => {
     searchHistory: sanitizeMapPlaceBookmarks(workspace.searchHistory, 12),
     favoritePlaces: sanitizeMapPlaceBookmarks(workspace.favoritePlaces, 16),
     recycleBin: sanitizeMapRecycleBin(workspace.recycleBin),
+    share: sanitizeMapShare(workspace.share),
     revision: Number.isInteger(rawRevision) && rawRevision >= 0 ? rawRevision : 0,
     savedAt: typeof workspace.savedAt === 'string' ? workspace.savedAt : new Date().toISOString(),
   };
@@ -636,9 +643,16 @@ export const setUserMapWorkspace = (mapsByUser, userId, workspace, options = {})
     };
   }
 
+  const incomingHasShare = Boolean(
+    workspace
+    && typeof workspace === 'object'
+    && !Array.isArray(workspace)
+    && Object.prototype.hasOwnProperty.call(workspace, 'share'),
+  );
   const sanitizedWorkspace = sanitizeMapWorkspace(workspace);
   const nextWorkspace = sanitizeMapWorkspace({
     ...sanitizedWorkspace,
+    share: incomingHasShare ? sanitizeMapShare(workspace.share) : currentWorkspace.share,
     revision: currentWorkspace.revision + 1,
     savedAt: new Date().toISOString(),
   });

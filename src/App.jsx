@@ -99,11 +99,28 @@ const getInitialViewMode = () => {
   }
 };
 
+const getInitialShareToken = () => {
+  if (typeof window === 'undefined') {
+    return '';
+  }
+  try {
+    const params = new URLSearchParams(window.location.search);
+    return (params.get('share') || '').trim();
+  } catch {
+    return '';
+  }
+};
+
 function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [managedUser, setManagedUser] = useState(null);
   const [authReady, setAuthReady] = useState(false);
   const [viewMode, setViewMode] = useState(() => getInitialViewMode());
+  const [shareTokenInUrl, setShareTokenInUrl] = useState(() => getInitialShareToken());
+  const [sharedMapWorkspace, setSharedMapWorkspace] = useState(null);
+  const [sharedMapOwnerName, setSharedMapOwnerName] = useState('');
+  const [sharedMapStatus, setSharedMapStatus] = useState('idle');
+  const [sharedMapError, setSharedMapError] = useState('');
   const [theme, setTheme] = useState('light');
   const [language, setLanguage] = useState(() => localStorage.getItem('nanmuz_lang') || 'en');
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
@@ -228,6 +245,8 @@ function App() {
     const syncViewModeWithUrl = () => {
       const params = new URLSearchParams(window.location.search);
       const isMapPage = params.get('page') === 'map';
+      const nextShareToken = (params.get('share') || '').trim();
+      setShareTokenInUrl(nextShareToken);
       setViewMode((previous) => {
         if (isMapPage) {
           return 'map';
@@ -292,6 +311,51 @@ function App() {
 
     restoreSession();
   }, []);
+
+  useEffect(() => {
+    if (!shareTokenInUrl) {
+      setSharedMapWorkspace(null);
+      setSharedMapOwnerName('');
+      setSharedMapStatus('idle');
+      setSharedMapError('');
+      return;
+    }
+
+    let cancelled = false;
+    const loadSharedWorkspace = async () => {
+      setSharedMapStatus('loading');
+      setSharedMapError('');
+
+      try {
+        const response = await fetch(`/api/maps-share?token=${encodeURIComponent(shareTokenInUrl)}&t=${Date.now()}`, {
+          credentials: 'same-origin',
+        });
+        const result = await response.json().catch(() => null);
+        if (!response.ok || result?.status !== 'success' || !result?.workspace) {
+          throw new Error(result?.message || 'Shared map not available');
+        }
+        if (cancelled) {
+          return;
+        }
+        setSharedMapWorkspace(result.workspace);
+        setSharedMapOwnerName(result?.owner?.username || '');
+        setSharedMapStatus('ready');
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+        setSharedMapWorkspace(null);
+        setSharedMapOwnerName('');
+        setSharedMapStatus('error');
+        setSharedMapError(error?.message || 'Shared map not available');
+      }
+    };
+
+    loadSharedWorkspace();
+    return () => {
+      cancelled = true;
+    };
+  }, [shareTokenInUrl]);
 
   useEffect(() => {
     if (!cacheKey) {
@@ -575,6 +639,53 @@ function App() {
     }
   };
 
+  const sharedPageText = language === 'zh'
+    ? {
+        loading: '正在加载分享地图...',
+        invalid: '分享链接无效或已关闭。',
+      }
+    : {
+        loading: 'Loading shared map...',
+        invalid: 'Share link is invalid or disabled.',
+      };
+
+  if (shareTokenInUrl) {
+    if (sharedMapStatus === 'loading' || (sharedMapStatus !== 'error' && !sharedMapWorkspace)) {
+      return <div style={styles.loading}>{sharedPageText.loading}</div>;
+    }
+
+    if (sharedMapStatus === 'error' || !sharedMapWorkspace) {
+      return (
+        <div style={styles.shareState}>
+          <p style={styles.shareStateTitle}>{sharedPageText.invalid}</p>
+          {sharedMapError ? <p style={styles.shareStateMessage}>{sharedMapError}</p> : null}
+        </div>
+      );
+    }
+
+    return (
+      <div className="animate-fade-in" style={{ width: '100%' }}>
+        <main>
+          <MapView
+            activeUserId=""
+            activeUserName={sharedMapOwnerName}
+            language={language}
+            onBackToSchedule={() => {}}
+            readOnly
+            sharedWorkspace={sharedMapWorkspace}
+            sharedOwnerName={sharedMapOwnerName}
+            sharedToken={shareTokenInUrl}
+          />
+        </main>
+        <footer style={styles.footer}>
+          <span style={styles.footerLabel}>Version {APP_VERSION}</span>
+          <span style={styles.footerDivider}>·</span>
+          <span style={styles.footerLabel}>Deploy Time {buildLabel} (Shanghai)</span>
+        </footer>
+      </div>
+    );
+  }
+
   if (!authReady) {
     return <div style={styles.loading}>{t.authChecking}</div>;
   }
@@ -710,6 +821,24 @@ const styles = {
     justifyContent: 'center',
     color: 'var(--text-secondary)',
     fontSize: '1rem',
+  },
+  shareState: {
+    minHeight: '100vh',
+    display: 'grid',
+    placeItems: 'center',
+    textAlign: 'center',
+    color: 'var(--text-primary)',
+    padding: '1rem',
+  },
+  shareStateTitle: {
+    margin: 0,
+    fontSize: '1rem',
+    fontWeight: 600,
+  },
+  shareStateMessage: {
+    margin: '0.45rem 0 0',
+    color: 'var(--text-secondary)',
+    fontSize: '0.86rem',
   },
   footer: {
     marginTop: '2.5rem',

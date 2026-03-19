@@ -153,6 +153,20 @@ const TEXTS = {
     saveCurrentPlaceBtn: 'Save current place',
     noFavoritePlaces: 'No favorites yet.',
     noSearchHistory: 'No recent searches.',
+    sharePanelTitle: 'Share',
+    shareEnableBtn: 'Enable read-only link',
+    shareDisableBtn: 'Disable link',
+    shareRegenerateBtn: 'Regenerate link',
+    shareCopyBtn: 'Copy link',
+    shareLinkLabel: 'Share URL',
+    shareBusyLabel: 'Updating...',
+    shareReadyHint: 'Anyone with this link can view the map in read-only mode.',
+    shareNotEnabledHint: 'Read-only link is disabled.',
+    shareCopied: 'Share link copied.',
+    shareCopyFailed: 'Failed to copy link.',
+    shareDisableConfirm: 'Disable read-only link now?',
+    shareRegenerateConfirm: 'Regenerate share link now? Old link will stop working.',
+    readOnlyBanner: 'Read-only shared view',
     placeLabel: 'Place label',
     placePlaceholder: 'Can be city, scenic spot, or custom note',
     latitudeLabel: 'Latitude',
@@ -267,6 +281,20 @@ const TEXTS = {
     saveCurrentPlaceBtn: '收藏当前地点',
     noFavoritePlaces: '暂无收藏地点。',
     noSearchHistory: '暂无搜索记录。',
+    sharePanelTitle: '分享',
+    shareEnableBtn: '开启只读分享',
+    shareDisableBtn: '关闭分享链接',
+    shareRegenerateBtn: '重置分享链接',
+    shareCopyBtn: '复制链接',
+    shareLinkLabel: '分享链接',
+    shareBusyLabel: '处理中...',
+    shareReadyHint: '任何持有该链接的人都可只读查看地图。',
+    shareNotEnabledHint: '只读分享未开启。',
+    shareCopied: '分享链接已复制。',
+    shareCopyFailed: '复制分享链接失败。',
+    shareDisableConfirm: '确认关闭只读分享吗？',
+    shareRegenerateConfirm: '确认重置分享链接吗？旧链接将失效。',
+    readOnlyBanner: '只读分享视图',
     placeLabel: '地点名称',
     placePlaceholder: '可填城市、景点或自定义备注',
     latitudeLabel: '纬度',
@@ -665,6 +693,22 @@ const placeMatchesQuery = (place, query) => {
   return nameToken.includes(q) || coordToken.includes(q) || shortToken.startsWith(q);
 };
 
+const normalizeMapShare = (share) => ({
+  enabled: share?.enabled === true,
+  token: isNonEmpty(share?.token) ? share.token.trim() : '',
+});
+
+const buildClientShareUrl = (token) => {
+  const nextToken = isNonEmpty(token) ? token.trim() : '';
+  if (!nextToken || typeof window === 'undefined') {
+    return '';
+  }
+  const url = new URL(window.location.href);
+  url.searchParams.set('page', 'map');
+  url.searchParams.set('share', nextToken);
+  return `${url.origin}${url.pathname}?${url.searchParams.toString()}`;
+};
+
 const pruneRecycleItems = (items) => {
   const now = Date.now();
   return (Array.isArray(items) ? items : []).filter((item) => {
@@ -767,6 +811,7 @@ const parseWorkspace = (rawWorkspace, defaultName) => {
     ? safeWorkspace.revision
     : Number.parseInt(safeWorkspace?.revision, 10);
   const revision = Number.isInteger(rawRevision) && rawRevision >= 0 ? rawRevision : 0;
+  const share = normalizeMapShare(safeWorkspace?.share);
 
   return {
     scope: loadedScope,
@@ -775,6 +820,7 @@ const parseWorkspace = (rawWorkspace, defaultName) => {
     searchHistory: loadedSearchHistory,
     favoritePlaces: loadedFavoritePlaces,
     recycleBin: loadedRecycleBin,
+    share,
     revision,
     showFeaturedBubbles: loadedShowFeaturedBubbles,
     bubbleLayout: loadedBubbleLayout,
@@ -829,12 +875,20 @@ const workspaceHash = ({
 });
 
 const buildPhotoReadUrl = (photo, ownerId, options = {}) => {
-  const { preferThumbnail = false } = options;
+  const { preferThumbnail = false, shareToken = '' } = options;
   const preferredPathname = preferThumbnail
     ? (isNonEmpty(photo?.thumbnailPathname) ? photo.thumbnailPathname.trim() : '')
     : '';
   const fallbackPathname = isNonEmpty(photo?.pathname) ? photo.pathname.trim() : '';
   const pathname = preferredPathname || fallbackPathname;
+
+  if (pathname && isNonEmpty(shareToken)) {
+    const params = new URLSearchParams({
+      token: shareToken.trim(),
+      pathname,
+    });
+    return `/api/maps-share-photo?${params.toString()}`;
+  }
 
   if (pathname && ownerId) {
     const params = new URLSearchParams({
@@ -896,6 +950,7 @@ function MapBookmarkCard({
   owner,
   ownerId,
   text,
+  readOnly = false,
   photoSrcResolver,
   onUpdatePoint,
   onUploadPhotos,
@@ -1121,13 +1176,15 @@ function MapBookmarkCard({
     <div className="map-bookmark-card">
       <div className="map-bookmark-head">
         <h4>{point.place || `${point.latitude.toFixed(4)}, ${point.longitude.toFixed(4)}`}</h4>
-        <button
-          type="button"
-          className="glass-button map-danger-btn"
-          onClick={() => onDeletePoint(point.id)}
-        >
-          {text.removePointBtn}
-        </button>
+        {!readOnly && (
+          <button
+            type="button"
+            className="glass-button map-danger-btn"
+            onClick={() => onDeletePoint(point.id)}
+          >
+            {text.removePointBtn}
+          </button>
+        )}
       </div>
       <p className="map-bookmark-meta">
         <strong>{text.ownerLabel}:</strong> {owner?.name || '-'}
@@ -1142,32 +1199,39 @@ function MapBookmarkCard({
         className="glass-input map-textarea"
         value={point.route}
         placeholder={text.routePlaceholder}
+        readOnly={readOnly}
         onChange={(event) => onUpdatePoint(point.id, { route: event.target.value })}
       />
 
       <div className="map-bookmark-photo-head">
         <strong>{text.photosTitle}</strong>
-        <button
-          type="button"
-          className="glass-button map-clear-featured-btn"
-          onClick={() => onClearFeatured(point.id)}
-        >
-          {text.clearFeaturedBtn}
-        </button>
+        {!readOnly && (
+          <button
+            type="button"
+            className="glass-button map-clear-featured-btn"
+            onClick={() => onClearFeatured(point.id)}
+          >
+            {text.clearFeaturedBtn}
+          </button>
+        )}
       </div>
 
-      <label className="map-upload-label" htmlFor={`upload_${point.id}`}>{text.uploadPhotosLabel}</label>
-      <input
-        id={`upload_${point.id}`}
-        type="file"
-        accept="image/*"
-        multiple
-        className="glass-input map-file-input"
-        onChange={(event) => {
-          onUploadPhotos(point.id, event.target.files);
-          event.target.value = '';
-        }}
-      />
+      {!readOnly && (
+        <>
+          <label className="map-upload-label" htmlFor={`upload_${point.id}`}>{text.uploadPhotosLabel}</label>
+          <input
+            id={`upload_${point.id}`}
+            type="file"
+            accept="image/*"
+            multiple
+            className="glass-input map-file-input"
+            onChange={(event) => {
+              onUploadPhotos(point.id, event.target.files);
+              event.target.value = '';
+            }}
+          />
+        </>
+      )}
 
       {point.photos.length === 0 && <p className="map-empty-line">{text.noPhotos}</p>}
 
@@ -1199,7 +1263,7 @@ function MapBookmarkCard({
                       {text.previewPhotoBtn}
                     </button>
                   )}
-                  {!isUploading && photo.url && (
+                  {!readOnly && !isUploading && photo.url && (
                     <button
                       type="button"
                       className="glass-button"
@@ -1208,7 +1272,7 @@ function MapBookmarkCard({
                       {isFeatured ? text.featuredBadge : text.setFeaturedBtn}
                     </button>
                   )}
-                  {isFailed && (
+                  {!readOnly && isFailed && (
                     <button
                       type="button"
                       className="glass-button"
@@ -1217,13 +1281,15 @@ function MapBookmarkCard({
                       {text.retryUploadBtn}
                     </button>
                   )}
-                  <button
-                    type="button"
-                    className="glass-button map-danger-btn"
-                    onClick={() => onDeletePhoto(point.id, photo.id)}
-                  >
-                    {text.removePhotoBtn}
-                  </button>
+                  {!readOnly && (
+                    <button
+                      type="button"
+                      className="glass-button map-danger-btn"
+                      onClick={() => onDeletePhoto(point.id, photo.id)}
+                    >
+                      {text.removePhotoBtn}
+                    </button>
+                  )}
                 </div>
               </figure>
             );
@@ -1241,6 +1307,10 @@ function MapView({
   activeUserName,
   language,
   onBackToSchedule,
+  readOnly = false,
+  sharedWorkspace = null,
+  sharedOwnerName = '',
+  sharedToken = '',
 }) {
   const text = language === 'zh' ? TEXTS.zh : TEXTS.en;
   const storageKey = useMemo(
@@ -1291,6 +1361,10 @@ function MapView({
   const [mapInstance, setMapInstance] = useState(null);
   const [dockLines, setDockLines] = useState([]);
   const [visibleBounds, setVisibleBounds] = useState(null);
+  const [shareEnabled, setShareEnabled] = useState(false);
+  const [shareToken, setShareToken] = useState('');
+  const [shareUrl, setShareUrl] = useState('');
+  const [isShareBusy, setIsShareBusy] = useState(false);
 
   const [isLoaded, setIsLoaded] = useState(false);
   const [isServerHydrated, setIsServerHydrated] = useState(false);
@@ -1317,7 +1391,38 @@ function MapView({
     let cancelled = false;
 
     const loadWorkspace = async () => {
-      const defaultName = activeUserName || (language === 'zh' ? '用户' : 'User');
+      const defaultName = sharedOwnerName || activeUserName || (language === 'zh' ? '用户' : 'User');
+      if (readOnly && sharedWorkspace) {
+        const loadedWorkspace = parseWorkspace(sharedWorkspace, defaultName);
+        if (cancelled) {
+          return;
+        }
+        localLoadedAtRef.current = loadedWorkspace.savedAtStamp;
+        setScope(loadedWorkspace.scope);
+        setUsers(loadedWorkspace.users);
+        setPoints(loadedWorkspace.points);
+        setSearchHistory(loadedWorkspace.searchHistory);
+        setFavoritePlaces(loadedWorkspace.favoritePlaces);
+        setRecycleBin(loadedWorkspace.recycleBin);
+        setWorkspaceRevision(loadedWorkspace.revision);
+        const loadedShare = normalizeMapShare(loadedWorkspace.share);
+        const tokenFromProps = isNonEmpty(sharedToken) ? sharedToken.trim() : '';
+        const effectiveToken = loadedShare.token || tokenFromProps;
+        setShareEnabled(loadedShare.enabled || Boolean(tokenFromProps));
+        setShareToken(effectiveToken);
+        setShareUrl((loadedShare.enabled || tokenFromProps) ? buildClientShareUrl(effectiveToken) : '');
+        setShowFeaturedBubbles(loadedWorkspace.showFeaturedBubbles);
+        setBubbleLayout(loadedWorkspace.bubbleLayout);
+        setSelectedUserId(loadedWorkspace.users[0]?.id || '');
+        setExpandedUserId(loadedWorkspace.users[0]?.id || '');
+        setSelectedPointId('');
+        setFormMessage('');
+        setIsServerHydrated(true);
+        setIsLoaded(true);
+        return;
+      }
+
+      const fallbackName = activeUserName || (language === 'zh' ? '用户' : 'User');
       let loadedWorkspace = parseWorkspace(null, defaultName);
 
       if (storageKey) {
@@ -1325,9 +1430,9 @@ function MapView({
           const fromDb = await readWorkspaceFromDb(storageKey);
           const localBackup = localStorage.getItem(storageKey);
           const parsed = fromDb || (localBackup ? JSON.parse(localBackup) : null);
-          loadedWorkspace = parseWorkspace(parsed, defaultName);
+          loadedWorkspace = parseWorkspace(parsed, fallbackName);
         } catch {
-          loadedWorkspace = parseWorkspace(null, defaultName);
+          loadedWorkspace = parseWorkspace(null, fallbackName);
         }
       }
 
@@ -1343,6 +1448,10 @@ function MapView({
       setFavoritePlaces(loadedWorkspace.favoritePlaces);
       setRecycleBin(loadedWorkspace.recycleBin);
       setWorkspaceRevision(loadedWorkspace.revision);
+      const loadedShare = normalizeMapShare(loadedWorkspace.share);
+      setShareEnabled(loadedShare.enabled);
+      setShareToken(loadedShare.token);
+      setShareUrl(loadedShare.enabled ? buildClientShareUrl(loadedShare.token) : '');
       setShowFeaturedBubbles(loadedWorkspace.showFeaturedBubbles);
       setBubbleLayout(loadedWorkspace.bubbleLayout);
       setSelectedUserId(loadedWorkspace.users[0]?.id || '');
@@ -1374,10 +1483,10 @@ function MapView({
     return () => {
       cancelled = true;
     };
-  }, [activeUserName, language, storageKey]);
+  }, [activeUserName, language, readOnly, sharedOwnerName, sharedToken, sharedWorkspace, storageKey]);
 
   useEffect(() => {
-    if (!isLoaded || !activeUserId) {
+    if (readOnly || !isLoaded || !activeUserId) {
       return undefined;
     }
 
@@ -1415,6 +1524,10 @@ function MapView({
           setFavoritePlaces(serverWorkspace.favoritePlaces);
           setRecycleBin(serverWorkspace.recycleBin);
           setWorkspaceRevision(serverWorkspace.revision);
+          const serverShare = normalizeMapShare(serverWorkspace.share);
+          setShareEnabled(serverShare.enabled);
+          setShareToken(serverShare.token);
+          setShareUrl(serverShare.enabled ? buildClientShareUrl(serverShare.token) : '');
           setShowFeaturedBubbles(serverWorkspace.showFeaturedBubbles);
           setBubbleLayout(serverWorkspace.bubbleLayout);
           setSelectedUserId(serverWorkspace.users[0]?.id || '');
@@ -1435,10 +1548,10 @@ function MapView({
     return () => {
       cancelled = true;
     };
-  }, [activeUserId, activeUserName, isLoaded, language]);
+  }, [activeUserId, activeUserName, isLoaded, language, readOnly]);
 
   useEffect(() => {
-    if (!isLoaded || !storageKey) {
+    if (readOnly || !isLoaded || !storageKey) {
       return;
     }
 
@@ -1477,10 +1590,10 @@ function MapView({
         }
       }
     })();
-  }, [bubbleLayout, favoritePlaces, isLoaded, points, recycleBin, scope, searchHistory, showFeaturedBubbles, storageKey, text.storageLimitError, users, workspaceRevision]);
+  }, [bubbleLayout, favoritePlaces, isLoaded, points, readOnly, recycleBin, scope, searchHistory, showFeaturedBubbles, storageKey, text.storageLimitError, users, workspaceRevision]);
 
   useEffect(() => {
-    if (!isLoaded || !isServerHydrated || !activeUserId) {
+    if (readOnly || !isLoaded || !isServerHydrated || !activeUserId) {
       return undefined;
     }
 
@@ -1532,8 +1645,16 @@ function MapView({
             setScope(latest.scope);
             setUsers(latest.users);
             setPoints(latest.points);
+            setSearchHistory(latest.searchHistory);
+            setFavoritePlaces(latest.favoritePlaces);
             setRecycleBin(latest.recycleBin);
             setWorkspaceRevision(latest.revision);
+            const latestShare = normalizeMapShare(latest.share);
+            setShareEnabled(latestShare.enabled);
+            setShareToken(latestShare.token);
+            setShareUrl(latestShare.enabled ? buildClientShareUrl(latestShare.token) : '');
+            setShowFeaturedBubbles(latest.showFeaturedBubbles);
+            setBubbleLayout(latest.bubbleLayout);
             setSelectedUserId(latest.users[0]?.id || '');
             setExpandedUserId(latest.users[0]?.id || '');
             setSelectedPointId('');
@@ -1558,6 +1679,10 @@ function MapView({
 
           const forcedWorkspace = parseWorkspace(forced.result.workspace, defaultName);
           setWorkspaceRevision(forcedWorkspace.revision);
+          const forcedShare = normalizeMapShare(forcedWorkspace.share);
+          setShareEnabled(forcedShare.enabled);
+          setShareToken(forcedShare.token);
+          setShareUrl(forcedShare.enabled ? buildClientShareUrl(forcedShare.token) : '');
           lastServerHashRef.current = workspaceHash(forcedWorkspace);
           setFormMessage(text.conflictOverwriteSuccess);
           return;
@@ -1572,6 +1697,10 @@ function MapView({
 
         const savedWorkspace = parseWorkspace(result.workspace, defaultName);
         setWorkspaceRevision(savedWorkspace.revision);
+        const savedShare = normalizeMapShare(savedWorkspace.share);
+        setShareEnabled(savedShare.enabled);
+        setShareToken(savedShare.token);
+        setShareUrl(savedShare.enabled ? buildClientShareUrl(savedShare.token) : '');
         lastServerHashRef.current = workspaceHash(savedWorkspace);
       } catch {
         // Keep local copy and retry on next workspace mutation.
@@ -1596,6 +1725,7 @@ function MapView({
     recycleBin,
     scope,
     showFeaturedBubbles,
+    readOnly,
     text.conflictDetected,
     text.conflictForceOverwrite,
     text.conflictLoadLatest,
@@ -1777,9 +1907,15 @@ function MapView({
   const uploadProgressPercent = uploadQueueStatus.total > 0
     ? Math.round((uploadProcessedCount / uploadQueueStatus.total) * 100)
     : 0;
+  const effectiveShareToken = readOnly
+    ? ((isNonEmpty(shareToken) ? shareToken : sharedToken) || '')
+    : '';
   const resolvePhotoSrc = useCallback(
-    (photo, ownerId, options = {}) => buildPhotoReadUrl(photo, ownerId || activeUserId, options),
-    [activeUserId],
+    (photo, ownerId, options = {}) => buildPhotoReadUrl(photo, ownerId || activeUserId, {
+      ...options,
+      shareToken: effectiveShareToken,
+    }),
+    [activeUserId, effectiveShareToken],
   );
   const setDockItemRef = useCallback((pointId, node) => {
     if (!pointId) {
@@ -2220,6 +2356,68 @@ function MapView({
     addToSearchHistory(place);
     setFormMessage('');
   }, [addToSearchHistory, getCurrentInputPlace, text.invalidCoord, toggleFavoritePlace]);
+
+  const applyShareState = useCallback((incomingShare, explicitUrl = '') => {
+    const nextShare = normalizeMapShare(incomingShare);
+    const nextUrl = explicitUrl || (nextShare.enabled ? buildClientShareUrl(nextShare.token) : '');
+    setShareEnabled(nextShare.enabled);
+    setShareToken(nextShare.token);
+    setShareUrl(nextUrl);
+  }, []);
+
+  const updateShareSetting = useCallback(async (action) => {
+    if (readOnly || !activeUserId) {
+      return;
+    }
+    if (action === 'disable' && !window.confirm(text.shareDisableConfirm)) {
+      return;
+    }
+    if (action === 'regenerate' && !window.confirm(text.shareRegenerateConfirm)) {
+      return;
+    }
+
+    setIsShareBusy(true);
+    try {
+      const response = await fetch('/api/maps-share', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ action }),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || result?.status !== 'success') {
+        throw new Error(result?.message || 'Share update failed');
+      }
+      applyShareState(result?.share, result?.share?.url || '');
+      setFormMessage('');
+    } catch (error) {
+      setFormMessage(error?.message || text.shareCopyFailed);
+    } finally {
+      setIsShareBusy(false);
+    }
+  }, [
+    activeUserId,
+    applyShareState,
+    readOnly,
+    text.shareCopyFailed,
+    text.shareDisableConfirm,
+    text.shareRegenerateConfirm,
+  ]);
+
+  const copyShareLink = useCallback(async () => {
+    const urlToCopy = shareUrl || (shareEnabled ? buildClientShareUrl(shareToken) : '');
+    if (!urlToCopy) {
+      setFormMessage(text.shareCopyFailed);
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(urlToCopy);
+      setFormMessage(text.shareCopied);
+    } catch {
+      setFormMessage(text.shareCopyFailed);
+    }
+  }, [shareEnabled, shareToken, shareUrl, text.shareCopied, text.shareCopyFailed]);
 
   const makeUploadPlaceholder = (file, pointId) => ({
     id: makeId('uploading_photo'),
@@ -2858,6 +3056,12 @@ function MapView({
   return (
     <section className="glass-panel map-view-root">
       <header className="map-view-header">
+        {readOnly && (
+          <div className="map-readonly-banner">
+            {text.readOnlyBanner}
+            {sharedOwnerName ? ` · ${sharedOwnerName}` : ''}
+          </div>
+        )}
         <div className="map-view-actions">
           <div className="map-scope-toggle">
             <button
@@ -2897,9 +3101,11 @@ function MapView({
             </select>
           </label>
 
-          <button type="button" className="glass-button" onClick={onBackToSchedule}>
-            {text.backToSchedule}
-          </button>
+          {!readOnly && (
+            <button type="button" className="glass-button" onClick={onBackToSchedule}>
+              {text.backToSchedule}
+            </button>
+          )}
         </div>
       </header>
 
@@ -2907,14 +3113,16 @@ function MapView({
         <aside className="map-sidebar">
           <section className="map-panel">
             <div className="map-user-panel-head">
-              <button
-                type="button"
-                className="glass-button map-user-edit-toggle-btn"
-                onClick={() => setIsUserEditExpanded((previous) => !previous)}
-                disabled={!selectedUser}
-              >
-                {text.userEditBtn}
-              </button>
+              {!readOnly && (
+                <button
+                  type="button"
+                  className="glass-button map-user-edit-toggle-btn"
+                  onClick={() => setIsUserEditExpanded((previous) => !previous)}
+                  disabled={!selectedUser}
+                >
+                  {text.userEditBtn}
+                </button>
+              )}
             </div>
             <ul className="map-user-list">
               {users.map((user) => {
@@ -2967,13 +3175,15 @@ function MapView({
                           >
                             {text.placeEditBtn}
                           </button>
-                          <button
-                            type="button"
-                            className="glass-button map-danger-btn"
-                            onClick={() => deletePoint(point.id)}
-                          >
-                            {text.placeDeleteBtn}
-                          </button>
+                          {!readOnly && (
+                            <button
+                              type="button"
+                              className="glass-button map-danger-btn"
+                              onClick={() => deletePoint(point.id)}
+                            >
+                              {text.placeDeleteBtn}
+                            </button>
+                          )}
                         </div>
                       </li>
                     ))}
@@ -2982,7 +3192,7 @@ function MapView({
               </div>
             )}
 
-            {isUserEditExpanded && (
+            {!readOnly && isUserEditExpanded && (
               <div className="map-user-edit-box">
                 <label className="map-label" htmlFor="map_edit_user_name">{text.editUserTitle}</label>
                 <input
@@ -3042,61 +3252,121 @@ function MapView({
             )}
           </section>
 
-          <section className="map-panel">
-            <button
-              type="button"
-              className="glass-button map-collapse-btn"
-              onClick={() => setIsAddUserExpanded((previous) => !previous)}
-              aria-expanded={isAddUserExpanded}
-            >
-              <span>{text.addUserTitle}</span>
-              <span className="map-collapse-indicator">{isAddUserExpanded ? '−' : '+'}</span>
-            </button>
+          {!readOnly && (
+            <section className="map-panel">
+              <button
+                type="button"
+                className="glass-button map-collapse-btn"
+                onClick={() => setIsAddUserExpanded((previous) => !previous)}
+                aria-expanded={isAddUserExpanded}
+              >
+                <span>{text.addUserTitle}</span>
+                <span className="map-collapse-indicator">{isAddUserExpanded ? '−' : '+'}</span>
+              </button>
 
-            {isAddUserExpanded && (
-              <div className="map-collapsible-body">
-                <label className="map-label" htmlFor="map_user_name">{text.addUserName}</label>
-                <input
-                  id="map_user_name"
-                  className="glass-input"
-                  value={newUserName}
-                  placeholder={text.addUserNamePlaceholder}
-                  onChange={(event) => setNewUserName(event.target.value)}
-                />
+              {isAddUserExpanded && (
+                <div className="map-collapsible-body">
+                  <label className="map-label" htmlFor="map_user_name">{text.addUserName}</label>
+                  <input
+                    id="map_user_name"
+                    className="glass-input"
+                    value={newUserName}
+                    placeholder={text.addUserNamePlaceholder}
+                    onChange={(event) => setNewUserName(event.target.value)}
+                  />
 
-                <div className="map-inline-grid">
-                  <div>
-                    <label className="map-label" htmlFor="map_user_color_hex">{text.colorHexLabel}</label>
-                    <input
-                      id="map_user_color_hex"
-                      type="color"
-                      className="map-color-input"
-                      value={newUserColor}
-                      onChange={(event) => {
-                        setNewUserColor(event.target.value);
-                        setNewUserRgb(hexToRgbString(event.target.value));
-                      }}
-                    />
+                  <div className="map-inline-grid">
+                    <div>
+                      <label className="map-label" htmlFor="map_user_color_hex">{text.colorHexLabel}</label>
+                      <input
+                        id="map_user_color_hex"
+                        type="color"
+                        className="map-color-input"
+                        value={newUserColor}
+                        onChange={(event) => {
+                          setNewUserColor(event.target.value);
+                          setNewUserRgb(hexToRgbString(event.target.value));
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label className="map-label" htmlFor="map_user_color_rgb">{text.colorRgbLabel}</label>
+                      <input
+                        id="map_user_color_rgb"
+                        className="glass-input"
+                        value={newUserRgb}
+                        onChange={(event) => handleNewRgbChange(event.target.value)}
+                      />
+                    </div>
                   </div>
-                  <div>
-                    <label className="map-label" htmlFor="map_user_color_rgb">{text.colorRgbLabel}</label>
-                    <input
-                      id="map_user_color_rgb"
-                      className="glass-input"
-                      value={newUserRgb}
-                      onChange={(event) => handleNewRgbChange(event.target.value)}
-                    />
-                  </div>
+
+                  <button type="button" className="glass-button map-block-btn" onClick={handleAddUser}>
+                    {text.addUserBtn}
+                  </button>
                 </div>
+              )}
+            </section>
+          )}
 
-                <button type="button" className="glass-button map-block-btn" onClick={handleAddUser}>
-                  {text.addUserBtn}
-                </button>
+          {!readOnly && (
+            <section className="map-panel">
+              <h3>{text.sharePanelTitle}</h3>
+              <p className="map-muted">
+                {shareEnabled ? text.shareReadyHint : text.shareNotEnabledHint}
+              </p>
+              <label className="map-label" htmlFor="map_share_link">{text.shareLinkLabel}</label>
+              <input
+                id="map_share_link"
+                className="glass-input"
+                value={shareUrl || (shareEnabled ? buildClientShareUrl(shareToken) : '')}
+                readOnly
+                placeholder={text.shareNotEnabledHint}
+              />
+              <div className="map-share-actions">
+                {!shareEnabled && (
+                  <button
+                    type="button"
+                    className="glass-button"
+                    onClick={() => updateShareSetting('enable')}
+                    disabled={isShareBusy}
+                  >
+                    {isShareBusy ? text.shareBusyLabel : text.shareEnableBtn}
+                  </button>
+                )}
+                {shareEnabled && (
+                  <>
+                    <button
+                      type="button"
+                      className="glass-button"
+                      onClick={copyShareLink}
+                      disabled={isShareBusy}
+                    >
+                      {text.shareCopyBtn}
+                    </button>
+                    <button
+                      type="button"
+                      className="glass-button"
+                      onClick={() => updateShareSetting('regenerate')}
+                      disabled={isShareBusy}
+                    >
+                      {isShareBusy ? text.shareBusyLabel : text.shareRegenerateBtn}
+                    </button>
+                    <button
+                      type="button"
+                      className="glass-button map-danger-btn"
+                      onClick={() => updateShareSetting('disable')}
+                      disabled={isShareBusy}
+                    >
+                      {isShareBusy ? text.shareBusyLabel : text.shareDisableBtn}
+                    </button>
+                  </>
+                )}
               </div>
-            )}
-          </section>
+            </section>
+          )}
 
-          <section className="map-panel">
+          {!readOnly && (
+            <section className="map-panel">
             <h3>{text.cityTitle}</h3>
             <label className="map-label" htmlFor="map_city_search">{text.cityInputLabel}</label>
             <div className="map-search-row">
@@ -3263,7 +3533,8 @@ function MapView({
             >
               {isAddingPoint ? text.addPointSaving : text.addPointBtn}
             </button>
-          </section>
+            </section>
+          )}
 
           <section className="map-panel">
             <h3>{text.markersTitle} ({points.length} {text.markerCountLabel})</h3>
@@ -3296,42 +3567,44 @@ function MapView({
             )}
           </section>
 
-          <section className="map-panel">
-            <h3>{text.recycleBinTitle} ({recycleBin.length})</h3>
-            <p className="map-muted">{text.recycleBinHint}</p>
-            {recycleBin.length === 0 && <p className="map-muted">{text.recycleBinEmpty}</p>}
-            {recycleBin.length > 0 && (
-              <ul className="map-user-places-list">
-                {recycleBin.map((item) => (
-                  <li key={item.id}>
-                    <span className="map-user-place-name" title={item.title || recycleItemLabel(item)}>
-                      {recycleItemLabel(item)}: {item.title || '-'}
-                      {' '}
-                      ({text.recycleDeletedAt} {new Date(item.deletedAt).toLocaleString()})
-                    </span>
-                    <div className="map-user-place-actions">
-                      <button
-                        type="button"
-                        className="glass-button"
-                        onClick={() => restoreRecycleItem(item.id)}
-                      >
-                        {text.recycleRestoreBtn}
-                      </button>
-                      <button
-                        type="button"
-                        className="glass-button map-danger-btn"
-                        onClick={() => hardDeleteRecycleItem(item.id)}
-                      >
-                        {text.recycleDeleteBtn}
-                      </button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
+          {!readOnly && (
+            <section className="map-panel">
+              <h3>{text.recycleBinTitle} ({recycleBin.length})</h3>
+              <p className="map-muted">{text.recycleBinHint}</p>
+              {recycleBin.length === 0 && <p className="map-muted">{text.recycleBinEmpty}</p>}
+              {recycleBin.length > 0 && (
+                <ul className="map-user-places-list">
+                  {recycleBin.map((item) => (
+                    <li key={item.id}>
+                      <span className="map-user-place-name" title={item.title || recycleItemLabel(item)}>
+                        {recycleItemLabel(item)}: {item.title || '-'}
+                        {' '}
+                        ({text.recycleDeletedAt} {new Date(item.deletedAt).toLocaleString()})
+                      </span>
+                      <div className="map-user-place-actions">
+                        <button
+                          type="button"
+                          className="glass-button"
+                          onClick={() => restoreRecycleItem(item.id)}
+                        >
+                          {text.recycleRestoreBtn}
+                        </button>
+                        <button
+                          type="button"
+                          className="glass-button map-danger-btn"
+                          onClick={() => hardDeleteRecycleItem(item.id)}
+                        >
+                          {text.recycleDeleteBtn}
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          )}
 
-          {(uploadQueueStatus.active > 0 || uploadQueueStatus.failed > 0) && (
+          {!readOnly && (uploadQueueStatus.active > 0 || uploadQueueStatus.failed > 0) && (
             <section className="map-panel">
               <h3>{text.uploadQueueTitle}</h3>
               <p className="map-muted">
@@ -3538,6 +3811,7 @@ function MapView({
             owner={selectedPointOwner}
             ownerId={activeUserId}
             text={text}
+            readOnly={readOnly}
             photoSrcResolver={resolvePhotoSrc}
             onUpdatePoint={updatePoint}
             onUploadPhotos={uploadPhotos}
