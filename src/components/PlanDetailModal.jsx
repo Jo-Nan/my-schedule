@@ -1,7 +1,19 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { upload } from '@vercel/blob/client';
 
 const MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024;
+const EXCEL_PREVIEW_MAX_ROWS = 25;
+const EXCEL_PREVIEW_MAX_COLS = 8;
+
+const EMPTY_OFFICE_PREVIEW = {
+  status: 'idle',
+  type: '',
+  html: '',
+  sheetName: '',
+  rows: [],
+  error: '',
+};
 
 const formatFileSize = (size) => {
   if (!Number.isFinite(size) || size <= 0) {
@@ -37,6 +49,12 @@ const sanitizeFilename = (filename = '') => {
   return normalized || 'file';
 };
 
+const getAttachmentExt = (attachment) => {
+  const name = String(attachment?.name || '').toLowerCase();
+  const match = name.match(/\.([a-z0-9]+)$/i);
+  return match ? match[1] : '';
+};
+
 const parsePathnameFromUrl = (urlValue) => {
   if (typeof urlValue !== 'string' || !urlValue) {
     return '';
@@ -61,19 +79,50 @@ const isImageAttachment = (attachment) => String(attachment?.contentType || '').
 
 const isPdfAttachment = (attachment) => {
   const contentType = String(attachment?.contentType || '').toLowerCase();
-  if (contentType === 'application/pdf') {
+  return contentType === 'application/pdf' || getAttachmentExt(attachment) === 'pdf';
+};
+
+const isWordAttachment = (attachment) => {
+  const ext = getAttachmentExt(attachment);
+  if (ext === 'doc' || ext === 'docx') {
     return true;
   }
-  return String(attachment?.name || '').toLowerCase().endsWith('.pdf');
+
+  const contentType = String(attachment?.contentType || '').toLowerCase();
+  return (
+    contentType === 'application/msword'
+    || contentType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+  );
 };
+
+const isExcelAttachment = (attachment) => {
+  const ext = getAttachmentExt(attachment);
+  if (ext === 'xls' || ext === 'xlsx' || ext === 'csv') {
+    return true;
+  }
+
+  const contentType = String(attachment?.contentType || '').toLowerCase();
+  return (
+    contentType === 'application/vnd.ms-excel'
+    || contentType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    || contentType === 'text/csv'
+  );
+};
+
+const canPreviewAttachment = (attachment) => (
+  isImageAttachment(attachment)
+  || isPdfAttachment(attachment)
+  || isWordAttachment(attachment)
+  || isExcelAttachment(attachment)
+);
 
 const getAttachmentTypeLabel = (attachment) => {
   if (isImageAttachment(attachment)) return 'Image';
   if (isPdfAttachment(attachment)) return 'PDF';
+  if (isWordAttachment(attachment)) return 'Word';
+  if (isExcelAttachment(attachment)) return 'Excel';
 
   const name = String(attachment?.name || '').toLowerCase();
-  if (name.endsWith('.doc') || name.endsWith('.docx')) return 'Word';
-  if (name.endsWith('.xls') || name.endsWith('.xlsx')) return 'Excel';
   if (name.endsWith('.ppt') || name.endsWith('.pptx')) return 'PowerPoint';
   if (name.endsWith('.zip') || name.endsWith('.rar') || name.endsWith('.7z')) return 'Archive';
 
@@ -102,6 +151,57 @@ const buildAttachmentRecord = (blob, file, fallbackPathname) => ({
   uploadedAt: new Date().toISOString(),
 });
 
+const takeWordFirstPageLikeContent = (html) => {
+  if (typeof html !== 'string' || !html.trim()) {
+    return '';
+  }
+
+  if (typeof DOMParser === 'undefined') {
+    return html;
+  }
+
+  try {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(`<div>${html}</div>`, 'text/html');
+    const container = doc.body.firstElementChild;
+
+    if (!container) {
+      return html;
+    }
+
+    const blockNodes = Array.from(container.children)
+      .filter((element) => element.textContent && element.textContent.trim())
+      .slice(0, 14);
+
+    if (blockNodes.length === 0) {
+      return html;
+    }
+
+    return blockNodes.map((element) => element.outerHTML).join('');
+  } catch {
+    return html;
+  }
+};
+
+const normalizeExcelRows = (rows) => {
+  const safeRows = Array.isArray(rows) ? rows : [];
+  const maxColumns = Math.min(
+    EXCEL_PREVIEW_MAX_COLS,
+    safeRows.reduce((max, row) => Math.max(max, Array.isArray(row) ? row.length : 0), 0),
+  );
+
+  if (maxColumns <= 0) {
+    return [];
+  }
+
+  return safeRows.slice(0, EXCEL_PREVIEW_MAX_ROWS).map((row) => (
+    Array.from({ length: maxColumns }, (_, columnIndex) => {
+      const value = Array.isArray(row) ? row[columnIndex] : '';
+      return value === null || value === undefined ? '' : String(value);
+    })
+  ));
+};
+
 const PlanDetailModal = ({ isOpen, onClose, plan, updatePlan, t, activeUserId }) => {
   const fileInputRef = useRef(null);
   const replaceInputRef = useRef(null);
@@ -111,6 +211,7 @@ const PlanDetailModal = ({ isOpen, onClose, plan, updatePlan, t, activeUserId })
   const [previewAttachmentId, setPreviewAttachmentId] = useState('');
   const [replaceTargetId, setReplaceTargetId] = useState('');
   const [dropActive, setDropActive] = useState(false);
+  const [officePreview, setOfficePreview] = useState(EMPTY_OFFICE_PREVIEW);
 
   const ownerId = activeUserId || 'unknown-user';
 
@@ -119,21 +220,18 @@ const PlanDetailModal = ({ isOpen, onClose, plan, updatePlan, t, activeUserId })
     [plan?.attachments],
   );
 
-  const previewAttachment = attachments.find((attachment) => attachment.id === previewAttachmentId) || null;
+  const previewableAttachments = useMemo(
+    () => attachments.filter((attachment) => canPreviewAttachment(attachment)),
+    [attachments],
+  );
 
-  if (!isOpen || !plan) {
-    return null;
-  }
+  const previewAttachment = useMemo(() => {
+    if (!previewAttachmentId) {
+      return previewableAttachments[0] || null;
+    }
 
-  const updateAttachments = (nextAttachments) => {
-    updatePlan(
-      plan.id,
-      {
-        attachments: nextAttachments,
-      },
-      { saveStrategy: 'general' },
-    );
-  };
+    return attachments.find((attachment) => attachment.id === previewAttachmentId) || previewableAttachments[0] || null;
+  }, [attachments, previewAttachmentId, previewableAttachments]);
 
   const buildAttachmentAccessUrl = (attachment, mode = 'inline') => {
     const pathname = resolveAttachmentPathname(attachment);
@@ -147,10 +245,164 @@ const PlanDetailModal = ({ isOpen, onClose, plan, updatePlan, t, activeUserId })
       targetUserId: ownerId,
       mode: mode === 'download' ? 'download' : 'inline',
     });
+
     if (typeof attachment?.name === 'string' && attachment.name.trim()) {
       params.set('filename', attachment.name.trim());
     }
+
     return `/api/attachments?${params.toString()}`;
+  };
+
+  const previewSrc = previewAttachment ? buildAttachmentAccessUrl(previewAttachment, 'inline') : '';
+
+  const currentPreviewIndex = previewAttachment
+    ? previewableAttachments.findIndex((attachment) => attachment.id === previewAttachment.id)
+    : -1;
+  const hasMultiplePreviewable = previewableAttachments.length > 1;
+
+  useEffect(() => {
+    if (!isOpen) {
+      setPreviewAttachmentId('');
+      setOfficePreview(EMPTY_OFFICE_PREVIEW);
+      return;
+    }
+
+    if (previewableAttachments.length === 0) {
+      if (previewAttachmentId) {
+        setPreviewAttachmentId('');
+      }
+      return;
+    }
+
+    const hasCurrent = previewableAttachments.some((attachment) => attachment.id === previewAttachmentId);
+    if (!hasCurrent) {
+      setPreviewAttachmentId(previewableAttachments[0].id);
+    }
+  }, [isOpen, previewAttachmentId, previewableAttachments]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadOfficePreview = async () => {
+      if (!isOpen || !previewAttachment) {
+        setOfficePreview(EMPTY_OFFICE_PREVIEW);
+        return;
+      }
+
+      if (!isWordAttachment(previewAttachment) && !isExcelAttachment(previewAttachment)) {
+        setOfficePreview(EMPTY_OFFICE_PREVIEW);
+        return;
+      }
+
+      setOfficePreview((prev) => ({
+        ...prev,
+        status: 'loading',
+        type: isWordAttachment(previewAttachment) ? 'word' : 'excel',
+        error: '',
+      }));
+
+      try {
+        const response = await fetch(previewSrc, { credentials: 'same-origin' });
+        if (!response.ok) {
+          throw new Error('Preview fetch failed');
+        }
+
+        const arrayBuffer = await response.arrayBuffer();
+
+        if (isWordAttachment(previewAttachment)) {
+          const mammothModule = await import('mammoth/mammoth.browser');
+          const mammoth = mammothModule.default || mammothModule;
+          const result = await mammoth.convertToHtml({ arrayBuffer });
+          const html = takeWordFirstPageLikeContent(result.value || '');
+
+          if (!cancelled) {
+            setOfficePreview({
+              status: 'ready',
+              type: 'word',
+              html,
+              sheetName: '',
+              rows: [],
+              error: '',
+            });
+          }
+          return;
+        }
+
+        const xlsxModule = await import('xlsx');
+        const XLSX = xlsxModule.default || xlsxModule;
+        const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+        const firstSheetName = workbook.SheetNames?.[0] || '';
+        const worksheet = firstSheetName ? workbook.Sheets[firstSheetName] : null;
+        const rawRows = worksheet
+          ? XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false, blankrows: false })
+          : [];
+        const rows = normalizeExcelRows(rawRows);
+
+        if (!cancelled) {
+          setOfficePreview({
+            status: 'ready',
+            type: 'excel',
+            html: '',
+            sheetName: firstSheetName,
+            rows,
+            error: '',
+          });
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setOfficePreview((prev) => ({
+            ...prev,
+            status: 'error',
+            error: error?.message || 'Preview unavailable',
+          }));
+        }
+      }
+    };
+
+    loadOfficePreview();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, previewAttachment, previewSrc]);
+
+  useEffect(() => {
+    if (!isOpen || !hasMultiplePreviewable) {
+      return;
+    }
+
+    const handleKeyDown = (event) => {
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') {
+        return;
+      }
+
+      event.preventDefault();
+      const direction = event.key === 'ArrowRight' ? 1 : -1;
+
+      if (currentPreviewIndex < 0) {
+        return;
+      }
+
+      const nextIndex = (currentPreviewIndex + direction + previewableAttachments.length) % previewableAttachments.length;
+      setPreviewAttachmentId(previewableAttachments[nextIndex].id);
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [currentPreviewIndex, hasMultiplePreviewable, isOpen, previewableAttachments]);
+
+  if (!isOpen || !plan || typeof document === 'undefined') {
+    return null;
+  }
+
+  const updateAttachments = (nextAttachments) => {
+    updatePlan(
+      plan.id,
+      {
+        attachments: nextAttachments,
+      },
+      { saveStrategy: 'general' },
+    );
   };
 
   const uploadAttachment = async (file) => {
@@ -212,7 +464,13 @@ const PlanDetailModal = ({ isOpen, onClose, plan, updatePlan, t, activeUserId })
       }
 
       if (uploadedAttachments.length > 0) {
-        updateAttachments([...attachments, ...uploadedAttachments]);
+        const nextAttachments = [...attachments, ...uploadedAttachments];
+        updateAttachments(nextAttachments);
+
+        const firstPreviewable = uploadedAttachments.find((attachment) => canPreviewAttachment(attachment));
+        if (firstPreviewable && !previewAttachmentId) {
+          setPreviewAttachmentId(firstPreviewable.id);
+        }
       }
     } catch (error) {
       alert(error.message || (t.attachmentUploadError || 'Failed to upload attachment.'));
@@ -244,9 +502,12 @@ const PlanDetailModal = ({ isOpen, onClose, plan, updatePlan, t, activeUserId })
     } finally {
       const nextAttachments = attachments.filter((item) => item.id !== attachment.id);
       updateAttachments(nextAttachments);
+
       if (previewAttachmentId === attachment.id) {
-        setPreviewAttachmentId('');
+        const nextPreviewable = nextAttachments.find((item) => canPreviewAttachment(item));
+        setPreviewAttachmentId(nextPreviewable ? nextPreviewable.id : '');
       }
+
       setBusyAttachmentId('');
     }
   };
@@ -287,6 +548,10 @@ const PlanDetailModal = ({ isOpen, onClose, plan, updatePlan, t, activeUserId })
       ));
       updateAttachments(nextAttachments);
 
+      if (previewAttachmentId === target.id) {
+        setPreviewAttachmentId(replacement.id);
+      }
+
       try {
         await deleteAttachmentBlob(target);
       } catch {
@@ -325,200 +590,345 @@ const PlanDetailModal = ({ isOpen, onClose, plan, updatePlan, t, activeUserId })
     handleUploadFiles(event.dataTransfer?.files || []);
   };
 
-  const previewSrc = previewAttachment ? buildAttachmentAccessUrl(previewAttachment, 'inline') : '';
+  const shiftPreview = (direction) => {
+    if (!hasMultiplePreviewable || currentPreviewIndex < 0) {
+      return;
+    }
 
-  return (
-    <div style={styles.overlay}>
-      <div className="glass-panel" style={styles.modal}>
+    const nextIndex = (currentPreviewIndex + direction + previewableAttachments.length) % previewableAttachments.length;
+    setPreviewAttachmentId(previewableAttachments[nextIndex].id);
+  };
+
+  const renderPreviewBody = () => {
+    if (!previewAttachment) {
+      return (
+        <div style={styles.previewFallback}>
+          {t.noAttachments || 'No attachments yet.'}
+        </div>
+      );
+    }
+
+    if (isImageAttachment(previewAttachment)) {
+      return (
+        <div style={styles.previewMediaStage}>
+          <img src={previewSrc} alt={previewAttachment.name} style={styles.previewImage} />
+          {hasMultiplePreviewable && (
+            <>
+              <button
+                type="button"
+                className="glass-button"
+                style={{ ...styles.previewArrow, ...styles.previewArrowLeft }}
+                onClick={() => shiftPreview(-1)}
+              >
+                ‹
+              </button>
+              <button
+                type="button"
+                className="glass-button"
+                style={{ ...styles.previewArrow, ...styles.previewArrowRight }}
+                onClick={() => shiftPreview(1)}
+              >
+                ›
+              </button>
+            </>
+          )}
+        </div>
+      );
+    }
+
+    if (isPdfAttachment(previewAttachment)) {
+      return <iframe title={previewAttachment.name} src={previewSrc} style={styles.previewIframe} />;
+    }
+
+    if (isWordAttachment(previewAttachment)) {
+      if (officePreview.status === 'loading') {
+        return <div style={styles.previewFallback}>{t.attachmentPreviewLoading || 'Generating preview...'}</div>;
+      }
+
+      if (officePreview.status === 'error') {
+        return (
+          <div style={styles.previewFallback}>
+            {t.attachmentWordPreviewFallback || 'Word preview is unavailable for this file. Please download.'}
+          </div>
+        );
+      }
+
+      return (
+        <div style={styles.wordPreviewWrap}>
+          <div style={styles.previewHint}>{t.attachmentFirstPageHint || 'Showing first page / first sheet preview'}</div>
+          <div
+            style={styles.wordPreviewBody}
+            dangerouslySetInnerHTML={{ __html: officePreview.html || '' }}
+          />
+        </div>
+      );
+    }
+
+    if (isExcelAttachment(previewAttachment)) {
+      if (officePreview.status === 'loading') {
+        return <div style={styles.previewFallback}>{t.attachmentPreviewLoading || 'Generating preview...'}</div>;
+      }
+
+      if (officePreview.status === 'error') {
+        return (
+          <div style={styles.previewFallback}>
+            {t.attachmentExcelPreviewFallback || 'Excel preview is unavailable for this file. Please download.'}
+          </div>
+        );
+      }
+
+      return (
+        <div style={styles.excelPreviewWrap}>
+          <div style={styles.previewHint}>
+            {t.attachmentFirstPageHint || 'Showing first page / first sheet preview'}
+            {officePreview.sheetName ? ` · ${(t.attachmentSheetLabel || 'Sheet')}: ${officePreview.sheetName}` : ''}
+          </div>
+          {officePreview.rows.length === 0 ? (
+            <div style={styles.previewFallback}>{t.attachmentNoPreview || 'Preview is not available for this file type.'}</div>
+          ) : (
+            <div style={styles.excelTableScroller}>
+              <table style={styles.excelTable}>
+                <tbody>
+                  {officePreview.rows.map((row, rowIndex) => (
+                    <tr key={`row-${rowIndex}`}>
+                      {row.map((cell, colIndex) => (
+                        <td key={`cell-${rowIndex}-${colIndex}`} style={styles.excelCell}>{cell}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    return (
+      <div style={styles.previewFallback}>
+        {t.attachmentNoPreview || 'Preview is not available for this file type.'}
+      </div>
+    );
+  };
+
+  const modalNode = (
+    <div style={styles.overlay} onMouseDown={onClose}>
+      <div className="glass-panel" style={styles.modal} onMouseDown={(event) => event.stopPropagation()}>
         <div style={styles.header}>
           <h3 style={styles.title}>{t.planDetailTitle || 'Plan Detail (Read-Only)'}</h3>
           <button type="button" onClick={onClose} style={styles.closeBtn}>×</button>
         </div>
 
-        <div style={styles.form}>
-          <div style={styles.field}>
-            <label style={styles.label}>{t.eventLabel || 'Event'}</label>
-            <input className="glass-input" style={styles.readonlyInput} value={plan.event || ''} readOnly />
-          </div>
+        <div style={styles.contentGrid}>
+          <div style={styles.infoPanel}>
+            <div style={styles.form}>
+              <div style={styles.field}>
+                <label style={styles.label}>{t.eventLabel || 'Event'}</label>
+                <input className="glass-input" style={styles.readonlyInput} value={plan.event || ''} readOnly />
+              </div>
 
-          <div style={styles.row}>
-            <div style={styles.field}>
-              <label style={styles.label}>{t.timeLabel || 'Time'}</label>
-              <input className="glass-input" style={styles.readonlyInput} value={plan.time || ''} readOnly />
+              <div style={styles.row}>
+                <div style={styles.field}>
+                  <label style={styles.label}>{t.timeLabel || 'Time'}</label>
+                  <input className="glass-input" style={styles.readonlyInput} value={plan.time || ''} readOnly />
+                </div>
+                <div style={styles.field}>
+                  <label style={styles.label}>{t.personLabel || 'Person'}</label>
+                  <input className="glass-input" style={styles.readonlyInput} value={plan.person || ''} readOnly />
+                </div>
+              </div>
+
+              <div style={styles.field}>
+                <label style={styles.label}>{t.ddlLabel || 'DDL'}</label>
+                <input className="glass-input" style={styles.readonlyInput} value={plan.ddl || ''} readOnly />
+              </div>
+
+              <div style={styles.field}>
+                <label style={styles.label}>{t.detailLabel || 'Details'}</label>
+                <textarea
+                  className="glass-input"
+                  style={{ ...styles.readonlyInput, ...styles.detailsArea }}
+                  value={plan.details || ''}
+                  readOnly
+                />
+              </div>
             </div>
-            <div style={styles.field}>
-              <label style={styles.label}>{t.personLabel || 'Person'}</label>
-              <input className="glass-input" style={styles.readonlyInput} value={plan.person || ''} readOnly />
-            </div>
           </div>
 
-          <div style={styles.field}>
-            <label style={styles.label}>{t.ddlLabel || 'DDL'}</label>
-            <input className="glass-input" style={styles.readonlyInput} value={plan.ddl || ''} readOnly />
-          </div>
-
-          <div style={styles.field}>
-            <label style={styles.label}>{t.detailLabel || 'Details'}</label>
-            <textarea
-              className="glass-input"
-              style={{ ...styles.readonlyInput, ...styles.detailsArea }}
-              value={plan.details || ''}
-              readOnly
-            />
-          </div>
-        </div>
-
-        <div style={styles.attachmentsSection}>
-          <div style={styles.attachmentsHeader}>
-            <h4 style={styles.attachmentsTitle}>{t.attachmentsTitle || 'Attachments'}</h4>
-            <div style={styles.attachmentActions}>
-              <input
+          <div style={styles.attachmentsPanel}>
+            <div style={styles.attachmentsHeader}>
+              <h4 style={styles.attachmentsTitle}>{t.attachmentsTitle || 'Attachments'}</h4>
+              <div style={styles.attachmentActions}>
+                <input
                 ref={fileInputRef}
                 type="file"
                 multiple
                 style={{ display: 'none' }}
-                accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.rar,.7z,image/*"
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.zip,.rar,.7z,image/*"
                 onChange={(event) => handleUploadFiles(event.target.files)}
               />
               <input
                 ref={replaceInputRef}
                 type="file"
                 style={{ display: 'none' }}
-                accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.rar,.7z,image/*"
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.zip,.rar,.7z,image/*"
                 onChange={handleReplaceAttachment}
               />
-              <button
-                type="button"
-                className="glass-button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploading}
-              >
-                {uploading ? (t.attachmentUploading || 'Uploading...') : (t.attachmentUpload || 'Upload')}
-              </button>
+                <button
+                  type="button"
+                  className="glass-button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                >
+                  {uploading ? (t.attachmentUploading || 'Uploading...') : (t.attachmentUpload || 'Upload')}
+                </button>
+              </div>
             </div>
-          </div>
 
-          <div
-            style={{
-              ...styles.dropZone,
-              ...(dropActive ? styles.dropZoneActive : {}),
-            }}
-            onDragEnter={handleDropZoneDragOver}
-            onDragOver={handleDropZoneDragOver}
-            onDragLeave={handleDropZoneDragLeave}
-            onDrop={handleDropZoneDrop}
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <div style={styles.dropZoneTitle}>
-              {dropActive
-                ? (t.attachmentDropActive || 'Release to upload files')
-                : (t.attachmentDropHint || 'Drop files here, or click to upload')}
+            <div
+              style={{
+                ...styles.dropZone,
+                ...(dropActive ? styles.dropZoneActive : {}),
+              }}
+              onDragEnter={handleDropZoneDragOver}
+              onDragOver={handleDropZoneDragOver}
+              onDragLeave={handleDropZoneDragLeave}
+              onDrop={handleDropZoneDrop}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <div style={styles.dropZoneTitle}>
+                {dropActive
+                  ? (t.attachmentDropActive || 'Release to upload files')
+                  : (t.attachmentDropHint || 'Drop files here, or click to upload')}
+              </div>
+              <div style={styles.dropZoneSubtitle}>
+                {t.attachmentDropTypes || 'PDF / Word / Excel / PowerPoint / Images / ZIP'}
+                {' · '}
+                {t.attachmentDropSize || 'Up to 100 MB each'}
+              </div>
             </div>
-            <div style={styles.dropZoneSubtitle}>
-              {t.attachmentDropTypes || 'PDF / Word / Excel / PowerPoint / Images / ZIP'}
-              {' · '}
-              {t.attachmentDropSize || 'Up to 100 MB each'}
-            </div>
-          </div>
 
-          {attachments.length === 0 ? (
-            <div style={styles.empty}>{t.noAttachments || 'No attachments yet.'}</div>
-          ) : (
-            <div style={styles.attachmentGrid}>
-              {attachments.map((attachment) => {
-                const busy = busyAttachmentId === attachment.id;
-                const canPreview = isImageAttachment(attachment) || isPdfAttachment(attachment);
-                const typeLabel = getAttachmentTypeLabel(attachment);
-                const tileUrl = canPreview ? buildAttachmentAccessUrl(attachment, 'inline') : '';
-                const downloadUrl = buildAttachmentAccessUrl(attachment, 'download');
+            {attachments.length === 0 ? (
+              <div style={styles.empty}>{t.noAttachments || 'No attachments yet.'}</div>
+            ) : (
+              <div style={styles.attachmentGrid}>
+                {attachments.map((attachment) => {
+                  const busy = busyAttachmentId === attachment.id;
+                  const canPreview = canPreviewAttachment(attachment);
+                  const typeLabel = getAttachmentTypeLabel(attachment);
+                  const tileUrl = isImageAttachment(attachment) ? buildAttachmentAccessUrl(attachment, 'inline') : '';
+                  const downloadUrl = buildAttachmentAccessUrl(attachment, 'download');
+                  const isPreviewing = previewAttachment?.id === attachment.id;
 
-                return (
-                  <div key={attachment.id} style={styles.attachmentTile}>
-                    <div style={styles.attachmentThumb}>
-                      {isImageAttachment(attachment) ? (
-                        <img
-                          src={tileUrl}
-                          alt={attachment.name || 'attachment'}
-                          style={styles.thumbImage}
-                        />
-                      ) : (
-                        <div style={styles.thumbIconWrap}>
-                          <span style={styles.thumbIcon}>{getAttachmentTileIcon(attachment)}</span>
-                          <span style={styles.thumbType}>{typeLabel}</span>
+                  return (
+                    <div
+                      key={attachment.id}
+                      style={{
+                        ...styles.attachmentTile,
+                        ...(isPreviewing ? styles.attachmentTileActive : {}),
+                      }}
+                    >
+                      <div style={styles.attachmentThumb}>
+                        {isImageAttachment(attachment) ? (
+                          <img
+                            src={tileUrl}
+                            alt={attachment.name || 'attachment'}
+                            style={styles.thumbImage}
+                          />
+                        ) : (
+                          <div style={styles.thumbIconWrap}>
+                            <span style={styles.thumbIcon}>{getAttachmentTileIcon(attachment)}</span>
+                            <span style={styles.thumbType}>{typeLabel}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <div style={styles.tileBody}>
+                        <div style={styles.tileName} title={attachment.name || attachment.url}>
+                          {attachment.name || attachment.url}
                         </div>
-                      )}
-                    </div>
-
-                    <div style={styles.tileBody}>
-                      <div style={styles.tileName} title={attachment.name || attachment.url}>
-                        {attachment.name || attachment.url}
+                        <div style={styles.tileMeta}>
+                          <span>{typeLabel}</span>
+                          <span>·</span>
+                          <span>{formatFileSize(attachment.size)}</span>
+                        </div>
                       </div>
-                      <div style={styles.tileMeta}>
-                        <span>{typeLabel}</span>
-                        <span>·</span>
-                        <span>{formatFileSize(attachment.size)}</span>
-                      </div>
-                    </div>
 
-                    <div style={styles.tileActions}>
-                      {canPreview && (
+                      <div style={styles.tileActions}>
+                        {canPreview && (
+                          <button
+                            type="button"
+                            className="glass-button"
+                            style={styles.smallButton}
+                            onClick={() => setPreviewAttachmentId(attachment.id)}
+                          >
+                            {isPreviewing ? (t.attachmentPreviewing || 'Previewing') : (t.attachmentPreview || 'Preview')}
+                          </button>
+                        )}
+                        <a
+                          className="glass-button"
+                          style={{ ...styles.smallButton, textDecoration: 'none' }}
+                          href={downloadUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          {t.attachmentDownload || 'Download'}
+                        </a>
                         <button
                           type="button"
                           className="glass-button"
                           style={styles.smallButton}
-                          onClick={() => setPreviewAttachmentId((prev) => (prev === attachment.id ? '' : attachment.id))}
+                          onClick={() => triggerReplace(attachment.id)}
+                          disabled={busy}
                         >
-                          {t.attachmentPreview || 'Preview'}
+                          {t.attachmentReplace || 'Replace'}
                         </button>
-                      )}
-                      <a
-                        className="glass-button"
-                        style={{ ...styles.smallButton, textDecoration: 'none' }}
-                        href={downloadUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        {t.attachmentDownload || 'Download'}
-                      </a>
+                        <button
+                          type="button"
+                          className="glass-button"
+                          style={{ ...styles.smallButton, ...styles.dangerButton }}
+                          onClick={() => handleDeleteAttachment(attachment)}
+                          disabled={busy}
+                        >
+                          {t.attachmentDelete || 'Delete'}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {previewAttachment && (
+              <div style={styles.previewContainer}>
+                <div style={styles.previewHeader}>
+                  <div style={styles.previewTitle} title={previewAttachment.name}>{previewAttachment.name}</div>
+                  {hasMultiplePreviewable && (
+                    <div style={styles.previewPager}>
                       <button
                         type="button"
                         className="glass-button"
-                        style={styles.smallButton}
-                        onClick={() => triggerReplace(attachment.id)}
-                        disabled={busy}
+                        style={styles.previewPagerBtn}
+                        onClick={() => shiftPreview(-1)}
                       >
-                        {t.attachmentReplace || 'Replace'}
+                        {t.attachmentPrev || 'Prev'}
                       </button>
+                      <span style={styles.previewPagerText}>{currentPreviewIndex + 1} / {previewableAttachments.length}</span>
                       <button
                         type="button"
                         className="glass-button"
-                        style={{ ...styles.smallButton, ...styles.dangerButton }}
-                        onClick={() => handleDeleteAttachment(attachment)}
-                        disabled={busy}
+                        style={styles.previewPagerBtn}
+                        onClick={() => shiftPreview(1)}
                       >
-                        {t.attachmentDelete || 'Delete'}
+                        {t.attachmentNext || 'Next'}
                       </button>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {previewAttachment && (
-            <div style={styles.previewContainer}>
-              <div style={styles.previewTitle}>{previewAttachment.name}</div>
-              {isImageAttachment(previewAttachment) ? (
-                <img src={previewSrc} alt={previewAttachment.name} style={styles.previewImage} />
-              ) : isPdfAttachment(previewAttachment) ? (
-                <iframe title={previewAttachment.name} src={previewSrc} style={styles.previewIframe} />
-              ) : (
-                <div style={styles.previewFallback}>
-                  {t.attachmentNoPreview || 'Preview is not available for this file type.'}
+                  )}
                 </div>
-              )}
-            </div>
-          )}
+                {renderPreviewBody()}
+              </div>
+            )}
+          </div>
         </div>
 
         <div style={styles.footer}>
@@ -529,36 +939,41 @@ const PlanDetailModal = ({ isOpen, onClose, plan, updatePlan, t, activeUserId })
       </div>
     </div>
   );
+
+  return createPortal(modalNode, document.body);
 };
 
 const styles = {
   overlay: {
     position: 'fixed',
     inset: 0,
-    background: 'rgba(0,0,0,0.45)',
+    background: 'rgba(0,0,0,0.52)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    zIndex: 12000,
-    padding: '1rem',
+    zIndex: 22000,
+    padding: 'clamp(10px, 2vw, 24px)',
     backdropFilter: 'blur(8px)',
   },
   modal: {
-    width: 'min(980px, 96vw)',
-    maxHeight: '92vh',
-    overflow: 'auto',
-    padding: '1.4rem',
+    width: 'min(1320px, 96vw)',
+    height: 'min(920px, 94vh)',
+    maxHeight: '94vh',
+    overflow: 'hidden',
+    padding: '1.15rem',
     display: 'flex',
     flexDirection: 'column',
-    gap: '1rem',
+    gap: '0.9rem',
   },
   header: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
+    padding: '0.2rem 0.15rem',
   },
   title: {
     margin: 0,
+    fontSize: '1.12rem',
   },
   closeBtn: {
     border: 'none',
@@ -567,6 +982,32 @@ const styles = {
     fontSize: '2rem',
     lineHeight: 1,
     cursor: 'pointer',
+    padding: '0 0.25rem',
+  },
+  contentGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+    gap: '1rem',
+    minHeight: 0,
+    flex: 1,
+    overflow: 'hidden',
+  },
+  infoPanel: {
+    border: '1px solid var(--glass-border)',
+    borderRadius: '14px',
+    background: 'rgba(255,255,255,0.03)',
+    padding: '0.9rem',
+    overflow: 'auto',
+  },
+  attachmentsPanel: {
+    border: '1px solid var(--glass-border)',
+    borderRadius: '14px',
+    background: 'rgba(255,255,255,0.03)',
+    padding: '0.9rem',
+    overflow: 'auto',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.85rem',
   },
   form: {
     display: 'flex',
@@ -584,7 +1025,7 @@ const styles = {
     gap: '0.4rem',
   },
   label: {
-    fontSize: '0.85rem',
+    fontSize: '0.84rem',
     color: 'var(--text-secondary)',
     fontWeight: 500,
   },
@@ -593,17 +1034,10 @@ const styles = {
     cursor: 'default',
   },
   detailsArea: {
-    minHeight: '130px',
+    minHeight: '240px',
     resize: 'vertical',
     whiteSpace: 'pre-wrap',
     lineHeight: 1.55,
-  },
-  attachmentsSection: {
-    borderTop: '1px solid var(--glass-border)',
-    paddingTop: '0.9rem',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.8rem',
   },
   attachmentsHeader: {
     display: 'flex',
@@ -624,7 +1058,7 @@ const styles = {
   dropZone: {
     border: '1px dashed var(--glass-border)',
     borderRadius: '12px',
-    padding: '0.95rem',
+    padding: '0.92rem',
     background: 'rgba(255,255,255,0.03)',
     cursor: 'pointer',
     transition: 'all 0.2s ease',
@@ -649,7 +1083,7 @@ const styles = {
   },
   attachmentGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))',
     gap: '0.75rem',
   },
   attachmentTile: {
@@ -661,9 +1095,13 @@ const styles = {
     flexDirection: 'column',
     minHeight: '230px',
   },
+  attachmentTileActive: {
+    borderColor: 'var(--accent-color)',
+    boxShadow: 'var(--accent-glow)',
+  },
   attachmentThumb: {
-    height: '118px',
-    background: 'rgba(0,0,0,0.18)',
+    height: '116px',
+    background: 'rgba(0,0,0,0.2)',
     borderBottom: '1px solid var(--glass-border)',
     display: 'flex',
     alignItems: 'center',
@@ -697,7 +1135,7 @@ const styles = {
   },
   tileName: {
     fontWeight: 500,
-    fontSize: '0.85rem',
+    fontSize: '0.84rem',
     lineHeight: 1.35,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
@@ -712,16 +1150,20 @@ const styles = {
   },
   tileActions: {
     padding: '0.5rem 0.55rem 0.6rem',
-    display: 'flex',
-    flexWrap: 'wrap',
+    display: 'grid',
+    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
     gap: '0.35rem',
     borderTop: '1px solid var(--glass-border)',
     background: 'rgba(255,255,255,0.02)',
   },
   smallButton: {
-    padding: '0.28rem 0.6rem',
-    fontSize: '0.75rem',
+    padding: '0.28rem 0.5rem',
+    fontSize: '0.74rem',
     minHeight: '30px',
+    textAlign: 'center',
+    display: 'inline-flex',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   dangerButton: {
     color: 'var(--danger-color)',
@@ -734,30 +1176,129 @@ const styles = {
     background: 'rgba(255,255,255,0.03)',
     display: 'flex',
     flexDirection: 'column',
-    gap: '0.6rem',
+    gap: '0.65rem',
+  },
+  previewHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: '0.75rem',
+    flexWrap: 'wrap',
   },
   previewTitle: {
     fontSize: '0.85rem',
     color: 'var(--text-secondary)',
+    fontWeight: 500,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    maxWidth: '100%',
+  },
+  previewPager: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '0.4rem',
+  },
+  previewPagerBtn: {
+    padding: '0.22rem 0.55rem',
+    fontSize: '0.72rem',
+    minHeight: '28px',
+  },
+  previewPagerText: {
+    fontSize: '0.74rem',
+    color: 'var(--text-secondary)',
+    minWidth: '52px',
+    textAlign: 'center',
+  },
+  previewMediaStage: {
+    position: 'relative',
+    borderRadius: '10px',
+    overflow: 'hidden',
+    background: 'rgba(0,0,0,0.25)',
   },
   previewImage: {
     width: '100%',
-    maxHeight: '420px',
+    maxHeight: '460px',
+    minHeight: '180px',
     objectFit: 'contain',
-    borderRadius: '8px',
-    background: 'rgba(0,0,0,0.2)',
+    display: 'block',
+    background: 'rgba(0,0,0,0.25)',
+  },
+  previewArrow: {
+    position: 'absolute',
+    top: '50%',
+    transform: 'translateY(-50%)',
+    width: '42px',
+    height: '42px',
+    borderRadius: '999px',
+    background: 'rgba(17, 24, 39, 0.42)',
+    border: '1px solid rgba(255,255,255,0.26)',
+    color: '#fff',
+    fontSize: '1.6rem',
+    lineHeight: 1,
+    padding: 0,
+    display: 'inline-flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backdropFilter: 'blur(4px)',
+  },
+  previewArrowLeft: {
+    left: '0.6rem',
+  },
+  previewArrowRight: {
+    right: '0.6rem',
   },
   previewIframe: {
     width: '100%',
-    height: '460px',
+    height: '520px',
     border: '1px solid var(--glass-border)',
     borderRadius: '8px',
     background: '#fff',
   },
+  wordPreviewWrap: {
+    border: '1px solid var(--glass-border)',
+    borderRadius: '10px',
+    background: 'rgba(255,255,255,0.06)',
+    overflow: 'hidden',
+  },
+  wordPreviewBody: {
+    maxHeight: '470px',
+    overflow: 'auto',
+    padding: '0.9rem',
+    lineHeight: 1.65,
+    color: 'var(--text-primary)',
+  },
+  excelPreviewWrap: {
+    border: '1px solid var(--glass-border)',
+    borderRadius: '10px',
+    background: 'rgba(255,255,255,0.06)',
+    overflow: 'hidden',
+  },
+  excelTableScroller: {
+    maxHeight: '450px',
+    overflow: 'auto',
+  },
+  excelTable: {
+    width: '100%',
+    borderCollapse: 'collapse',
+    fontSize: '0.8rem',
+  },
+  excelCell: {
+    border: '1px solid rgba(148, 163, 184, 0.28)',
+    padding: '0.45rem 0.5rem',
+    verticalAlign: 'top',
+    minWidth: '76px',
+    background: 'rgba(255,255,255,0.02)',
+  },
+  previewHint: {
+    fontSize: '0.74rem',
+    color: 'var(--text-secondary)',
+    padding: '0.6rem 0.75rem 0.35rem',
+  },
   previewFallback: {
     color: 'var(--text-secondary)',
     fontSize: '0.85rem',
-    padding: '0.6rem 0',
+    padding: '0.8rem',
   },
   footer: {
     display: 'flex',

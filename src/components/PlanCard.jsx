@@ -138,7 +138,7 @@ const PlanCard = ({ plan, updatePlan, deletePlan, onEdit, onDragStart, onDragEnd
               title={t.viewDetail || 'View Detail'}
               type="button"
             >
-              🔍
+              ⛶
             </button>
             <button
               className="glass-button"
