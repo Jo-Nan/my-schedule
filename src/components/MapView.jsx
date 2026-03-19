@@ -1374,6 +1374,8 @@ function MapView({
   const [selectedUserId, setSelectedUserId] = useState('');
   const [isAddUserExpanded, setIsAddUserExpanded] = useState(false);
   const [isAddCityExpanded, setIsAddCityExpanded] = useState(false);
+  const [isMarkersExpanded, setIsMarkersExpanded] = useState(false);
+  const [isRecycleBinExpanded, setIsRecycleBinExpanded] = useState(false);
   const [isUserEditExpanded, setIsUserEditExpanded] = useState(false);
   const [showFeaturedBubbles, setShowFeaturedBubbles] = useState(true);
   const [bubbleLayout, setBubbleLayout] = useState('freestyle');
@@ -1930,6 +1932,12 @@ function MapView({
     accumulator[point.userId] = (accumulator[point.userId] || 0) + 1;
     return accumulator;
   }, {}), [points]);
+  const markerCount = points.length;
+  const visibleRecycleBin = useMemo(
+    () => pruneRecycleItems(recycleBin),
+    [recycleBin],
+  );
+  const recycleCount = visibleRecycleBin.length;
   const selectedUser = useMemo(
     () => users.find((user) => user.id === selectedUserId) || null,
     [users, selectedUserId],
@@ -3865,69 +3873,95 @@ function MapView({
           )}
 
           <section className="map-panel">
-            <h3>{text.markersTitle} ({points.length} {text.markerCountLabel})</h3>
-            {points.length === 0 && <p className="map-muted">{text.markersEmpty}</p>}
-            {points.length > 0 && (
-              <ul className="map-marker-list">
-                {points.map((point) => {
-                  const owner = userMap.get(point.userId);
-                  return (
-                    <li
-                      key={point.id}
-                      className={selectedPointId === point.id ? 'active' : ''}
-                      onClick={() => setSelectedPointId(point.id)}
-                      role="button"
-                      tabIndex={0}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter' || event.key === ' ') {
-                          event.preventDefault();
-                          setSelectedPointId(point.id);
-                        }
-                      }}
-                    >
-                      <span className="map-user-dot" style={{ backgroundColor: owner?.color || '#94a3b8' }} />
-                      <span className="map-marker-place">{point.place || `${point.latitude.toFixed(4)}, ${point.longitude.toFixed(4)}`}</span>
-                      <span className="map-marker-owner">{owner?.name || '-'}</span>
-                    </li>
-                  );
-                })}
-              </ul>
+            <button
+              type="button"
+              className="glass-button map-collapse-btn"
+              onClick={() => setIsMarkersExpanded((previous) => !previous)}
+              aria-expanded={isMarkersExpanded}
+            >
+              <span>{text.markersTitle}{markerCount > 0 ? ` (${markerCount})` : ''}</span>
+              <span className="map-collapse-indicator">{isMarkersExpanded ? '−' : '+'}</span>
+            </button>
+
+            {isMarkersExpanded && (
+              <div className="map-collapsible-body">
+                {markerCount === 0 && <p className="map-muted">{text.markersEmpty}</p>}
+                {markerCount > 0 && (
+                  <ul className="map-marker-list">
+                    {points.map((point) => {
+                      const owner = userMap.get(point.userId);
+                      return (
+                        <li
+                          key={point.id}
+                          className={selectedPointId === point.id ? 'active' : ''}
+                          onClick={() => setSelectedPointId(point.id)}
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault();
+                              setSelectedPointId(point.id);
+                            }
+                          }}
+                        >
+                          <span className="map-user-dot" style={{ backgroundColor: owner?.color || '#94a3b8' }} />
+                          <span className="map-marker-place">{point.place || `${point.latitude.toFixed(4)}, ${point.longitude.toFixed(4)}`}</span>
+                          <span className="map-marker-owner">{owner?.name || '-'}</span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
             )}
           </section>
 
           {!readOnly && (
             <section className="map-panel">
-              <h3>{text.recycleBinTitle} ({recycleBin.length})</h3>
-              <p className="map-muted">{text.recycleBinHint}</p>
-              {recycleBin.length === 0 && <p className="map-muted">{text.recycleBinEmpty}</p>}
-              {recycleBin.length > 0 && (
-                <ul className="map-user-places-list">
-                  {recycleBin.map((item) => (
-                    <li key={item.id}>
-                      <span className="map-user-place-name" title={item.title || recycleItemLabel(item)}>
-                        {recycleItemLabel(item)}: {item.title || '-'}
-                        {' '}
-                        ({text.recycleDeletedAt} {new Date(item.deletedAt).toLocaleString()})
-                      </span>
-                      <div className="map-user-place-actions">
-                        <button
-                          type="button"
-                          className="glass-button"
-                          onClick={() => restoreRecycleItem(item.id)}
-                        >
-                          {text.recycleRestoreBtn}
-                        </button>
-                        <button
-                          type="button"
-                          className="glass-button map-danger-btn"
-                          onClick={() => hardDeleteRecycleItem(item.id)}
-                        >
-                          {text.recycleDeleteBtn}
-                        </button>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
+              <button
+                type="button"
+                className="glass-button map-collapse-btn"
+                onClick={() => setIsRecycleBinExpanded((previous) => !previous)}
+                aria-expanded={isRecycleBinExpanded}
+              >
+                <span>{text.recycleBinTitle}{recycleCount > 0 ? ` (${recycleCount})` : ''}</span>
+                <span className="map-collapse-indicator">{isRecycleBinExpanded ? '−' : '+'}</span>
+              </button>
+
+              {isRecycleBinExpanded && (
+                <div className="map-collapsible-body">
+                  <p className="map-muted">{text.recycleBinHint}</p>
+                  {recycleCount === 0 && <p className="map-muted">{text.recycleBinEmpty}</p>}
+                  {recycleCount > 0 && (
+                    <ul className="map-user-places-list">
+                      {visibleRecycleBin.map((item) => (
+                        <li key={item.id}>
+                          <span className="map-user-place-name" title={item.title || recycleItemLabel(item)}>
+                            {recycleItemLabel(item)}: {item.title || '-'}
+                            {' '}
+                            ({text.recycleDeletedAt} {new Date(item.deletedAt).toLocaleString()})
+                          </span>
+                          <div className="map-user-place-actions">
+                            <button
+                              type="button"
+                              className="glass-button"
+                              onClick={() => restoreRecycleItem(item.id)}
+                            >
+                              {text.recycleRestoreBtn}
+                            </button>
+                            <button
+                              type="button"
+                              className="glass-button map-danger-btn"
+                              onClick={() => hardDeleteRecycleItem(item.id)}
+                            >
+                              {text.recycleDeleteBtn}
+                            </button>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               )}
             </section>
           )}
