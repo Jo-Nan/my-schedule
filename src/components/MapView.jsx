@@ -1124,7 +1124,12 @@ function MapBookmarkCard({
           className="map-photo-lightbox"
           role="dialog"
           aria-modal="true"
-          onClick={closeLightbox}
+          onClick={(event) => {
+            // Only close when clicking the backdrop itself.
+            if (event.target === event.currentTarget) {
+              closeLightbox();
+            }
+          }}
         >
           <div
             className="map-photo-lightbox-panel"
@@ -1141,8 +1146,10 @@ function MapBookmarkCard({
               type="button"
               className="glass-button map-photo-lightbox-nav prev"
               onClick={() => shiftLightboxPhoto(-1)}
+              aria-label={text.prevPhotoBtn}
+              title={text.prevPhotoBtn}
             >
-              {text.prevPhotoBtn}
+              <span className="map-photo-lightbox-arrow left" aria-hidden="true" />
             </button>
             <div
               className="map-photo-lightbox-image-wrap"
@@ -1159,8 +1166,10 @@ function MapBookmarkCard({
               type="button"
               className="glass-button map-photo-lightbox-nav next"
               onClick={() => shiftLightboxPhoto(1)}
+              aria-label={text.nextPhotoBtn}
+              title={text.nextPhotoBtn}
             >
-              {text.nextPhotoBtn}
+              <span className="map-photo-lightbox-arrow right" aria-hidden="true" />
             </button>
             <p className="map-photo-lightbox-caption">
               {activeLightboxPhoto.name || text.photosTitle}
