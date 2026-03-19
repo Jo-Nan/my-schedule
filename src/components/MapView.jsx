@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   CircleMarker,
   MapContainer,
   Marker,
-  Popup,
+  Polyline,
   TileLayer,
   Tooltip,
   useMap,
@@ -32,8 +32,8 @@ const CHINA_VIEW = {
 };
 
 const CHINA_BOUNDS = [
-  [3.5, 73.0],
-  [53.9, 135.2],
+  [3.5, 73.5],
+  [53.6, 134.8],
 ];
 
 const WORLD_VIEW = {
@@ -53,6 +53,10 @@ const FEATURED_BUBBLE_ANCHOR_ICON = divIcon({
   iconSize: [1, 1],
   iconAnchor: [0, 0],
 });
+
+const MAX_UPLOAD_FILE_MB = 18;
+const MAX_CANVAS_EDGE = 1920;
+const MAX_PHOTO_COUNT_PER_POINT = 24;
 
 const TEXTS = {
   en: {
@@ -94,11 +98,21 @@ const TEXTS = {
     clearFeaturedBtn: 'Featured: None',
     featuredBubbleShow: 'Show featured bubbles',
     featuredBubbleHide: 'Hide featured bubbles',
+    featuredLayoutLabel: 'Bubble layout',
+    featuredLayoutMap: 'Near pin',
+    featuredLayoutRight: 'Right dock',
+    featuredLayoutBottom: 'Bottom dock',
     featuredPhotoAlt: 'Featured photo',
     featuredBadge: 'Featured',
+    openBookmarkBtn: 'Open bookmark editor',
+    closeEditorBtn: 'Close editor',
+    editorTitle: 'Bookmark Editor',
     removePhotoBtn: 'Remove',
     removePointBtn: 'Remove point',
     photoReadError: 'Some images could not be loaded.',
+    photoTooLargeError: `Some images were larger than ${MAX_UPLOAD_FILE_MB}MB and were skipped.`,
+    photoCountLimitError: `At most ${MAX_PHOTO_COUNT_PER_POINT} photos can be stored for one point.`,
+    storageLimitError: 'Storage limit reached. Reduce photos or clear old points.',
     geocodeError: 'Failed to search city. Try another keyword or enter coordinates manually.',
     noGeocodeResult: 'No city result found.',
     needUserName: 'Please enter a username first.',
@@ -149,11 +163,21 @@ const TEXTS = {
     clearFeaturedBtn: '精选：无',
     featuredBubbleShow: '显示精选书签',
     featuredBubbleHide: '隐藏精选书签',
+    featuredLayoutLabel: '书签布局',
+    featuredLayoutMap: '点位旁边',
+    featuredLayoutRight: '右侧停靠',
+    featuredLayoutBottom: '下侧停靠',
     featuredPhotoAlt: '精选照片',
     featuredBadge: '精选',
+    openBookmarkBtn: '打开书签编辑器',
+    closeEditorBtn: '关闭编辑器',
+    editorTitle: '书签编辑器',
     removePhotoBtn: '删除',
     removePointBtn: '删除点位',
     photoReadError: '部分图片读取失败，请重试。',
+    photoTooLargeError: `部分图片超过 ${MAX_UPLOAD_FILE_MB}MB，已跳过。`,
+    photoCountLimitError: `单个点位最多保存 ${MAX_PHOTO_COUNT_PER_POINT} 张图片。`,
+    storageLimitError: '本地存储空间不足，请减少图片或清理旧点位。',
     geocodeError: '城市搜索失败，请换关键词或直接输入经纬度。',
     noGeocodeResult: '没有匹配到城市结果。',
     needUserName: '请先输入用户名。',
@@ -221,6 +245,8 @@ const normalizePhoto = (photo, index) => ({
   id: isNonEmpty(photo?.id) ? photo.id : makeId(`photo_${index}`),
   name: isNonEmpty(photo?.name) ? photo.name.trim() : '',
   url: isNonEmpty(photo?.url) ? photo.url.trim() : '',
+  width: Number.isFinite(photo?.width) ? Math.max(1, Math.round(photo.width)) : null,
+  height: Number.isFinite(photo?.height) ? Math.max(1, Math.round(photo.height)) : null,
 });
 
 const normalizeUser = (user, index, fallbackName) => ({
@@ -276,12 +302,76 @@ const normalizePoint = (point, index, users) => {
   };
 };
 
-const readFileAsDataUrl = (file) => new Promise((resolve, reject) => {
-  const reader = new FileReader();
-  reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '');
-  reader.onerror = () => reject(new Error('Failed to read file'));
-  reader.readAsDataURL(file);
+const loadImageFromBlob = (blob) => new Promise((resolve, reject) => {
+  const objectUrl = URL.createObjectURL(blob);
+  const image = new Image();
+  image.onload = () => {
+    URL.revokeObjectURL(objectUrl);
+    resolve(image);
+  };
+  image.onerror = () => {
+    URL.revokeObjectURL(objectUrl);
+    reject(new Error('Failed to decode image'));
+  };
+  image.src = objectUrl;
 });
+
+const renderCanvasToDataUrl = (canvas, mimeType, quality) => canvas.toDataURL(mimeType, quality);
+
+const compressImageFile = async (file) => {
+  const image = await loadImageFromBlob(file);
+  const originalWidth = image.naturalWidth || image.width;
+  const originalHeight = image.naturalHeight || image.height;
+
+  if (!originalWidth || !originalHeight) {
+    throw new Error('Invalid image dimensions');
+  }
+
+  const scale = Math.min(1, MAX_CANVAS_EDGE / Math.max(originalWidth, originalHeight));
+  const width = Math.max(1, Math.round(originalWidth * scale));
+  const height = Math.max(1, Math.round(originalHeight * scale));
+
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext('2d', { alpha: true });
+  if (!context) {
+    throw new Error('Canvas unavailable');
+  }
+  context.drawImage(image, 0, 0, width, height);
+
+  const preferredType = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+  let quality = preferredType === 'image/png' ? undefined : 0.9;
+  let url = renderCanvasToDataUrl(canvas, preferredType, quality);
+
+  if (preferredType !== 'image/png') {
+    while (url.length > 2_000_000 && quality > 0.58) {
+      quality -= 0.08;
+      url = renderCanvasToDataUrl(canvas, preferredType, quality);
+    }
+  }
+
+  return {
+    id: makeId('photo'),
+    name: file.name,
+    url,
+    width,
+    height,
+  };
+};
+
+const getPhotoBubbleSize = (photo) => {
+  const width = Number.isFinite(photo?.width) ? photo.width : null;
+  const height = Number.isFinite(photo?.height) ? photo.height : null;
+  if (!width || !height) {
+    return { width: 140, height: 96 };
+  }
+
+  const ratio = width / height;
+  const bubbleHeight = Math.max(88, Math.min(150, Math.round(Math.min(height, 460) * 0.24)));
+  const bubbleWidth = Math.max(88, Math.min(238, Math.round(bubbleHeight * ratio)));
+  return { width: bubbleWidth, height: bubbleHeight };
+};
 
 function MapViewportController({ scope }) {
   const map = useMap();
@@ -291,8 +381,8 @@ function MapViewportController({ scope }) {
       map.setMinZoom(CHINA_VIEW.minZoom);
       map.setMaxBounds(CHINA_BOUNDS);
       map.fitBounds(CHINA_BOUNDS, {
-        paddingTopLeft: [18, 44],
-        paddingBottomRight: [18, 18],
+        paddingTopLeft: [8, 8],
+        paddingBottomRight: [8, 8],
         animate: true,
         duration: 0.75,
       });
@@ -322,6 +412,80 @@ const getFeaturedPhoto = (point) => {
 
   return null;
 };
+
+function FeaturedDockLines({ featuredPoints, layout }) {
+  const map = useMap();
+  const [anchors, setAnchors] = useState([]);
+
+  const recomputeAnchors = useCallback(() => {
+    if (!featuredPoints.length) {
+      setAnchors([]);
+      return;
+    }
+
+    const bounds = map.getBounds();
+    const north = bounds.getNorth();
+    const south = bounds.getSouth();
+    const east = bounds.getEast();
+    const west = bounds.getWest();
+    const latSpan = Math.max(0.000001, north - south);
+    const lngSpan = Math.max(0.000001, east - west);
+    const nextAnchors = featuredPoints.map((_, index) => {
+      const ratio = (index + 1) / (featuredPoints.length + 1);
+      if (layout === 'bottom') {
+        return {
+          lat: south + latSpan * 0.04,
+          lng: west + lngSpan * (0.1 + ratio * 0.8),
+        };
+      }
+
+      return {
+        lat: north - latSpan * (0.12 + ratio * 0.76),
+        lng: east - lngSpan * 0.03,
+      };
+    });
+    setAnchors(nextAnchors);
+  }, [featuredPoints, layout, map]);
+
+  useEffect(() => {
+    recomputeAnchors();
+    map.on('move zoom resize', recomputeAnchors);
+    return () => {
+      map.off('move zoom resize', recomputeAnchors);
+    };
+  }, [map, recomputeAnchors]);
+
+  if (!anchors.length) {
+    return null;
+  }
+
+  return (
+    <>
+      {featuredPoints.map((item, index) => {
+        const anchor = anchors[index];
+        if (!anchor) {
+          return null;
+        }
+
+        return (
+          <Polyline
+            key={`dock_line_${item.point.id}`}
+            positions={[
+              [item.point.latitude, item.point.longitude],
+              [anchor.lat, anchor.lng],
+            ]}
+            pathOptions={{
+              color: item.owner?.color || '#38bdf8',
+              weight: 2,
+              opacity: 0.72,
+              dashArray: '6 6',
+            }}
+          />
+        );
+      })}
+    </>
+  );
+}
 
 function MapBookmarkCard({
   point,
@@ -439,6 +603,8 @@ function MapView({
   const [selectedUserId, setSelectedUserId] = useState('');
   const [isAddUserExpanded, setIsAddUserExpanded] = useState(false);
   const [showFeaturedBubbles, setShowFeaturedBubbles] = useState(true);
+  const [bubbleLayout, setBubbleLayout] = useState('map');
+  const [selectedPointId, setSelectedPointId] = useState('');
 
   const [newUserName, setNewUserName] = useState('');
   const [newUserColor, setNewUserColor] = useState(COLOR_PALETTE[0]);
@@ -469,6 +635,7 @@ function MapView({
     let loadedUsers = [fallbackUser];
     let loadedPoints = [];
     let loadedShowFeaturedBubbles = true;
+    let loadedBubbleLayout = 'map';
 
     if (storageKey) {
       try {
@@ -477,6 +644,9 @@ function MapView({
           const parsed = JSON.parse(raw);
           loadedScope = parsed?.scope === 'world' ? 'world' : 'china';
           loadedShowFeaturedBubbles = parsed?.showFeaturedBubbles !== false;
+          loadedBubbleLayout = ['map', 'right', 'bottom'].includes(parsed?.bubbleLayout)
+            ? parsed.bubbleLayout
+            : 'map';
           loadedUsers = Array.isArray(parsed?.users) && parsed.users.length
             ? parsed.users.map((user, index) => normalizeUser(user, index, defaultName))
             : [fallbackUser];
@@ -497,7 +667,9 @@ function MapView({
     setUsers(loadedUsers);
     setPoints(loadedPoints);
     setShowFeaturedBubbles(loadedShowFeaturedBubbles);
+    setBubbleLayout(loadedBubbleLayout);
     setSelectedUserId(loadedUsers[0]?.id || '');
+    setSelectedPointId(loadedPoints[0]?.id || '');
     setNewUserColor(COLOR_PALETTE[1]);
     setNewUserRgb(hexToRgbString(COLOR_PALETTE[1]));
     setIsLoaded(true);
@@ -513,11 +685,16 @@ function MapView({
       users,
       points,
       showFeaturedBubbles,
+      bubbleLayout,
       savedAt: new Date().toISOString(),
     };
 
-    localStorage.setItem(storageKey, JSON.stringify(payload));
-  }, [isLoaded, scope, users, points, showFeaturedBubbles, storageKey]);
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(payload));
+    } catch {
+      setFormMessage(text.storageLimitError);
+    }
+  }, [bubbleLayout, isLoaded, scope, users, points, showFeaturedBubbles, storageKey, text.storageLimitError]);
 
   useEffect(() => {
     if (!users.length) {
@@ -529,6 +706,15 @@ function MapView({
       setSelectedUserId(users[0].id);
     }
   }, [users, selectedUserId]);
+
+  useEffect(() => {
+    if (!selectedPointId) {
+      return;
+    }
+    if (!points.some((point) => point.id === selectedPointId)) {
+      setSelectedPointId('');
+    }
+  }, [points, selectedPointId]);
 
   const userMap = useMemo(() => {
     const map = new Map();
@@ -542,6 +728,26 @@ function MapView({
     accumulator[point.userId] = (accumulator[point.userId] || 0) + 1;
     return accumulator;
   }, {}), [points]);
+
+  const featuredPoints = useMemo(() => points
+    .map((point) => {
+      const featuredPhoto = getFeaturedPhoto(point);
+      if (!featuredPhoto) {
+        return null;
+      }
+      return {
+        point,
+        owner: userMap.get(point.userId),
+        featuredPhoto,
+      };
+    })
+    .filter(Boolean), [points, userMap]);
+
+  const selectedPoint = useMemo(
+    () => points.find((point) => point.id === selectedPointId) || null,
+    [points, selectedPointId],
+  );
+  const selectedPointOwner = selectedPoint ? userMap.get(selectedPoint.userId) : null;
 
   const handleNewRgbChange = (value) => {
     setNewUserRgb(value);
@@ -687,6 +893,7 @@ function MapView({
     };
 
     setPoints((previous) => [...previous, point]);
+    setSelectedPointId(point.id);
     setFormMessage('');
     setPlaceInput('');
     setLatitudeInput('');
@@ -706,6 +913,7 @@ function MapView({
 
   const deletePoint = (pointId) => {
     setPoints((previous) => previous.filter((point) => point.id !== pointId));
+    setSelectedPointId((previous) => (previous === pointId ? '' : previous));
   };
 
   const uploadPhotos = async (pointId, fileList) => {
@@ -714,12 +922,36 @@ function MapView({
       return;
     }
 
+    const oversizedFiles = files.filter((file) => file.size > MAX_UPLOAD_FILE_MB * 1024 * 1024);
+    const allowedFiles = files.filter((file) => file.size <= MAX_UPLOAD_FILE_MB * 1024 * 1024);
+
+    if (!allowedFiles.length) {
+      setFormMessage(text.photoTooLargeError);
+      return;
+    }
+
     try {
-      const photos = await Promise.all(files.map(async (file) => ({
-        id: makeId('photo'),
-        name: file.name,
-        url: await readFileAsDataUrl(file),
-      })));
+      const currentPoint = points.find((point) => point.id === pointId);
+      if (!currentPoint) {
+        return;
+      }
+
+      const restSlots = Math.max(0, MAX_PHOTO_COUNT_PER_POINT - currentPoint.photos.length);
+      if (restSlots <= 0) {
+        setFormMessage(text.photoCountLimitError);
+        return;
+      }
+
+      const candidateFiles = allowedFiles.slice(0, restSlots);
+      const settled = await Promise.allSettled(candidateFiles.map((file) => compressImageFile(file)));
+      const photos = settled
+        .filter((result) => result.status === 'fulfilled')
+        .map((result) => result.value);
+
+      if (!photos.length) {
+        setFormMessage(text.photoReadError);
+        return;
+      }
 
       setPoints((previous) => previous.map((point) => {
         if (point.id !== pointId) {
@@ -739,7 +971,17 @@ function MapView({
           featuredPhotoId,
         };
       }));
-      setFormMessage('');
+
+      const hasDecodeFailure = settled.some((result) => result.status === 'rejected');
+      if (oversizedFiles.length > 0) {
+        setFormMessage(text.photoTooLargeError);
+      } else if (hasDecodeFailure) {
+        setFormMessage(text.photoReadError);
+      } else if (allowedFiles.length > restSlots) {
+        setFormMessage(text.photoCountLimitError);
+      } else {
+        setFormMessage('');
+      }
     } catch {
       setFormMessage(text.photoReadError);
     }
@@ -834,6 +1076,19 @@ function MapView({
           >
             {showFeaturedBubbles ? text.featuredBubbleHide : text.featuredBubbleShow}
           </button>
+
+          <label className="map-layout-select-wrap">
+            <span>{text.featuredLayoutLabel}</span>
+            <select
+              value={bubbleLayout}
+              onChange={(event) => setBubbleLayout(event.target.value)}
+              className="map-layout-select"
+            >
+              <option value="map">{text.featuredLayoutMap}</option>
+              <option value="right">{text.featuredLayoutRight}</option>
+              <option value="bottom">{text.featuredLayoutBottom}</option>
+            </select>
+          </label>
 
           <button type="button" className="glass-button" onClick={onBackToSchedule}>
             {text.backToSchedule}
@@ -1010,7 +1265,19 @@ function MapView({
                 {points.map((point) => {
                   const owner = userMap.get(point.userId);
                   return (
-                    <li key={point.id}>
+                    <li
+                      key={point.id}
+                      className={selectedPointId === point.id ? 'active' : ''}
+                      onClick={() => setSelectedPointId(point.id)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          setSelectedPointId(point.id);
+                        }
+                      }}
+                    >
                       <span className="map-user-dot" style={{ backgroundColor: owner?.color || '#94a3b8' }} />
                       <span className="map-marker-place">{point.place || `${point.latitude.toFixed(4)}, ${point.longitude.toFixed(4)}`}</span>
                       <span className="map-marker-owner">{owner?.name || '-'}</span>
@@ -1029,104 +1296,160 @@ function MapView({
           )}
         </aside>
 
-        <div className="map-canvas-shell">
-          <div className="map-canvas-headline">
-            {scope === 'china' ? text.chinaScope : text.worldScope}
+        <div className="map-canvas-column">
+          <div className="map-canvas-shell">
+            <div className="map-canvas-headline">
+              {scope === 'china' ? text.chinaScope : text.worldScope}
+            </div>
+            <MapContainer
+              className="map-canvas"
+              center={CHINA_VIEW.center}
+              zoom={CHINA_VIEW.zoom}
+              scrollWheelZoom
+              preferCanvas
+              maxBoundsViscosity={0.86}
+              minZoom={scope === 'china' ? CHINA_VIEW.minZoom : WORLD_VIEW.minZoom}
+            >
+              <MapViewportController scope={scope} />
+              <TileLayer
+                attribution='&copy; OpenStreetMap contributors'
+                url='https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+              />
+
+              {showFeaturedBubbles && bubbleLayout !== 'map' && (
+                <FeaturedDockLines featuredPoints={featuredPoints} layout={bubbleLayout} />
+              )}
+
+              {showFeaturedBubbles && bubbleLayout === 'map' && featuredPoints.map(({ point, owner, featuredPhoto }) => {
+                const bubbleSize = getPhotoBubbleSize(featuredPhoto);
+                return (
+                  <Marker
+                    key={`featured_bubble_${point.id}`}
+                    position={[point.latitude, point.longitude]}
+                    icon={FEATURED_BUBBLE_ANCHOR_ICON}
+                    interactive={false}
+                    keyboard={false}
+                  >
+                    <Tooltip
+                      permanent
+                      direction="right"
+                      offset={[20, -10]}
+                      opacity={1}
+                      className="map-featured-photo-tooltip"
+                    >
+                      <div
+                        className="map-featured-photo-bubble"
+                        style={{
+                          '--bubble-accent': owner?.color || '#38bdf8',
+                          width: `${bubbleSize.width}px`,
+                          height: `${bubbleSize.height}px`,
+                        }}
+                      >
+                        <img
+                          src={featuredPhoto.url}
+                          alt={featuredPhoto.name || text.featuredPhotoAlt}
+                        />
+                      </div>
+                    </Tooltip>
+                  </Marker>
+                );
+              })}
+
+              {points.map((point) => {
+                const owner = userMap.get(point.userId);
+                const markerColor = owner?.color || '#64748b';
+                const isSelectedMarker = selectedPointId === point.id;
+
+                return (
+                  <CircleMarker
+                    key={point.id}
+                    center={[point.latitude, point.longitude]}
+                    radius={isSelectedMarker ? 12 : 10}
+                    eventHandlers={{
+                      click: () => setSelectedPointId(point.id),
+                    }}
+                    pathOptions={{
+                      color: markerColor,
+                      fillColor: markerColor,
+                      fillOpacity: 0.9,
+                      weight: isSelectedMarker ? 4 : 3,
+                    }}
+                  >
+                    <Tooltip
+                      permanent
+                      direction="top"
+                      offset={[0, -10]}
+                      opacity={0.95}
+                      className="map-marker-tooltip"
+                    >
+                      {owner?.name || '-'}
+                    </Tooltip>
+                  </CircleMarker>
+                );
+              })}
+            </MapContainer>
           </div>
-          <MapContainer
-            className="map-canvas"
-            center={CHINA_VIEW.center}
-            zoom={CHINA_VIEW.zoom}
-            scrollWheelZoom
-            preferCanvas
-            minZoom={scope === 'china' ? CHINA_VIEW.minZoom : WORLD_VIEW.minZoom}
-          >
-            <MapViewportController scope={scope} />
-            <TileLayer
-              attribution='&copy; OpenStreetMap contributors'
-              url='https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
-            />
 
-            {showFeaturedBubbles && points.map((point) => {
-              const featuredPhoto = getFeaturedPhoto(point);
-              if (!featuredPhoto) {
-                return null;
-              }
-
-              const owner = userMap.get(point.userId);
-              return (
-                <Marker
-                  key={`featured_bubble_${point.id}`}
-                  position={[point.latitude, point.longitude]}
-                  icon={FEATURED_BUBBLE_ANCHOR_ICON}
-                  interactive={false}
-                  keyboard={false}
-                >
-                  <Tooltip
-                    permanent
-                    direction="right"
-                    offset={[20, -10]}
-                    opacity={1}
-                    className="map-featured-photo-tooltip"
+          {showFeaturedBubbles && bubbleLayout !== 'map' && featuredPoints.length > 0 && (
+            <div className={`map-featured-dock map-featured-dock-${bubbleLayout}`}>
+              {featuredPoints.map(({ point, owner, featuredPhoto }) => {
+                const bubbleSize = getPhotoBubbleSize(featuredPhoto);
+                return (
+                  <button
+                    key={`dock_item_${point.id}`}
+                    type="button"
+                    className={`map-featured-dock-item ${selectedPointId === point.id ? 'active' : ''}`}
+                    onClick={() => setSelectedPointId(point.id)}
+                    style={{ '--bubble-accent': owner?.color || '#38bdf8' }}
                   >
                     <div
                       className="map-featured-photo-bubble"
-                      style={{ '--bubble-accent': owner?.color || '#38bdf8' }}
+                      style={{
+                        width: `${bubbleSize.width}px`,
+                        height: `${bubbleSize.height}px`,
+                      }}
                     >
                       <img
                         src={featuredPhoto.url}
                         alt={featuredPhoto.name || text.featuredPhotoAlt}
                       />
                     </div>
-                  </Tooltip>
-                </Marker>
-              );
-            })}
-
-            {points.map((point) => {
-              const owner = userMap.get(point.userId);
-              const markerColor = owner?.color || '#64748b';
-
-              return (
-                <CircleMarker
-                  key={point.id}
-                  center={[point.latitude, point.longitude]}
-                  radius={10}
-                  pathOptions={{
-                    color: markerColor,
-                    fillColor: markerColor,
-                    fillOpacity: 0.9,
-                    weight: 3,
-                  }}
-                >
-                  <Tooltip
-                    permanent
-                    direction="top"
-                    offset={[0, -10]}
-                    opacity={0.95}
-                    className="map-marker-tooltip"
-                  >
-                    {owner?.name || '-'}
-                  </Tooltip>
-                  <Popup minWidth={320} maxWidth={360}>
-                    <MapBookmarkCard
-                      point={point}
-                      owner={owner}
-                      text={text}
-                      onUpdatePoint={updatePoint}
-                      onUploadPhotos={uploadPhotos}
-                      onSetFeatured={setFeaturedPhoto}
-                      onClearFeatured={clearFeaturedPhoto}
-                      onDeletePhoto={deletePhoto}
-                      onDeletePoint={deletePoint}
-                    />
-                  </Popup>
-                </CircleMarker>
-              );
-            })}
-          </MapContainer>
+                    <span className="map-featured-dock-caption">
+                      {point.place || `${point.latitude.toFixed(3)}, ${point.longitude.toFixed(3)}`}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
+
+      {selectedPoint && (
+        <aside className="glass-panel map-bookmark-editor-float">
+          <div className="map-editor-float-head">
+            <strong>{text.editorTitle}</strong>
+            <button
+              type="button"
+              className="glass-button"
+              onClick={() => setSelectedPointId('')}
+            >
+              {text.closeEditorBtn}
+            </button>
+          </div>
+          <MapBookmarkCard
+            point={selectedPoint}
+            owner={selectedPointOwner}
+            text={text}
+            onUpdatePoint={updatePoint}
+            onUploadPhotos={uploadPhotos}
+            onSetFeatured={setFeaturedPhoto}
+            onClearFeatured={clearFeaturedPhoto}
+            onDeletePhoto={deletePhoto}
+            onDeletePoint={deletePoint}
+          />
+        </aside>
+      )}
     </section>
   );
 }
