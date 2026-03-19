@@ -1740,6 +1740,24 @@ function MapView({
       };
     })
     .filter(Boolean), [points, userMap]);
+  const dockFeaturedPoints = useMemo(() => {
+    if (bubbleLayout === 'map') {
+      return featuredPoints;
+    }
+
+    const next = [...featuredPoints];
+    if (bubbleLayout === 'right') {
+      next.sort((left, right) => right.point.latitude - left.point.latitude);
+      return next;
+    }
+
+    if (bubbleLayout === 'bottom') {
+      next.sort((left, right) => left.point.longitude - right.point.longitude);
+      return next;
+    }
+
+    return next;
+  }, [bubbleLayout, featuredPoints]);
   const visiblePoints = useMemo(() => {
     if (!visibleBounds) {
       return points;
@@ -1789,7 +1807,7 @@ function MapView({
 
     const nextLines = [];
 
-    featuredPoints.forEach(({ point, owner }) => {
+    dockFeaturedPoints.forEach(({ point, owner }) => {
       const dockItem = featuredDockItemRefs.current.get(point.id);
       if (!dockItem) {
         return;
@@ -1818,7 +1836,7 @@ function MapView({
     });
 
     setDockLines(nextLines);
-  }, [bubbleLayout, featuredPoints, mapInstance, showFeaturedBubbles]);
+  }, [bubbleLayout, dockFeaturedPoints, mapInstance, showFeaturedBubbles]);
 
   useEffect(() => {
     if (!mapInstance) {
@@ -1849,7 +1867,7 @@ function MapView({
   useEffect(() => {
     const rafId = window.requestAnimationFrame(recomputeDockLines);
     return () => window.cancelAnimationFrame(rafId);
-  }, [bubbleLayout, featuredPoints, recomputeDockLines, showFeaturedBubbles]);
+  }, [bubbleLayout, dockFeaturedPoints, recomputeDockLines, showFeaturedBubbles]);
 
   useEffect(() => {
     if (!mapInstance) {
@@ -3463,12 +3481,12 @@ function MapView({
             </MapContainer>
           </div>
 
-          {showFeaturedBubbles && bubbleLayout !== 'map' && featuredPoints.length > 0 && (
+          {showFeaturedBubbles && bubbleLayout !== 'map' && dockFeaturedPoints.length > 0 && (
             <div
               className={`map-featured-dock map-featured-dock-${bubbleLayout}`}
               ref={featuredDockRef}
             >
-              {featuredPoints.map(({ point, owner, featuredPhoto }) => {
+              {dockFeaturedPoints.map(({ point, owner, featuredPhoto }) => {
                 const bubbleSize = getPhotoBubbleSize(featuredPhoto);
                 return (
                   <button
