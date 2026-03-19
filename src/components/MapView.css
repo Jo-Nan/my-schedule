@@ -29,37 +29,65 @@
   gap: 0.6rem;
   align-items: center;
   flex-wrap: wrap;
+  font-family: inherit;
 }
 
-.map-share-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-}
-
-.map-share-actions .glass-button {
-  font-size: 0.72rem;
-  padding: 0.32rem 0.56rem;
-  box-shadow: none;
-}
-
-.map-featured-toggle-btn {
+.map-topbar-btn {
   font-size: 0.78rem;
   font-weight: 600;
   border-radius: 999px;
   padding: 0.42rem 0.88rem;
+  line-height: 1.1;
+}
+
+.map-header-share-inline {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+  max-width: min(58vw, 760px);
+  border: 1px solid var(--glass-border);
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.08);
+  padding: 0.28rem 0.38rem 0.28rem 0.66rem;
+}
+
+.map-header-share-link {
+  font-size: 0.74rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.map-header-share-copy-btn {
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  font-size: 0.86rem;
+  line-height: 1;
+  box-shadow: none;
+}
+
+.map-featured-toggle-btn {
+  box-shadow: none;
 }
 
 .map-layout-select-wrap {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  font-size: 0.75rem;
+  font-size: 0.78rem;
+  font-weight: 600;
   color: var(--text-secondary);
   border: 1px solid var(--glass-border);
   background: rgba(15, 23, 42, 0.08);
   border-radius: 999px;
-  padding: 0.32rem 0.62rem 0.32rem 0.72rem;
+  padding: 0.34rem 0.62rem 0.34rem 0.72rem;
 }
 
 .map-layout-select {
@@ -67,8 +95,9 @@
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.22);
   color: var(--text-primary);
-  font-size: 0.74rem;
-  padding: 0.2rem 0.48rem;
+  font-size: 0.78rem;
+  font-family: inherit;
+  padding: 0.24rem 0.52rem;
 }
 
 .map-scope-toggle {
@@ -81,10 +110,7 @@
 }
 
 .map-scope-btn {
-  border-radius: 999px;
-  padding: 0.4rem 0.9rem;
-  font-size: 0.86rem;
-  font-weight: 600;
+  border-radius: 999px !important;
 }
 
 .map-scope-btn.active {
@@ -460,7 +486,7 @@
 .map-canvas-headline {
   position: absolute;
   top: 0.75rem;
-  left: 0.75rem;
+  right: 0.75rem;
   z-index: 620;
   padding: 0.38rem 0.72rem;
   border-radius: 999px;
@@ -940,6 +966,11 @@
     gap: 0.55rem;
   }
 
+  .map-topbar-btn {
+    font-size: 0.74rem;
+    padding: 0.38rem 0.74rem;
+  }
+
   .map-scope-toggle {
     width: 100%;
     justify-content: space-between;
@@ -967,6 +998,15 @@
 
   .map-layout-select {
     width: 52%;
+  }
+
+  .map-header-share-inline {
+    width: 100%;
+    max-width: none;
+  }
+
+  .map-header-share-link {
+    font-size: 0.7rem;
   }
 
   .map-featured-dock-item {

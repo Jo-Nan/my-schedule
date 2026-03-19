@@ -3061,6 +3061,7 @@ function MapView({
     }
     return text.recyclePointLabel;
   };
+  const currentShareUrl = shareUrl || (shareEnabled ? buildClientShareUrl(shareToken) : '');
 
   return (
     <section className="glass-panel map-view-root">
@@ -3075,14 +3076,14 @@ function MapView({
           <div className="map-scope-toggle">
             <button
               type="button"
-              className={`glass-button map-scope-btn ${scope === 'china' ? 'active' : ''}`}
+              className={`glass-button map-topbar-btn map-scope-btn ${scope === 'china' ? 'active' : ''}`}
               onClick={() => setScope('china')}
             >
               {text.chinaScope}
             </button>
             <button
               type="button"
-              className={`glass-button map-scope-btn ${scope === 'world' ? 'active' : ''}`}
+              className={`glass-button map-topbar-btn map-scope-btn ${scope === 'world' ? 'active' : ''}`}
               onClick={() => setScope('world')}
             >
               {text.worldScope}
@@ -3091,7 +3092,7 @@ function MapView({
 
           <button
             type="button"
-            className="glass-button map-featured-toggle-btn"
+            className="glass-button map-topbar-btn map-featured-toggle-btn"
             onClick={() => setShowFeaturedBubbles((previous) => !previous)}
           >
             {showFeaturedBubbles ? text.featuredBubbleHide : text.featuredBubbleShow}
@@ -3111,7 +3112,55 @@ function MapView({
           </label>
 
           {!readOnly && (
-            <button type="button" className="glass-button" onClick={onBackToSchedule}>
+            <>
+              {!shareEnabled && (
+                <button
+                  type="button"
+                  className="glass-button map-topbar-btn"
+                  onClick={() => updateShareSetting('enable')}
+                  disabled={isShareBusy}
+                >
+                  {isShareBusy ? text.shareBusyLabel : text.shareEnableBtn}
+                </button>
+              )}
+              {shareEnabled && (
+                <div className="map-header-share-inline">
+                  <span className="map-header-share-link" title={currentShareUrl}>
+                    {currentShareUrl}
+                  </span>
+                  <button
+                    type="button"
+                    className="glass-button map-header-share-copy-btn"
+                    onClick={copyShareLink}
+                    disabled={isShareBusy || !currentShareUrl}
+                    aria-label={text.shareCopyBtn}
+                    title={text.shareCopyBtn}
+                  >
+                    ⧉
+                  </button>
+                  <button
+                    type="button"
+                    className="glass-button map-topbar-btn"
+                    onClick={() => updateShareSetting('regenerate')}
+                    disabled={isShareBusy}
+                  >
+                    {isShareBusy ? text.shareBusyLabel : text.shareRegenerateBtn}
+                  </button>
+                  <button
+                    type="button"
+                    className="glass-button map-topbar-btn map-danger-btn"
+                    onClick={() => updateShareSetting('disable')}
+                    disabled={isShareBusy}
+                  >
+                    {isShareBusy ? text.shareBusyLabel : text.shareDisableBtn}
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+
+          {!readOnly && (
+            <button type="button" className="glass-button map-topbar-btn" onClick={onBackToSchedule}>
               {text.backToSchedule}
             </button>
           )}
@@ -3314,63 +3363,6 @@ function MapView({
                   </button>
                 </div>
               )}
-            </section>
-          )}
-
-          {!readOnly && (
-            <section className="map-panel">
-              <h3>{text.sharePanelTitle}</h3>
-              <p className="map-muted">
-                {shareEnabled ? text.shareReadyHint : text.shareNotEnabledHint}
-              </p>
-              <label className="map-label" htmlFor="map_share_link">{text.shareLinkLabel}</label>
-              <input
-                id="map_share_link"
-                className="glass-input"
-                value={shareUrl || (shareEnabled ? buildClientShareUrl(shareToken) : '')}
-                readOnly
-                placeholder={text.shareNotEnabledHint}
-              />
-              <div className="map-share-actions">
-                {!shareEnabled && (
-                  <button
-                    type="button"
-                    className="glass-button"
-                    onClick={() => updateShareSetting('enable')}
-                    disabled={isShareBusy}
-                  >
-                    {isShareBusy ? text.shareBusyLabel : text.shareEnableBtn}
-                  </button>
-                )}
-                {shareEnabled && (
-                  <>
-                    <button
-                      type="button"
-                      className="glass-button"
-                      onClick={copyShareLink}
-                      disabled={isShareBusy}
-                    >
-                      {text.shareCopyBtn}
-                    </button>
-                    <button
-                      type="button"
-                      className="glass-button"
-                      onClick={() => updateShareSetting('regenerate')}
-                      disabled={isShareBusy}
-                    >
-                      {isShareBusy ? text.shareBusyLabel : text.shareRegenerateBtn}
-                    </button>
-                    <button
-                      type="button"
-                      className="glass-button map-danger-btn"
-                      onClick={() => updateShareSetting('disable')}
-                      disabled={isShareBusy}
-                    >
-                      {isShareBusy ? text.shareBusyLabel : text.shareDisableBtn}
-                    </button>
-                  </>
-                )}
-              </div>
             </section>
           )}
 
