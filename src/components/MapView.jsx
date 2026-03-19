@@ -150,7 +150,7 @@ const TEXTS = {
     searchHistoryTitle: 'Recent searches',
     addFavoriteBtn: 'Favorite',
     removeFavoriteBtn: 'Unfavorite',
-    saveCurrentPlaceBtn: 'Save current place',
+    saveCurrentPlaceBtn: 'Favorite',
     noFavoritePlaces: 'No favorites yet.',
     noSearchHistory: 'No recent searches.',
     sharePanelTitle: 'Share',
@@ -202,9 +202,10 @@ const TEXTS = {
     featuredLayoutFreestyle: 'Freestyle',
     featuredPhotoAlt: 'Featured photo',
     featuredBadge: 'Featured',
-    openBookmarkBtn: 'Open bookmark editor',
+    openBookmarkBtn: 'Open image editor',
     closeEditorBtn: 'Close editor',
-    editorTitle: 'Bookmark Editor',
+    editorTitle: 'Image Editor',
+    editorUserLabel: 'Change user',
     removePhotoBtn: 'Remove',
     previewPhotoBtn: 'Zoom',
     closePreviewBtn: 'Close',
@@ -281,7 +282,7 @@ const TEXTS = {
     searchHistoryTitle: '最近搜索',
     addFavoriteBtn: '收藏',
     removeFavoriteBtn: '取消收藏',
-    saveCurrentPlaceBtn: '收藏当前地点',
+    saveCurrentPlaceBtn: '收藏',
     noFavoritePlaces: '暂无收藏地点。',
     noSearchHistory: '暂无搜索记录。',
     sharePanelTitle: '分享',
@@ -333,9 +334,10 @@ const TEXTS = {
     featuredLayoutFreestyle: '自由布局',
     featuredPhotoAlt: '精选照片',
     featuredBadge: '精选',
-    openBookmarkBtn: '打开书签编辑器',
+    openBookmarkBtn: '打开图片编辑器',
     closeEditorBtn: '关闭编辑器',
-    editorTitle: '书签编辑器',
+    editorTitle: '图片编辑器',
+    editorUserLabel: '更改用户',
     removePhotoBtn: '删除',
     previewPhotoBtn: '放大',
     closePreviewBtn: '关闭',
@@ -972,6 +974,7 @@ function MapBookmarkCard({
   point,
   owner,
   ownerId,
+  users = [],
   text,
   readOnly = false,
   photoSrcResolver,
@@ -1207,7 +1210,7 @@ function MapBookmarkCard({
         {!readOnly && (
           <button
             type="button"
-            className="glass-button map-danger-btn"
+            className="glass-button map-editor-head-btn map-danger-btn"
             onClick={() => onDeletePoint(point.id)}
           >
             {text.removePointBtn}
@@ -1217,6 +1220,21 @@ function MapBookmarkCard({
       <p className="map-bookmark-meta">
         <strong>{text.ownerLabel}:</strong> {owner?.name || '-'}
       </p>
+      {!readOnly && users.length > 0 && (
+        <>
+          <label className="map-label" htmlFor={`point_user_${point.id}`}>{text.editorUserLabel}</label>
+          <select
+            id={`point_user_${point.id}`}
+            className="glass-input map-editor-select"
+            value={point.userId}
+            onChange={(event) => onUpdatePoint(point.id, { userId: event.target.value })}
+          >
+            {users.map((user) => (
+              <option key={user.id} value={user.id}>{user.name}</option>
+            ))}
+          </select>
+        </>
+      )}
       <p className="map-bookmark-meta">
         <strong>{text.coordinateLabel}:</strong> {point.latitude.toFixed(6)}, {point.longitude.toFixed(6)}
       </p>
@@ -1372,8 +1390,8 @@ function MapView({
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
   const [searchMessage, setSearchMessage] = useState('');
+  const [isPlaceDropdownOpen, setIsPlaceDropdownOpen] = useState(false);
 
-  const [placeInput, setPlaceInput] = useState('');
   const [latitudeInput, setLatitudeInput] = useState('');
   const [longitudeInput, setLongitudeInput] = useState('');
   const [routeInput, setRouteInput] = useState('');
@@ -1412,12 +1430,27 @@ function MapView({
   const uploadRunnerActiveRef = useRef(false);
   const failedUploadFileRef = useRef(new Map());
   const activeWorkspaceKeyRef = useRef('');
+  const placeSearchWrapRef = useRef(null);
 
   useEffect(() => () => {
     if (autoUploadTimerRef.current) {
       clearTimeout(autoUploadTimerRef.current);
     }
   }, []);
+
+  useEffect(() => {
+    if (!isPlaceDropdownOpen) {
+      return undefined;
+    }
+    const handlePointerDown = (event) => {
+      if (placeSearchWrapRef.current?.contains(event.target)) {
+        return;
+      }
+      setIsPlaceDropdownOpen(false);
+    };
+    window.addEventListener('pointerdown', handlePointerDown);
+    return () => window.removeEventListener('pointerdown', handlePointerDown);
+  }, [isPlaceDropdownOpen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2503,12 +2536,13 @@ function MapView({
     if (!normalized) {
       return;
     }
-    setPlaceInput(normalized.name);
+    setCityQuery(normalized.name);
     setLatitudeInput(normalized.latitude.toFixed(6));
     setLongitudeInput(normalized.longitude.toFixed(6));
     setSearchResults([]);
     setSearchMessage('');
     setFormMessage('');
+    setIsPlaceDropdownOpen(false);
     addToSearchHistory(normalized);
   }, [addToSearchHistory]);
 
@@ -2587,11 +2621,11 @@ function MapView({
       return null;
     }
     return normalizePlaceBookmark({
-      name: placeInput.trim() || cityQuery.trim() || `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`,
+      name: cityQuery.trim() || `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`,
       latitude,
       longitude,
     }, 0);
-  }, [cityQuery, latitudeInput, longitudeInput, placeInput]);
+  }, [cityQuery, latitudeInput, longitudeInput]);
 
   const saveCurrentPlaceToFavorites = useCallback(() => {
     const place = getCurrentInputPlace();
@@ -2717,7 +2751,7 @@ function MapView({
     const point = {
       id: pointId,
       userId: selectedUserId,
-      place: placeInput.trim(),
+      place: cityQuery.trim(),
       latitude,
       longitude,
       route: routeInput.trim(),
@@ -2734,7 +2768,6 @@ function MapView({
     });
     setSelectedPointId(point.id);
     setFormMessage(nextMessage);
-    setPlaceInput('');
     setLatitudeInput('');
     setLongitudeInput('');
     setRouteInput('');
@@ -2745,6 +2778,15 @@ function MapView({
     setCityQuery('');
     setSearchResults([]);
     setIsAddingPoint(false);
+    if (mapInstance) {
+      const currentZoom = typeof mapInstance.getZoom === 'function' ? mapInstance.getZoom() : 4;
+      const targetZoom = scope === 'china'
+        ? Math.max(currentZoom, 5)
+        : Math.max(currentZoom, 3);
+      mapInstance.flyTo([point.latitude, point.longitude], targetZoom, {
+        duration: 0.72,
+      });
+    }
 
     if (candidateFiles.length > 0) {
       enqueuePhotoUploads(pointId, candidateFiles, placeholderPhotos.map((photo) => photo.id));
@@ -3638,46 +3680,90 @@ function MapView({
 
           {!readOnly && (
             <section className="map-panel">
-            <h3>{text.cityTitle}</h3>
-            <label className="map-label" htmlFor="map_city_search">{text.cityInputLabel}</label>
-            <div className="map-search-row">
-              <input
-                id="map_city_search"
-                className="glass-input"
-                value={cityQuery}
-                placeholder={text.cityInputPlaceholder}
-                onChange={(event) => setCityQuery(event.target.value)}
-              />
-              <button type="button" className="glass-button" onClick={handleSearchCity} disabled={isSearching}>
-                {isSearching ? text.citySearching : text.citySearchBtn}
-              </button>
-            </div>
-
-            <button
-              type="button"
-              className="glass-button"
-              onClick={saveCurrentPlaceToFavorites}
-            >
-              {text.saveCurrentPlaceBtn}
-            </button>
-
-            {localMatchPlaces.length > 0 && (
-              <>
-                <p className="map-label">{text.localMatchTitle}</p>
-                <div className="map-place-chip-list">
-                  {localMatchPlaces.map((place) => (
-                    <button
-                      key={`local_match_${place.id}`}
-                      type="button"
-                      className="glass-button map-place-chip"
-                      onClick={() => applyQuickPlace(place)}
-                    >
-                      {place.name}
-                    </button>
-                  ))}
+              <h3>{text.cityTitle}</h3>
+              <label className="map-label" htmlFor="map_city_search">{text.cityInputLabel}</label>
+              <div className="map-search-combobox" ref={placeSearchWrapRef}>
+                <div className="map-search-row">
+                  <input
+                    id="map_city_search"
+                    className="glass-input"
+                    value={cityQuery}
+                    placeholder={text.cityInputPlaceholder}
+                    onFocus={() => setIsPlaceDropdownOpen(true)}
+                    onChange={(event) => {
+                      setCityQuery(event.target.value);
+                      setIsPlaceDropdownOpen(true);
+                    }}
+                  />
+                  <button type="button" className="glass-button" onClick={handleSearchCity} disabled={isSearching}>
+                    {isSearching ? text.citySearching : text.citySearchBtn}
+                  </button>
+                  <button
+                    type="button"
+                    className="glass-button"
+                    onClick={saveCurrentPlaceToFavorites}
+                  >
+                    {text.saveCurrentPlaceBtn}
+                  </button>
                 </div>
-              </>
-            )}
+                {isPlaceDropdownOpen && (localMatchPlaces.length > 0 || favoritePlaces.length > 0 || searchHistory.length > 0) && (
+                  <div className="map-place-dropdown">
+                    {localMatchPlaces.length > 0 && (
+                      <div className="map-place-dropdown-group">
+                        <p className="map-label">{text.localMatchTitle}</p>
+                        <div className="map-place-chip-list">
+                          {localMatchPlaces.map((place) => (
+                            <button
+                              key={`local_match_${place.id}`}
+                              type="button"
+                              className="glass-button map-place-chip"
+                              onClick={() => applyQuickPlace(place)}
+                            >
+                              {place.name}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    <div className="map-place-dropdown-group">
+                      <p className="map-label">{text.favoritePlacesTitle}</p>
+                      {favoritePlaces.length === 0 && <p className="map-muted">{text.noFavoritePlaces}</p>}
+                      {favoritePlaces.length > 0 && (
+                        <div className="map-place-chip-list">
+                          {favoritePlaces.map((place) => (
+                            <button
+                              key={`fav_place_${place.id}`}
+                              type="button"
+                              className="glass-button map-place-chip"
+                              onClick={() => applyQuickPlace(place)}
+                            >
+                              {place.name}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div className="map-place-dropdown-group">
+                      <p className="map-label">{text.searchHistoryTitle}</p>
+                      {searchHistory.length === 0 && <p className="map-muted">{text.noSearchHistory}</p>}
+                      {searchHistory.length > 0 && (
+                        <div className="map-place-chip-list">
+                          {searchHistory.map((place) => (
+                            <button
+                              key={`history_place_${place.id}`}
+                              type="button"
+                              className="glass-button map-place-chip"
+                              onClick={() => applyQuickPlace(place)}
+                            >
+                              {place.name}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
 
             {searchResults.length > 0 && (
               <div className="map-search-results">
@@ -3702,49 +3788,6 @@ function MapView({
                 ))}
               </div>
             )}
-
-            <p className="map-label">{text.favoritePlacesTitle}</p>
-            {favoritePlaces.length === 0 && <p className="map-muted">{text.noFavoritePlaces}</p>}
-            {favoritePlaces.length > 0 && (
-              <div className="map-place-chip-list">
-                {favoritePlaces.map((place) => (
-                  <button
-                    key={`fav_place_${place.id}`}
-                    type="button"
-                    className="glass-button map-place-chip"
-                    onClick={() => applyQuickPlace(place)}
-                  >
-                    {place.name}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            <p className="map-label">{text.searchHistoryTitle}</p>
-            {searchHistory.length === 0 && <p className="map-muted">{text.noSearchHistory}</p>}
-            {searchHistory.length > 0 && (
-              <div className="map-place-chip-list">
-                {searchHistory.map((place) => (
-                  <button
-                    key={`history_place_${place.id}`}
-                    type="button"
-                    className="glass-button map-place-chip"
-                    onClick={() => applyQuickPlace(place)}
-                  >
-                    {place.name}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            <label className="map-label" htmlFor="map_place_input">{text.placeLabel}</label>
-            <input
-              id="map_place_input"
-              className="glass-input"
-              value={placeInput}
-              placeholder={text.placePlaceholder}
-              onChange={(event) => setPlaceInput(event.target.value)}
-            />
 
             <div className="map-inline-grid">
               <div>
@@ -3802,8 +3845,8 @@ function MapView({
               onClick={handleAddPoint}
               disabled={isAddingPoint}
             >
-              {isAddingPoint ? text.addPointSaving : text.addPointBtn}
-            </button>
+                {isAddingPoint ? text.addPointSaving : text.addPointBtn}
+              </button>
             </section>
           )}
 
@@ -4117,7 +4160,7 @@ function MapView({
             <strong>{text.editorTitle}</strong>
             <button
               type="button"
-              className="glass-button"
+              className="glass-button map-editor-head-btn"
               onClick={() => setSelectedPointId('')}
             >
               {text.closeEditorBtn}
@@ -4127,6 +4170,7 @@ function MapView({
             point={selectedPoint}
             owner={selectedPointOwner}
             ownerId={activeUserId}
+            users={users}
             text={text}
             readOnly={readOnly}
             photoSrcResolver={resolvePhotoSrc}
