@@ -2,6 +2,9 @@ import React, { useEffect, useRef, useState } from 'react';
 import PlanCard from './PlanCard';
 import PlanModal from './PlanModal';
 
+const DAY_COLUMN_BASE_WIDTH = 260;
+const DAY_COLUMN_SELECTED_RATIO = 1.2;
+
 const sharedCalendarNavText = {
   fontSize: '0.88rem',
   fontWeight: 600,
@@ -177,6 +180,10 @@ const WeeklyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t, ac
       />
       {days.map(dateStr => {
         const isToday = dateStr === getLocalDateStr(new Date());
+        const isSelected = selectedDate === dateStr;
+        const dayWidth = isSelected
+          ? Math.round(DAY_COLUMN_BASE_WIDTH * DAY_COLUMN_SELECTED_RATIO)
+          : DAY_COLUMN_BASE_WIDTH;
         
         const yesterday = new Date();
         yesterday.setDate(new Date().getDate() - 1);
@@ -201,7 +208,10 @@ const WeeklyView = ({ plans, updatePlan, addPlan, deletePlan, weatherData, t, ac
             className="glass-panel weekly-day-column" 
             style={{
               ...styles.dayColumn,
-              ...(selectedDate === dateStr ? styles.dayColumnSelected : {}),
+              ...(isSelected ? styles.dayColumnSelected : {}),
+              width: `${dayWidth}px`,
+              minWidth: `${dayWidth}px`,
+              maxWidth: `${dayWidth}px`,
               borderColor: isToday ? 'var(--accent-color)' : 'var(--glass-border)',
               boxShadow: isToday ? 'var(--accent-glow)' : 'var(--glass-shadow)',
               backgroundColor: draggedPlan ? 'rgba(255, 255, 255, 0.5)' : 'rgba(255, 255, 255, 0.4)',
@@ -318,11 +328,14 @@ const styles = {
     whiteSpace: 'nowrap',
   },
   container: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(5, 1fr)',
+    display: 'flex',
+    alignItems: 'stretch',
     gap: '1rem',
     width: '100%',
+    overflowX: 'auto',
+    overflowY: 'hidden',
     minHeight: '600px',
+    paddingBottom: '0.2rem',
   },
   dayColumn: {
     display: 'flex',
@@ -331,6 +344,7 @@ const styles = {
     padding: '1rem',
     borderRadius: '20px',
     background: 'rgba(255, 255, 255, 0.4)',
+    transition: 'width 0.2s ease, min-width 0.2s ease, max-width 0.2s ease, outline-color 0.2s ease',
   },
   dayColumnSelected: {
     outline: '2px solid rgba(59, 130, 246, 0.2)',

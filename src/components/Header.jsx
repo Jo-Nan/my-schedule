@@ -20,6 +20,7 @@ const Header = ({
   onExitManagedView,
   onOpenMessage,
   onOpenProfile,
+  onOpenMap,
   onLogout,
   onOpenAdmin,
   hasUnsavedProgress,
@@ -246,6 +247,16 @@ const Header = ({
               >
                 <span style={styles.menuIcon}>✉️</span>
                 <span>{t.messageButton}</span>
+              </button>
+              <button
+                className="glass-button"
+                style={styles.menuItem}
+                onClick={() => handleSettingsAction(onOpenMap)}
+                title={t.mapTitle}
+                type="button"
+              >
+                <span style={styles.menuIcon}>🗺️</span>
+                <span>{t.mapButton}</span>
               </button>
               <button
                 className="glass-button"

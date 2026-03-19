@@ -10,6 +10,7 @@ import AdminPanel from './components/AdminPanel';
 import MessageModal from './components/MessageModal';
 import ProfileModal from './components/ProfileModal';
 import ImportModal from './components/ImportModal';
+import MapView from './components/MapView';
 import { fetchWeeklyWeather } from './utils/weatherApi';
 import { translations } from './utils/translations';
 import './index.css';
@@ -86,11 +87,23 @@ const mergeImportedPlans = (currentPlans, importedPlans) => {
   return [...merged, ...appended];
 };
 
+const getInitialViewMode = () => {
+  if (typeof window === 'undefined') {
+    return 'weekly';
+  }
+  try {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('page') === 'map' ? 'map' : 'weekly';
+  } catch {
+    return 'weekly';
+  }
+};
+
 function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [managedUser, setManagedUser] = useState(null);
   const [authReady, setAuthReady] = useState(false);
-  const [viewMode, setViewMode] = useState('weekly');
+  const [viewMode, setViewMode] = useState(() => getInitialViewMode());
   const [theme, setTheme] = useState('light');
   const [language, setLanguage] = useState(() => localStorage.getItem('nanmuz_lang') || 'en');
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
@@ -210,6 +223,52 @@ function App() {
     setTheme(savedTheme);
     document.documentElement.setAttribute('data-theme', savedTheme);
   }, []);
+
+  useEffect(() => {
+    const syncViewModeWithUrl = () => {
+      const params = new URLSearchParams(window.location.search);
+      const isMapPage = params.get('page') === 'map';
+      setViewMode((previous) => {
+        if (isMapPage) {
+          return 'map';
+        }
+        return previous === 'map' ? 'weekly' : previous;
+      });
+    };
+
+    window.addEventListener('popstate', syncViewModeWithUrl);
+    return () => window.removeEventListener('popstate', syncViewModeWithUrl);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const url = new URL(window.location.href);
+    const isMapInUrl = url.searchParams.get('page') === 'map';
+
+    if (viewMode === 'map' && !isMapInUrl) {
+      url.searchParams.set('page', 'map');
+      const nextSearch = url.searchParams.toString();
+      window.history.pushState(
+        { page: 'map' },
+        '',
+        `${url.pathname}${nextSearch ? `?${nextSearch}` : ''}${url.hash}`,
+      );
+      return;
+    }
+
+    if (viewMode !== 'map' && isMapInUrl) {
+      url.searchParams.delete('page');
+      const nextSearch = url.searchParams.toString();
+      window.history.pushState(
+        { page: 'schedule' },
+        '',
+        `${url.pathname}${nextSearch ? `?${nextSearch}` : ''}${url.hash}`,
+      );
+    }
+  }, [viewMode]);
 
   useEffect(() => {
     const restoreSession = async () => {
@@ -546,6 +605,7 @@ function App() {
         onExitManagedView={() => setManagedUser(null)}
         onOpenMessage={() => setIsMessageModalOpen(true)}
         onOpenProfile={() => setIsProfileModalOpen(true)}
+        onOpenMap={() => setViewMode('map')}
         onLogout={handleLogout}
         onOpenAdmin={() => setIsAdminPanelOpen(true)}
         hasUnsavedProgress={hasUnsavedProgress}
@@ -623,6 +683,14 @@ function App() {
         )}
         {viewMode === 'monthly' && <MonthlyView plans={plans} t={t} />}
         {viewMode === 'yearly' && <YearlyView plans={plans} addPlan={addPlan} t={t} />}
+        {viewMode === 'map' && (
+          <MapView
+            activeUserId={activeUser?.id || ''}
+            activeUserName={activeUser?.username || activeUser?.email || ''}
+            language={language}
+            onBackToSchedule={() => setViewMode('weekly')}
+          />
+        )}
       </main>
 
       <footer style={styles.footer}>
