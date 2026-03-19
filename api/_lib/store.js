@@ -200,7 +200,7 @@ const sanitizeMapWorkspace = (workspace = {}) => {
     return {
       scope: 'china',
       showFeaturedBubbles: true,
-      bubbleLayout: 'map',
+      bubbleLayout: 'freestyle',
       users: [],
       points: [],
       searchHistory: [],
@@ -217,7 +217,7 @@ const sanitizeMapWorkspace = (workspace = {}) => {
   return {
     scope: workspace.scope === 'world' ? 'world' : 'china',
     showFeaturedBubbles: workspace.showFeaturedBubbles !== false,
-    bubbleLayout: ['map', 'right', 'bottom', 'freestyle'].includes(workspace.bubbleLayout) ? workspace.bubbleLayout : 'map',
+    bubbleLayout: ['map', 'right', 'bottom', 'freestyle'].includes(workspace.bubbleLayout) ? workspace.bubbleLayout : 'freestyle',
     users: Array.isArray(workspace.users) ? workspace.users : [],
     points: Array.isArray(workspace.points) ? workspace.points : [],
     searchHistory: sanitizeMapPlaceBookmarks(workspace.searchHistory, 12),

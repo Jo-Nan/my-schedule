@@ -810,7 +810,7 @@ const parseWorkspace = (rawWorkspace, defaultName) => {
   const loadedShowFeaturedBubbles = safeWorkspace?.showFeaturedBubbles !== false;
   const loadedBubbleLayout = ['map', 'right', 'bottom', 'freestyle'].includes(safeWorkspace?.bubbleLayout)
     ? safeWorkspace.bubbleLayout
-    : 'right';
+    : 'freestyle';
 
   const loadedUsers = Array.isArray(safeWorkspace?.users) && safeWorkspace.users.length
     ? safeWorkspace.users.map((user, index) => normalizeUser(user, index, defaultName))
@@ -871,7 +871,7 @@ const workspaceToPayload = ({
   recycleBin: pruneRecycleItems(Array.isArray(recycleBin) ? recycleBin : []),
   revision: Number.isInteger(revision) && revision >= 0 ? revision : 0,
   showFeaturedBubbles: showFeaturedBubbles !== false,
-  bubbleLayout: ['map', 'right', 'bottom', 'freestyle'].includes(bubbleLayout) ? bubbleLayout : 'right',
+  bubbleLayout: ['map', 'right', 'bottom', 'freestyle'].includes(bubbleLayout) ? bubbleLayout : 'freestyle',
   savedAt: new Date().toISOString(),
 });
 
@@ -894,7 +894,7 @@ const workspaceHash = ({
   recycleBin: pruneRecycleItems(Array.isArray(recycleBin) ? recycleBin : []),
   revision: Number.isInteger(revision) && revision >= 0 ? revision : 0,
   showFeaturedBubbles: showFeaturedBubbles !== false,
-  bubbleLayout: ['map', 'right', 'bottom', 'freestyle'].includes(bubbleLayout) ? bubbleLayout : 'right',
+  bubbleLayout: ['map', 'right', 'bottom', 'freestyle'].includes(bubbleLayout) ? bubbleLayout : 'freestyle',
 });
 
 const buildPhotoReadUrl = (photo, ownerId, options = {}) => {
@@ -1357,7 +1357,7 @@ function MapView({
   const [isAddUserExpanded, setIsAddUserExpanded] = useState(false);
   const [isUserEditExpanded, setIsUserEditExpanded] = useState(false);
   const [showFeaturedBubbles, setShowFeaturedBubbles] = useState(true);
-  const [bubbleLayout, setBubbleLayout] = useState('right');
+  const [bubbleLayout, setBubbleLayout] = useState('freestyle');
   const [selectedPointId, setSelectedPointId] = useState('');
 
   const [newUserName, setNewUserName] = useState('');
@@ -1956,39 +1956,113 @@ function MapView({
     const mapRect = mapInstance.getContainer().getBoundingClientRect();
     const width = Math.max(1, mapRect.width);
     const height = Math.max(1, mapRect.height);
-    const defaultOffsets = [
-      { x: 24, y: -12 },
-      { x: -24, y: -18 },
-      { x: 18, y: 14 },
-      { x: -20, y: 18 },
-      { x: 28, y: -24 },
-      { x: -28, y: 20 },
-    ];
+    const markerPixels = points.map((point) => {
+      const pixel = mapInstance.latLngToContainerPoint([point.latitude, point.longitude]);
+      return {
+        id: point.id,
+        x: pixel.x,
+        y: pixel.y,
+      };
+    });
+    const placedRects = [];
+    const candidateAngles = [22, 58, 96, 132, 168, 204, 238, 272, 306, 338];
+
+    const rectOverlapArea = (leftRect, rightRect) => {
+      const overlapX = Math.max(
+        0,
+        Math.min(leftRect.x + leftRect.w, rightRect.x + rightRect.w) - Math.max(leftRect.x, rightRect.x),
+      );
+      const overlapY = Math.max(
+        0,
+        Math.min(leftRect.y + leftRect.h, rightRect.y + rightRect.h) - Math.max(leftRect.y, rightRect.y),
+      );
+      return overlapX * overlapY;
+    };
 
     return dockFeaturedPoints.map((item, index) => {
       const bubbleSize = getPhotoBubbleSize(item.featuredPhoto);
       const markerPixel = mapInstance.latLngToContainerPoint([item.point.latitude, item.point.longitude]);
       const maxX = Math.max(0, width - bubbleSize.width);
       const maxY = Math.max(0, height - bubbleSize.height);
-      const slot = index % defaultOffsets.length;
-      const offset = defaultOffsets[slot];
-      const defaultX = clampCoord(markerPixel.x + offset.x, 0, maxX);
-      const defaultY = clampCoord(markerPixel.y + offset.y, 0, maxY);
       const normalizedX = Number.isFinite(item.point?.featuredBox?.x) ? clampCoord(item.point.featuredBox.x, 0, 1) : null;
       const normalizedY = Number.isFinite(item.point?.featuredBox?.y) ? clampCoord(item.point.featuredBox.y, 0, 1) : null;
+      let resolvedX = 0;
+      let resolvedY = 0;
+
+      if (normalizedX !== null && normalizedY !== null) {
+        resolvedX = clampCoord(normalizedX * maxX, 0, maxX);
+        resolvedY = clampCoord(normalizedY * maxY, 0, maxY);
+      } else {
+        let bestCandidate = null;
+        const baseAngleOffset = (index * 37) % 360;
+        const ringBase = 56;
+        const ringStep = 42;
+        for (let ring = 0; ring < 6; ring += 1) {
+          const distance = ringBase + ring * ringStep;
+          for (let angleIndex = 0; angleIndex < candidateAngles.length; angleIndex += 1) {
+            const angleDeg = (candidateAngles[angleIndex] + baseAngleOffset) % 360;
+            const angleRad = (Math.PI / 180) * angleDeg;
+            const candidateCenterX = markerPixel.x + Math.cos(angleRad) * distance;
+            const candidateCenterY = markerPixel.y + Math.sin(angleRad) * distance;
+            const candidateX = clampCoord(candidateCenterX - bubbleSize.width / 2, 0, maxX);
+            const candidateY = clampCoord(candidateCenterY - bubbleSize.height / 2, 0, maxY);
+            const candidateRect = {
+              x: candidateX,
+              y: candidateY,
+              w: bubbleSize.width,
+              h: bubbleSize.height,
+            };
+
+            let score = 0;
+            placedRects.forEach((rect) => {
+              score += rectOverlapArea(candidateRect, rect) * 5;
+            });
+            markerPixels.forEach((marker) => {
+              const markerSafeRect = {
+                x: marker.x - 12,
+                y: marker.y - 12,
+                w: 24,
+                h: 24,
+              };
+              const overlap = rectOverlapArea(candidateRect, markerSafeRect);
+              if (marker.id === item.point.id) {
+                score += overlap * 0.5;
+              } else {
+                score += overlap * 2.4;
+              }
+            });
+            // Prefer natural outward spread but keep connectors short-ish.
+            score += distance * 0.22 + Math.abs(candidateCenterY - markerPixel.y) * 0.08;
+
+            if (!bestCandidate || score < bestCandidate.score) {
+              bestCandidate = { x: candidateX, y: candidateY, score };
+            }
+          }
+        }
+
+        resolvedX = bestCandidate ? bestCandidate.x : clampCoord(markerPixel.x + 24, 0, maxX);
+        resolvedY = bestCandidate ? bestCandidate.y : clampCoord(markerPixel.y - 12, 0, maxY);
+      }
+
+      placedRects.push({
+        x: resolvedX,
+        y: resolvedY,
+        w: bubbleSize.width,
+        h: bubbleSize.height,
+      });
 
       return {
         ...item,
         bubbleSize,
         freestyleBox: {
-          x: normalizedX === null ? defaultX : clampCoord(normalizedX * maxX, 0, maxX),
-          y: normalizedY === null ? defaultY : clampCoord(normalizedY * maxY, 0, maxY),
+          x: resolvedX,
+          y: resolvedY,
           maxX,
           maxY,
         },
       };
     });
-  }, [bubbleLayout, dockFeaturedPoints, mapInstance]);
+  }, [bubbleLayout, dockFeaturedPoints, mapInstance, points]);
   const visiblePoints = useMemo(() => {
     if (!visibleBounds) {
       return points;
