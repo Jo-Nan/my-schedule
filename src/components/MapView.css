@@ -403,6 +403,21 @@
   box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
 }
 
+.map-user-item[draggable='true'] {
+  cursor: grab;
+}
+
+.map-user-item.dragging {
+  opacity: 0.72;
+  transform: scale(0.996);
+  cursor: grabbing;
+}
+
+.map-user-item.drag-over {
+  border-color: rgba(14, 165, 233, 0.62);
+  box-shadow: 0 0 0 1px rgba(14, 165, 233, 0.28);
+}
+
 .map-marker-list li {
   cursor: pointer;
 }
@@ -453,6 +468,28 @@
   display: flex;
   flex-direction: column;
   gap: 0.1rem;
+}
+
+.map-user-tail {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.3rem;
+}
+
+.map-user-delete-inline-btn {
+  font-size: var(--map-font-meta);
+  line-height: 1;
+  padding: 0.24rem 0.44rem;
+  border-radius: 8px;
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.46);
+  box-shadow: none;
+}
+
+.map-user-delete-inline-btn:hover {
+  border-color: rgba(239, 68, 68, 0.7);
+  background: rgba(239, 68, 68, 0.12);
 }
 
 .map-user-name,
@@ -590,7 +627,7 @@
 
 .map-user-edit-actions {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 0.48rem;
 }
 

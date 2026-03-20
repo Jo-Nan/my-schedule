@@ -186,6 +186,9 @@ const TEXTS = {
     renameUserBtn: 'Rename',
     updateUserBtn: 'Save user',
     deleteUserBtn: 'Delete user',
+    primaryUserTag: 'main',
+    primaryUserRenameHint: 'Main user name follows account name.',
+    primaryUserDeleteBlocked: 'Main user cannot be deleted.',
     cityTitle: 'Add City',
     cityInputLabel: 'Search city',
     cityInputPlaceholder: 'e.g. Shanghai, London, Tokyo',
@@ -342,6 +345,9 @@ const TEXTS = {
     renameUserBtn: '修改用户名',
     updateUserBtn: '保存用户',
     deleteUserBtn: '删除用户',
+    primaryUserTag: '主',
+    primaryUserRenameHint: '主用户名称跟随账号名。',
+    primaryUserDeleteBlocked: '主用户不可删除。',
     cityTitle: '添加城市',
     cityInputLabel: '输入城市',
     cityInputPlaceholder: '例如：上海、北京、London',
@@ -657,7 +663,101 @@ const normalizeUser = (user, index, fallbackName) => ({
     user?.regionColor,
     normalizeHexColor(user?.color, COLOR_PALETTE[index % COLOR_PALETTE.length]),
   ),
+  isPrimary: user?.isPrimary === true,
 });
+
+const resolvePrimaryUserName = (candidateName, fallbackName) => {
+  if (isNonEmpty(candidateName)) {
+    return candidateName.trim();
+  }
+  if (isNonEmpty(fallbackName)) {
+    return fallbackName.trim();
+  }
+  return 'User';
+};
+
+const reconcileUsersWithPrimary = (inputUsers, primaryName, fallbackName = 'User') => {
+  const safeUsers = Array.isArray(inputUsers)
+    ? inputUsers.map((user, index) => normalizeUser(user, index, fallbackName))
+    : [];
+  const expectedPrimaryName = resolvePrimaryUserName(primaryName, fallbackName);
+  const expectedPrimaryNameLower = expectedPrimaryName.toLowerCase();
+
+  let primaryIndex = safeUsers.findIndex((user) => user.isPrimary === true);
+  if (primaryIndex < 0) {
+    primaryIndex = safeUsers.findIndex((user) => user.name.toLowerCase() === expectedPrimaryNameLower);
+  }
+
+  let primaryUser = null;
+  let restUsers = [];
+
+  if (primaryIndex >= 0) {
+    const matched = safeUsers[primaryIndex];
+    primaryUser = {
+      ...matched,
+      name: expectedPrimaryName,
+      isPrimary: true,
+    };
+    restUsers = safeUsers
+      .filter((_, index) => index !== primaryIndex)
+      .map((user) => ({
+        ...user,
+        isPrimary: false,
+      }));
+  } else {
+    const fallbackColor = normalizeHexColor(COLOR_PALETTE[0], '#38bdf8');
+    primaryUser = {
+      id: makeId('user'),
+      name: expectedPrimaryName,
+      color: fallbackColor,
+      regionColor: fallbackColor,
+      isPrimary: true,
+    };
+    restUsers = safeUsers.map((user) => ({
+      ...user,
+      isPrimary: false,
+    }));
+  }
+
+  return [primaryUser, ...restUsers];
+};
+
+const areUserListsEqual = (left, right) => {
+  if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) {
+    return false;
+  }
+  for (let index = 0; index < left.length; index += 1) {
+    const a = left[index];
+    const b = right[index];
+    if (
+      a?.id !== b?.id
+      || a?.name !== b?.name
+      || a?.color !== b?.color
+      || a?.regionColor !== b?.regionColor
+      || (a?.isPrimary === true) !== (b?.isPrimary === true)
+    ) {
+      return false;
+    }
+  }
+  return true;
+};
+
+const reorderNonPrimaryUsers = (users, movingUserId, targetUserId) => {
+  if (!movingUserId || !targetUserId || movingUserId === targetUserId || !Array.isArray(users)) {
+    return users;
+  }
+  const primaryUser = users.find((user) => user?.isPrimary === true) || null;
+  const movableUsers = users.filter((user) => user?.isPrimary !== true);
+  const fromIndex = movableUsers.findIndex((user) => user.id === movingUserId);
+  const targetIndex = movableUsers.findIndex((user) => user.id === targetUserId);
+  if (fromIndex < 0 || targetIndex < 0) {
+    return users;
+  }
+  const reordered = [...movableUsers];
+  const [movingUser] = reordered.splice(fromIndex, 1);
+  reordered.splice(targetIndex, 0, movingUser);
+  return primaryUser ? [primaryUser, ...reordered] : reordered;
+};
 
 const normalizePoint = (point, index, users) => {
   const latitude = Number.parseFloat(point?.latitude);
@@ -1059,6 +1159,10 @@ const parseShareTokenInput = (value) => {
   }
   try {
     const url = new URL(trimmed);
+    const queryToken = (url.searchParams.get('share') || '').trim();
+    if (queryToken) {
+      return queryToken;
+    }
     const hash = url.hash.startsWith('#') ? url.hash.slice(1) : url.hash;
     const hashParams = new URLSearchParams(hash);
     const token = (hashParams.get('share') || '').trim();
@@ -1095,6 +1199,7 @@ const parseWorkspace = (rawWorkspace, defaultName) => {
     name: defaultName,
     color: COLOR_PALETTE[0],
     regionColor: COLOR_PALETTE[0],
+    isPrimary: true,
   };
 
   const safeWorkspace = rawWorkspace && typeof rawWorkspace === 'object' && !Array.isArray(rawWorkspace)
@@ -1107,9 +1212,10 @@ const parseWorkspace = (rawWorkspace, defaultName) => {
     ? safeWorkspace.bubbleLayout
     : 'freestyle';
 
-  const loadedUsers = Array.isArray(safeWorkspace?.users) && safeWorkspace.users.length
+  const loadedUsersRaw = Array.isArray(safeWorkspace?.users) && safeWorkspace.users.length
     ? safeWorkspace.users.map((user, index) => normalizeUser(user, index, defaultName))
     : [fallbackUser];
+  const loadedUsers = reconcileUsersWithPrimary(loadedUsersRaw, defaultName, defaultName);
 
   const loadedPoints = Array.isArray(safeWorkspace?.points)
     ? safeWorkspace.points
@@ -1693,6 +1799,8 @@ function MapView({
   const [editRegionColor, setEditRegionColor] = useState(COLOR_PALETTE[0]);
   const [editRegionRgb, setEditRegionRgb] = useState(hexToRgbString(COLOR_PALETTE[0]));
   const [expandedUserId, setExpandedUserId] = useState('');
+  const [draggingUserId, setDraggingUserId] = useState('');
+  const [dragOverUserId, setDragOverUserId] = useState('');
 
   const [cityQuery, setCityQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
@@ -1745,6 +1853,14 @@ function MapView({
   const regionLookupCacheRef = useRef(new Map());
   const regionLookupBusyRef = useRef(false);
   const placeSearchWrapRef = useRef(null);
+  const primaryUserName = useMemo(
+    () => resolvePrimaryUserName(activeUserName, language === 'zh' ? '用户' : 'User'),
+    [activeUserName, language],
+  );
+  const reconcileLocalUsers = useCallback(
+    (nextUsers) => reconcileUsersWithPrimary(nextUsers, primaryUserName, primaryUserName),
+    [primaryUserName],
+  );
 
   useEffect(() => () => {
     if (autoUploadTimerRef.current) {
@@ -1767,19 +1883,30 @@ function MapView({
   }, [isPlaceDropdownOpen]);
 
   useEffect(() => {
+    if (!users.length) {
+      return;
+    }
+    setUsers((previous) => {
+      const next = reconcileLocalUsers(previous);
+      return areUserListsEqual(previous, next) ? previous : next;
+    });
+  }, [reconcileLocalUsers, users.length]);
+
+  useEffect(() => {
     let cancelled = false;
 
     const loadWorkspace = async () => {
       const defaultName = sharedOwnerName || activeUserName || (language === 'zh' ? '用户' : 'User');
       if (readOnly && sharedWorkspace) {
         const loadedWorkspace = parseWorkspace(sharedWorkspace, defaultName);
+        const normalizedUsers = reconcileLocalUsers(loadedWorkspace.users);
         if (cancelled) {
           return;
         }
         localLoadedAtRef.current = loadedWorkspace.savedAtStamp;
         isLocalCacheTrustedRef.current = true;
         setScope(loadedWorkspace.scope);
-        setUsers(loadedWorkspace.users);
+        setUsers(normalizedUsers);
         setPoints(loadedWorkspace.points);
         setCollaborators(loadedWorkspace.collaborators);
         setSearchHistory(loadedWorkspace.searchHistory);
@@ -1794,8 +1921,8 @@ function MapView({
         setShareUrl((loadedShare.enabled || tokenFromProps) ? buildClientShareUrl(effectiveToken) : '');
         setShowFeaturedBubbles(loadedWorkspace.showFeaturedBubbles);
         setBubbleLayout(loadedWorkspace.bubbleLayout);
-        setSelectedUserId(loadedWorkspace.users[0]?.id || '');
-        setExpandedUserId(loadedWorkspace.users[0]?.id || '');
+        setSelectedUserId(normalizedUsers[0]?.id || '');
+        setExpandedUserId(normalizedUsers[0]?.id || '');
         setSelectedPointId('');
         setFormMessage('');
         setIsServerHydrated(true);
@@ -1824,10 +1951,11 @@ function MapView({
         return;
       }
 
+      const normalizedUsers = reconcileLocalUsers(loadedWorkspace.users);
       localLoadedAtRef.current = loadedWorkspace.savedAtStamp;
       isLocalCacheTrustedRef.current = localCacheTrusted;
       setScope(loadedWorkspace.scope);
-      setUsers(loadedWorkspace.users);
+      setUsers(normalizedUsers);
       setPoints(loadedWorkspace.points);
       setCollaborators(loadedWorkspace.collaborators);
       setSearchHistory(loadedWorkspace.searchHistory);
@@ -1840,8 +1968,8 @@ function MapView({
       setShareUrl(loadedShare.enabled ? buildClientShareUrl(loadedShare.token) : '');
       setShowFeaturedBubbles(loadedWorkspace.showFeaturedBubbles);
       setBubbleLayout(loadedWorkspace.bubbleLayout);
-      setSelectedUserId(loadedWorkspace.users[0]?.id || '');
-      setExpandedUserId(loadedWorkspace.users[0]?.id || '');
+      setSelectedUserId(normalizedUsers[0]?.id || '');
+      setExpandedUserId(normalizedUsers[0]?.id || '');
       setSelectedPointId('');
       setNewUserColor(COLOR_PALETTE[1]);
       setNewUserRgb(hexToRgbString(COLOR_PALETTE[1]));
@@ -1869,7 +1997,7 @@ function MapView({
     return () => {
       cancelled = true;
     };
-  }, [activeUserName, language, readOnly, sharedOwnerName, sharedToken, sharedWorkspace, storageKey]);
+  }, [activeUserName, language, readOnly, reconcileLocalUsers, sharedOwnerName, sharedToken, sharedWorkspace, storageKey]);
 
   useEffect(() => {
     if (readOnly || !isLoaded || !activeUserId) {
@@ -1906,8 +2034,9 @@ function MapView({
           || serverWorkspace.savedAtStamp >= localLoadedAtRef.current;
 
         if (shouldUseServerWorkspace) {
+          const normalizedUsers = reconcileLocalUsers(serverWorkspace.users);
           setScope(serverWorkspace.scope);
-          setUsers(serverWorkspace.users);
+          setUsers(normalizedUsers);
           setPoints(serverWorkspace.points);
           setCollaborators(serverWorkspace.collaborators);
           setSearchHistory(serverWorkspace.searchHistory);
@@ -1920,8 +2049,8 @@ function MapView({
           setShareUrl(serverShare.enabled ? buildClientShareUrl(serverShare.token) : '');
           setShowFeaturedBubbles(serverWorkspace.showFeaturedBubbles);
           setBubbleLayout(serverWorkspace.bubbleLayout);
-          setSelectedUserId(serverWorkspace.users[0]?.id || '');
-          setExpandedUserId(serverWorkspace.users[0]?.id || '');
+          setSelectedUserId(normalizedUsers[0]?.id || '');
+          setExpandedUserId(normalizedUsers[0]?.id || '');
           setSelectedPointId('');
         }
       } catch {
@@ -1938,7 +2067,7 @@ function MapView({
     return () => {
       cancelled = true;
     };
-  }, [activeUserId, activeUserName, isLoaded, language, readOnly]);
+  }, [activeUserId, activeUserName, isLoaded, language, readOnly, reconcileLocalUsers]);
 
   useEffect(() => {
     if (readOnly || !isLoaded || !storageKey) {
@@ -2029,8 +2158,9 @@ function MapView({
           const shouldLoadLatest = window.confirm(`${text.conflictDetected}\n${text.conflictLoadLatest}`);
           if (shouldLoadLatest) {
             const latest = parseWorkspace(result.workspace, defaultName);
+            const normalizedUsers = reconcileLocalUsers(latest.users);
             setScope(latest.scope);
-            setUsers(latest.users);
+            setUsers(normalizedUsers);
             setPoints(latest.points);
             setCollaborators(latest.collaborators);
             setSearchHistory(latest.searchHistory);
@@ -2043,8 +2173,8 @@ function MapView({
             setShareUrl(latestShare.enabled ? buildClientShareUrl(latestShare.token) : '');
             setShowFeaturedBubbles(latest.showFeaturedBubbles);
             setBubbleLayout(latest.bubbleLayout);
-            setSelectedUserId(latest.users[0]?.id || '');
-            setExpandedUserId(latest.users[0]?.id || '');
+            setSelectedUserId(normalizedUsers[0]?.id || '');
+            setExpandedUserId(normalizedUsers[0]?.id || '');
             setSelectedPointId('');
             lastServerHashRef.current = workspaceHash(latest);
             setFormMessage(text.conflictLoadedLatest);
@@ -2121,6 +2251,7 @@ function MapView({
     text.conflictLoadedLatest,
     text.conflictNoAction,
     text.conflictOverwriteSuccess,
+    reconcileLocalUsers,
     users,
     workspaceRevision,
   ]);
@@ -2143,6 +2274,15 @@ function MapView({
       setExpandedUserId(allUserIds[0]);
     }
   }, [collaborators, expandedUserId, selectedUserId, users]);
+
+  useEffect(() => {
+    if (draggingUserId && !users.some((user) => user.id === draggingUserId)) {
+      setDraggingUserId('');
+    }
+    if (dragOverUserId && !users.some((user) => user.id === dragOverUserId)) {
+      setDragOverUserId('');
+    }
+  }, [dragOverUserId, draggingUserId, users]);
 
   useEffect(() => {
     if (!selectedPointId) {
@@ -2971,9 +3111,10 @@ function MapView({
       name,
       color: normalizeHexColor(parsedHex, COLOR_PALETTE[users.length % COLOR_PALETTE.length]),
       regionColor: normalizeHexColor(parsedHex, COLOR_PALETTE[users.length % COLOR_PALETTE.length]),
+      isPrimary: false,
     };
 
-    setUsers((previous) => [...previous, user]);
+    setUsers((previous) => reconcileLocalUsers([...previous, user]));
     setSelectedUserId(user.id);
     setExpandedUserId(user.id);
     setNewUserName('');
@@ -2994,13 +3135,15 @@ function MapView({
       return;
     }
 
-    const nextName = editUserName.trim();
+    const nextName = selectedUser.isPrimary
+      ? primaryUserName
+      : editUserName.trim();
     if (!nextName) {
       setFormMessage(text.needUserName);
       return;
     }
 
-    if (selectedUser) {
+    if (!selectedUser.isPrimary) {
       if (users.some((user) => user.id !== selectedUser.id && user.name.toLowerCase() === nextName.toLowerCase())) {
         setFormMessage(text.duplicateUserName);
         return;
@@ -3023,7 +3166,7 @@ function MapView({
       selectedUser?.regionColor || normalizedColor,
     );
 
-    setUsers((previous) => previous.map((user) => (
+    setUsers((previous) => reconcileLocalUsers(previous.map((user) => (
       user.id === selectedUser.id
         ? {
           ...user,
@@ -3032,18 +3175,24 @@ function MapView({
           regionColor: normalizedRegionColor,
         }
         : user
-    )));
+    ))));
 
+    if (selectedUser.isPrimary && editUserName.trim() && editUserName.trim() !== primaryUserName) {
+      setFormMessage(text.primaryUserRenameHint);
+      return;
+    }
     setFormMessage('');
   };
 
-  const handleDeleteUser = () => {
-    if (selectedCollaborator) {
-      setFormMessage(text.collaboratorReadonlyImported);
+  const handleDeleteUser = (targetUserId = '') => {
+    const resolvedUserId = targetUserId || selectedUserId;
+    const targetUser = users.find((user) => user.id === resolvedUserId) || null;
+    if (!targetUser) {
+      setFormMessage(text.needUserSelect);
       return;
     }
-    if (!selectedUser) {
-      setFormMessage(text.needUserSelect);
+    if (targetUser.isPrimary) {
+      setFormMessage(text.primaryUserDeleteBlocked);
       return;
     }
 
@@ -3052,40 +3201,41 @@ function MapView({
       return;
     }
 
-    const fallbackUser = users.find((user) => user.id !== selectedUser.id);
+    const fallbackUser = users.find((user) => user.id !== targetUser.id && user.isPrimary)
+      || users.find((user) => user.id !== targetUser.id);
     if (!fallbackUser) {
       setFormMessage(text.cannotDeleteLastUser);
       return;
     }
 
     const shouldDelete = confirmDangerAction(
-      `${text.deleteUserConfirm} "${selectedUser.name}"\n${text.userDeleteReassign} "${fallbackUser.name}"`,
-      `${text.dangerSecondConfirm}\n"${selectedUser.name}"`,
+      `${text.deleteUserConfirm} "${targetUser.name}"\n${text.userDeleteReassign} "${fallbackUser.name}"`,
+      `${text.dangerSecondConfirm}\n"${targetUser.name}"`,
     );
     if (!shouldDelete) {
       return;
     }
 
     setPoints((previous) => previous.map((point) => (
-      point.userId === selectedUser.id
+      point.userId === targetUser.id
         ? { ...point, userId: fallbackUser.id }
         : point
     )));
     const movedPointIds = points
-      .filter((point) => point.userId === selectedUser.id)
+      .filter((point) => point.userId === targetUser.id)
       .map((point) => point.id);
     pushRecycleItem({
       kind: 'user',
-      title: selectedUser.name,
+      title: targetUser.name,
       payload: {
-        user: selectedUser,
+        user: targetUser,
         fallbackUserId: fallbackUser.id,
         movedPointIds,
       },
     });
-    setUsers((previous) => previous.filter((user) => user.id !== selectedUser.id));
-    setSelectedUserId(fallbackUser.id);
-    setExpandedUserId(fallbackUser.id);
+    setUsers((previous) => reconcileLocalUsers(previous.filter((user) => user.id !== targetUser.id)));
+    setSelectedUserId((previous) => (previous === targetUser.id ? fallbackUser.id : previous));
+    setExpandedUserId((previous) => (previous === targetUser.id ? fallbackUser.id : previous));
     setFormMessage('');
   };
 
@@ -3138,6 +3288,7 @@ function MapView({
       name: nextName,
       color,
       regionColor,
+      isPrimary: false,
     };
     const copiedPoints = collaborator.points.map((point) => ({
       id: makeId('point'),
@@ -3153,17 +3304,62 @@ function MapView({
       featuredBox: null,
     }));
 
-    setUsers((previous) => [...previous, nextUser]);
+    setUsers((previous) => reconcileLocalUsers([...previous, nextUser]));
     setPoints((previous) => [...previous, ...copiedPoints]);
     setSelectedUserId(nextUser.id);
     setExpandedUserId(nextUser.id);
     setIsUserEditExpanded(true);
     setFormMessage(text.collaboratorCopySuccess);
-  }, [collaborators, text.collaboratorCopySuccess, users]);
+  }, [collaborators, reconcileLocalUsers, text.collaboratorCopySuccess, users]);
 
   const handleEditPointFromUserList = (pointId) => {
     setSelectedPointId(pointId);
   };
+
+  const canDragLocalUser = useCallback((user) => (
+    Boolean(user && !readOnly && !user.isCollaborator && !user.isPrimary)
+  ), [readOnly]);
+
+  const handleUserDragStart = useCallback((event, user) => {
+    if (!canDragLocalUser(user)) {
+      event.preventDefault();
+      return;
+    }
+    setDraggingUserId(user.id);
+    setDragOverUserId('');
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', user.id);
+  }, [canDragLocalUser]);
+
+  const handleUserDragOver = useCallback((event, user) => {
+    if (!canDragLocalUser(user) || !draggingUserId || draggingUserId === user.id) {
+      return;
+    }
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    setDragOverUserId(user.id);
+  }, [canDragLocalUser, draggingUserId]);
+
+  const handleUserDrop = useCallback((event, user) => {
+    if (!canDragLocalUser(user)) {
+      return;
+    }
+    event.preventDefault();
+    const sourceUserId = draggingUserId || event.dataTransfer.getData('text/plain');
+    if (!sourceUserId || sourceUserId === user.id) {
+      setDraggingUserId('');
+      setDragOverUserId('');
+      return;
+    }
+    setUsers((previous) => reconcileLocalUsers(reorderNonPrimaryUsers(previous, sourceUserId, user.id)));
+    setDraggingUserId('');
+    setDragOverUserId('');
+  }, [canDragLocalUser, draggingUserId, reconcileLocalUsers]);
+
+  const handleUserDragEnd = useCallback(() => {
+    setDraggingUserId('');
+    setDragOverUserId('');
+  }, []);
 
   const confirmDangerAction = (firstMessage, secondMessage = text.dangerSecondConfirm) => {
     if (!window.confirm(firstMessage)) {
@@ -4104,7 +4300,7 @@ function MapView({
       const fallbackUserId = target.payload?.fallbackUserId;
       const movedPointIds = Array.isArray(target.payload?.movedPointIds) ? target.payload.movedPointIds : [];
       if (restoredUser && !users.some((user) => user.id === restoredUser.id)) {
-        setUsers((previous) => [...previous, restoredUser]);
+        setUsers((previous) => reconcileLocalUsers([...previous, restoredUser]));
       }
       if (restoredUser) {
         setSelectedUserId(restoredUser.id);
@@ -4383,16 +4579,23 @@ function MapView({
                 const markerCount = markerCountByUser[user.id] || 0;
                 const isExpanded = expandedUserId === user.id;
                 const regionColor = normalizeHexColor(user.regionColor, user.color);
+                const canDrag = canDragLocalUser(user);
+                const canDelete = !readOnly && !user.isCollaborator && !user.isPrimary;
                 return (
                   <li
                     key={user.id}
-                    className={`map-user-item ${selectedUserId === user.id ? 'active' : ''}`}
+                    className={`map-user-item ${selectedUserId === user.id ? 'active' : ''} ${draggingUserId === user.id ? 'dragging' : ''} ${dragOverUserId === user.id ? 'drag-over' : ''}`}
                     onClick={() => {
                       setSelectedUserId(user.id);
                       setExpandedUserId((previous) => (previous === user.id ? '' : user.id));
                     }}
                     role="button"
                     tabIndex={0}
+                    draggable={canDrag}
+                    onDragStart={(event) => handleUserDragStart(event, user)}
+                    onDragOver={(event) => handleUserDragOver(event, user)}
+                    onDrop={(event) => handleUserDrop(event, user)}
+                    onDragEnd={handleUserDragEnd}
                     onKeyDown={(event) => {
                       if (event.key === 'Enter' || event.key === ' ') {
                         event.preventDefault();
@@ -4408,6 +4611,7 @@ function MapView({
                     <div className="map-user-main">
                       <span className="map-user-name">
                         {user.name}
+                        {!user.isCollaborator && user.isPrimary ? ` (${text.primaryUserTag})` : ''}
                         {user.isCollaborator ? ` (${text.collaboratorFriendTag})` : ''}
                       </span>
                       <span className="map-user-submeta">
@@ -4415,9 +4619,23 @@ function MapView({
                         {user.hidden ? ` · ${text.collaboratorHideBtn}` : ''}
                       </span>
                     </div>
-                    <span className="map-user-count">
-                      {isExpanded ? '▾' : '▸'}
-                    </span>
+                    <div className="map-user-tail">
+                      {canDelete && (
+                        <button
+                          type="button"
+                          className="glass-button map-user-delete-inline-btn"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleDeleteUser(user.id);
+                          }}
+                        >
+                          {text.deleteUserBtn}
+                        </button>
+                      )}
+                      <span className="map-user-count">
+                        {isExpanded ? '▾' : '▸'}
+                      </span>
+                    </div>
                   </li>
                 );
               })}
@@ -4465,6 +4683,9 @@ function MapView({
                 {selectedCollaborator && (
                   <p className="map-muted">{text.collaboratorReadonlyImported}</p>
                 )}
+                {!selectedCollaborator && selectedUser?.isPrimary && (
+                  <p className="map-muted">{text.primaryUserRenameHint}</p>
+                )}
                 <div className="map-user-edit-preview">
                   <div className="map-user-edit-preview-swatch">
                     <span style={{ backgroundColor: editUserColor }} />
@@ -4483,7 +4704,7 @@ function MapView({
                   value={editUserName}
                   placeholder={text.editUserNamePlaceholder}
                   onChange={(event) => setEditUserName(event.target.value)}
-                  disabled={!selectedUser}
+                  disabled={!selectedUser || selectedUser.isPrimary}
                 />
                 <div className="map-inline-grid">
                   <div>
@@ -4547,14 +4768,6 @@ function MapView({
                     disabled={!selectedUser}
                   >
                     {text.updateUserBtn}
-                  </button>
-                  <button
-                    type="button"
-                    className="glass-button map-danger-btn map-user-edit-action-btn"
-                    onClick={handleDeleteUser}
-                    disabled={!selectedUser || users.length <= 1}
-                  >
-                    {text.deleteUserBtn}
                   </button>
                 </div>
               </div>
