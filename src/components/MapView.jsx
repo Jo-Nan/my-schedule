@@ -84,6 +84,20 @@ const CHINA_PROVINCE_ALIASES = {
   澳门特别行政区: '澳门',
   台湾省: '台湾',
 };
+const CHINA_REGION_CODES = new Set(['CN', 'HK', 'MO', 'TW']);
+const CHINA_REGION_NAME_MAP = {
+  香港: '香港',
+  中国香港: '香港',
+  香港特别行政区: '香港',
+  澳门: '澳门',
+  中国澳门: '澳门',
+  澳门特别行政区: '澳门',
+  台湾: '台湾',
+  中国台湾: '台湾',
+  台湾省: '台湾',
+  中国: '',
+  中华人民共和国: '',
+};
 
 const openMapDatabase = () => new Promise((resolve, reject) => {
   if (typeof window === 'undefined' || !window.indexedDB) {
@@ -153,6 +167,9 @@ const TEXTS = {
     editUserNamePlaceholder: 'Rename selected user',
     colorHexLabel: 'Color block',
     colorRgbLabel: 'RGB',
+    regionColorLabel: 'Highlight color',
+    regionColorRgbLabel: 'Highlight RGB',
+    regionPreviewLabel: 'Preview',
     addUserBtn: 'Add user',
     renameUserBtn: 'Rename',
     updateUserBtn: 'Save user',
@@ -288,6 +305,9 @@ const TEXTS = {
     editUserNamePlaceholder: '修改当前选中用户名',
     colorHexLabel: '色块选择',
     colorRgbLabel: 'RGB',
+    regionColorLabel: '点亮颜色',
+    regionColorRgbLabel: '点亮 RGB',
+    regionPreviewLabel: '预览',
     addUserBtn: '添加用户',
     renameUserBtn: '修改用户名',
     updateUserBtn: '保存用户',
@@ -452,18 +472,45 @@ const normalizeChinaCityName = (value) => {
     .trim();
 };
 
+const isChinaRegion = (countryCode, countryName) => (
+  CHINA_REGION_CODES.has(normalizeCountryCode(countryCode))
+  || Object.prototype.hasOwnProperty.call(CHINA_REGION_NAME_MAP, String(countryName || '').trim())
+);
+
+const inferChinaProvinceName = (countryCode, countryName, fallbackProvince) => {
+  const normalizedFallback = normalizeChinaProvinceName(fallbackProvince);
+  if (normalizedFallback) {
+    return normalizedFallback;
+  }
+  const normalizedCode = normalizeCountryCode(countryCode);
+  if (normalizedCode === 'HK') {
+    return '香港';
+  }
+  if (normalizedCode === 'MO') {
+    return '澳门';
+  }
+  if (normalizedCode === 'TW') {
+    return '台湾';
+  }
+  const normalizedCountryName = String(countryName || '').trim();
+  return CHINA_REGION_NAME_MAP[normalizedCountryName] || '';
+};
+
 const normalizeRegionMeta = (value) => {
   const lookupStatus = value?.lookupStatus === 'failed'
     ? 'failed'
     : (value?.lookupStatus === 'resolved' ? 'resolved' : 'pending');
   const countryCode = normalizeCountryCode(value?.countryCode);
-  const isChina = value?.isChina === true || countryCode === 'CN';
+  const countryName = isNonEmpty(value?.countryName) ? value.countryName.trim() : '';
+  const isChina = value?.isChina === true || isChinaRegion(countryCode, countryName);
   return {
     lookupStatus,
     isChina,
     countryCode,
-    countryName: isNonEmpty(value?.countryName) ? value.countryName.trim() : '',
-    provinceName: normalizeChinaProvinceName(value?.provinceName),
+    countryName,
+    provinceName: isChina
+      ? inferChinaProvinceName(countryCode, countryName, value?.provinceName)
+      : '',
     cityName: normalizeChinaCityName(value?.cityName),
   };
 };
@@ -476,7 +523,7 @@ const extractRegionMeta = (result) => {
     pickFirstNonEmpty(address.country_code, result?.country_code, result?.countryCode),
   );
   const countryName = pickFirstNonEmpty(address.country, result?.country, result?.countryName);
-  const isChina = countryCode === 'CN' || countryName === '中国';
+  const isChina = isChinaRegion(countryCode, countryName);
   const rawProvince = pickFirstNonEmpty(
     address.state,
     address.province,
@@ -558,6 +605,10 @@ const normalizeUser = (user, index, fallbackName) => ({
   id: isNonEmpty(user?.id) ? user.id : makeId(`user_${index}`),
   name: isNonEmpty(user?.name) ? user.name.trim() : `${fallbackName} ${index + 1}`,
   color: normalizeHexColor(user?.color, COLOR_PALETTE[index % COLOR_PALETTE.length]),
+  regionColor: normalizeHexColor(
+    user?.regionColor,
+    normalizeHexColor(user?.color, COLOR_PALETTE[index % COLOR_PALETTE.length]),
+  ),
 });
 
 const normalizePoint = (point, index, users) => {
@@ -1498,6 +1549,8 @@ function MapView({
   const [editUserName, setEditUserName] = useState('');
   const [editUserColor, setEditUserColor] = useState(COLOR_PALETTE[0]);
   const [editUserRgb, setEditUserRgb] = useState(hexToRgbString(COLOR_PALETTE[0]));
+  const [editRegionColor, setEditRegionColor] = useState(COLOR_PALETTE[0]);
+  const [editRegionRgb, setEditRegionRgb] = useState(hexToRgbString(COLOR_PALETTE[0]));
   const [expandedUserId, setExpandedUserId] = useState('');
 
   const [cityQuery, setCityQuery] = useState('');
@@ -1928,7 +1981,7 @@ function MapView({
     if (!users.some((user) => user.id === selectedUserId)) {
       setSelectedUserId(users[0].id);
     }
-    if (!users.some((user) => user.id === expandedUserId)) {
+    if (expandedUserId && !users.some((user) => user.id === expandedUserId)) {
       setExpandedUserId(users[0].id);
     }
   }, [expandedUserId, selectedUserId, users]);
@@ -2262,6 +2315,34 @@ function MapView({
     [points, selectedPointId],
   );
   const selectedPointOwner = selectedPoint ? userMap.get(selectedPoint.userId) : null;
+  const provinceVisitColorMap = useMemo(() => {
+    const map = new Map();
+    points.forEach((point) => {
+      const provinceName = normalizeChinaProvinceName(point.regionMeta?.provinceName);
+      if (!point.regionMeta?.isChina || !provinceName) {
+        return;
+      }
+      const owner = userMap.get(point.userId);
+      map.set(provinceName, normalizeHexColor(owner?.regionColor, normalizeHexColor(owner?.color, '#f97316')));
+    });
+    return map;
+  }, [points, userMap]);
+  const countryVisitColorMap = useMemo(() => {
+    const map = new Map();
+    points.forEach((point) => {
+      if (point.regionMeta?.isChina) {
+        return;
+      }
+      const countryKey = normalizeCountryCode(point.regionMeta?.countryCode)
+        || (point.regionMeta?.countryName || '').trim();
+      if (!countryKey) {
+        return;
+      }
+      const owner = userMap.get(point.userId);
+      map.set(countryKey, normalizeHexColor(owner?.regionColor, normalizeHexColor(owner?.color, '#0284c7')));
+    });
+    return map;
+  }, [points, userMap]);
   const visitedProvinceSet = useMemo(() => new Set(
     points
       .filter((point) => point.regionMeta?.isChina && isNonEmpty(point.regionMeta?.provinceName))
@@ -2272,35 +2353,42 @@ function MapView({
       .filter((point) => point.regionMeta?.isChina && isNonEmpty(point.regionMeta?.cityName))
       .map((point) => normalizeChinaCityName(point.regionMeta.cityName)),
   ), [points]);
+  const hasChinaVisit = useMemo(
+    () => points.some((point) => point.regionMeta?.isChina),
+    [points],
+  );
   const visitedCountrySet = useMemo(() => new Set(
     points
       .filter((point) => !point.regionMeta?.isChina)
       .map((point) => normalizeCountryCode(point.regionMeta?.countryCode) || (point.regionMeta?.countryName || '').trim())
       .filter(Boolean),
   ), [points]);
+  const visitedCountryCount = visitedCountrySet.size + (hasChinaVisit ? 1 : 0);
   const chinaProvinceStyle = useCallback((feature) => {
     const provinceName = normalizeChinaProvinceName(feature?.properties?.name);
     const isVisited = visitedProvinceSet.has(provinceName);
+    const edgeColor = provinceVisitColorMap.get(provinceName) || '#f97316';
     return {
-      color: isVisited ? '#f97316' : 'rgba(15, 23, 42, 0.18)',
+      color: isVisited ? edgeColor : 'rgba(15, 23, 42, 0.18)',
       weight: isVisited ? 1.4 : 0.8,
-      fillColor: isVisited ? 'rgba(249, 115, 22, 0.32)' : 'rgba(255, 255, 255, 0.02)',
-      fillOpacity: isVisited ? 0.5 : 0.08,
+      fillColor: isVisited ? edgeColor : 'rgba(255, 255, 255, 0.02)',
+      fillOpacity: isVisited ? 0.22 : 0.08,
       dashArray: isVisited ? null : '2 5',
     };
-  }, [visitedProvinceSet]);
+  }, [provinceVisitColorMap, visitedProvinceSet]);
   const worldCountryStyle = useCallback((feature) => {
     const countryCode = normalizeCountryCode(feature?.properties?.iso_a2);
     const countryName = isNonEmpty(feature?.properties?.name) ? feature.properties.name.trim() : '';
     const isVisited = visitedCountrySet.has(countryCode) || visitedCountrySet.has(countryName);
+    const edgeColor = countryVisitColorMap.get(countryCode) || countryVisitColorMap.get(countryName) || '#0284c7';
     return {
-      color: isVisited ? '#0284c7' : 'rgba(15, 23, 42, 0.14)',
+      color: isVisited ? edgeColor : 'rgba(15, 23, 42, 0.14)',
       weight: isVisited ? 1.2 : 0.6,
-      fillColor: isVisited ? 'rgba(14, 165, 233, 0.26)' : 'rgba(255, 255, 255, 0.02)',
-      fillOpacity: isVisited ? 0.42 : 0.06,
+      fillColor: isVisited ? edgeColor : 'rgba(255, 255, 255, 0.02)',
+      fillOpacity: isVisited ? 0.18 : 0.06,
       dashArray: isVisited ? null : '2 5',
     };
-  }, [visitedCountrySet]);
+  }, [countryVisitColorMap, visitedCountrySet]);
   const uploadProcessedCount = uploadQueueStatus.completed + uploadQueueStatus.failed;
   const uploadProgressPercent = uploadQueueStatus.total > 0
     ? Math.round((uploadProcessedCount / uploadQueueStatus.total) * 100)
@@ -2522,9 +2610,12 @@ function MapView({
   useEffect(() => {
     setEditUserName(selectedUser?.name || '');
     const selectedColor = normalizeHexColor(selectedUser?.color, COLOR_PALETTE[0]);
+    const selectedRegionColor = normalizeHexColor(selectedUser?.regionColor, selectedColor);
     setEditUserColor(selectedColor);
     setEditUserRgb(hexToRgbString(selectedColor));
-  }, [selectedUser?.id, selectedUser?.name, selectedUser?.color]);
+    setEditRegionColor(selectedRegionColor);
+    setEditRegionRgb(hexToRgbString(selectedRegionColor));
+  }, [selectedUser?.color, selectedUser?.id, selectedUser?.name, selectedUser?.regionColor]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2615,6 +2706,15 @@ function MapView({
     }
   };
 
+  const handleEditRegionRgbChange = (value) => {
+    setEditRegionRgb(value);
+    const parsed = rgbToHex(value);
+    if (parsed) {
+      setEditRegionColor(parsed);
+      setFormMessage('');
+    }
+  };
+
   const handleAddUser = () => {
     const name = newUserName.trim();
     if (!name) {
@@ -2637,6 +2737,7 @@ function MapView({
       id: makeId('user'),
       name,
       color: normalizeHexColor(parsedHex, COLOR_PALETTE[users.length % COLOR_PALETTE.length]),
+      regionColor: normalizeHexColor(parsedHex, COLOR_PALETTE[users.length % COLOR_PALETTE.length]),
     };
 
     setUsers((previous) => [...previous, user]);
@@ -2672,11 +2773,22 @@ function MapView({
       setFormMessage(text.invalidRgb);
       return;
     }
+    const parsedRegionColor = rgbToHex(editRegionRgb);
+    if (!parsedRegionColor) {
+      setFormMessage(text.invalidRgb);
+      return;
+    }
     const normalizedColor = normalizeHexColor(parsedColor, selectedUser.color);
+    const normalizedRegionColor = normalizeHexColor(parsedRegionColor, selectedUser.regionColor || normalizedColor);
 
     setUsers((previous) => previous.map((user) => (
       user.id === selectedUser.id
-        ? { ...user, name: nextName, color: normalizedColor }
+        ? {
+            ...user,
+            name: nextName,
+            color: normalizedColor,
+            regionColor: normalizedRegionColor,
+          }
         : user
     )));
     setFormMessage('');
@@ -3748,6 +3860,22 @@ function MapView({
 
       <div className="map-view-layout">
         <aside className="map-sidebar">
+          <section className="map-panel map-sidebar-stats-panel">
+            <div className="map-visited-stats-card map-visited-stats-card-sidebar">
+              <span className="map-visited-stats-title">{text.visitedStatsTitle}</span>
+              <div className="map-visited-stats-grid">
+                <div className="map-visited-stat-pill">
+                  <strong>{visitedCitySet.size}</strong>
+                  <span>{text.visitedCityCountLabel}</span>
+                </div>
+                <div className="map-visited-stat-pill">
+                  <strong>{visitedCountryCount}</strong>
+                  <span>{text.visitedCountryCountLabel}</span>
+                </div>
+              </div>
+            </div>
+          </section>
+
           <section className="map-panel">
             <div className="map-user-panel-head">
               {!readOnly && (
@@ -3765,6 +3893,7 @@ function MapView({
               {users.map((user) => {
                 const markerCount = markerCountByUser[user.id] || 0;
                 const isExpanded = expandedUserId === user.id;
+                const regionColor = normalizeHexColor(user.regionColor, user.color);
                 return (
                   <li
                     key={user.id}
@@ -3783,10 +3912,18 @@ function MapView({
                       }
                     }}
                   >
-                    <span className="map-user-dot" style={{ backgroundColor: user.color }} />
-                    <span className="map-user-name">{user.name}</span>
+                    <div className="map-user-dot-stack">
+                      <span className="map-user-dot" style={{ backgroundColor: user.color }} />
+                      <span className="map-user-region-dot" style={{ backgroundColor: regionColor }} />
+                    </div>
+                    <div className="map-user-main">
+                      <span className="map-user-name">{user.name}</span>
+                      <span className="map-user-submeta">
+                        {markerCount} {text.userPointsLabel}
+                      </span>
+                    </div>
                     <span className="map-user-count">
-                      {markerCount} {text.userPointsLabel} {isExpanded ? '▾' : '▸'}
+                      {isExpanded ? '▾' : '▸'}
                     </span>
                   </li>
                 );
@@ -3831,6 +3968,17 @@ function MapView({
 
             {!readOnly && isUserEditExpanded && (
               <div className="map-user-edit-box">
+                <div className="map-user-edit-preview">
+                  <div className="map-user-edit-preview-swatch">
+                    <span style={{ backgroundColor: editUserColor }} />
+                    <span style={{ backgroundColor: editRegionColor }} />
+                  </div>
+                  <div className="map-user-edit-preview-text">
+                    <strong>{selectedUser?.name || text.editUserTitle}</strong>
+                    <span>{text.regionPreviewLabel}</span>
+                  </div>
+                </div>
+
                 <label className="map-label" htmlFor="map_edit_user_name">{text.editUserTitle}</label>
                 <input
                   id="map_edit_user_name"
@@ -3863,6 +4011,33 @@ function MapView({
                       className="glass-input"
                       value={editUserRgb}
                       onChange={(event) => handleEditRgbChange(event.target.value)}
+                      disabled={!selectedUser}
+                    />
+                  </div>
+                </div>
+                <div className="map-inline-grid">
+                  <div>
+                    <label className="map-label" htmlFor="map_edit_region_color_hex">{text.regionColorLabel}</label>
+                    <input
+                      id="map_edit_region_color_hex"
+                      type="color"
+                      className="map-color-input"
+                      value={editRegionColor}
+                      onChange={(event) => {
+                        setEditRegionColor(event.target.value);
+                        setEditRegionRgb(hexToRgbString(event.target.value));
+                        setFormMessage('');
+                      }}
+                      disabled={!selectedUser}
+                    />
+                  </div>
+                  <div>
+                    <label className="map-label" htmlFor="map_edit_region_color_rgb">{text.regionColorRgbLabel}</label>
+                    <input
+                      id="map_edit_region_color_rgb"
+                      className="glass-input"
+                      value={editRegionRgb}
+                      onChange={(event) => handleEditRegionRgbChange(event.target.value)}
                       disabled={!selectedUser}
                     />
                   </div>
@@ -4294,19 +4469,6 @@ function MapView({
             <div className="map-canvas-overlay-head">
               <div className="map-canvas-headline">
                 {scope === 'china' ? text.chinaScope : text.worldScope}
-              </div>
-              <div className="map-visited-stats-card">
-                <span className="map-visited-stats-title">{text.visitedStatsTitle}</span>
-                <div className="map-visited-stats-grid">
-                  <div className="map-visited-stat-pill">
-                    <strong>{visitedCitySet.size}</strong>
-                    <span>{text.visitedCityCountLabel}</span>
-                  </div>
-                  <div className="map-visited-stat-pill">
-                    <strong>{visitedCountrySet.size}</strong>
-                    <span>{text.visitedCountryCountLabel}</span>
-                  </div>
-                </div>
               </div>
             </div>
             <MapContainer

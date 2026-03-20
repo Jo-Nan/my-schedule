@@ -1,4 +1,4 @@
-import { parseJsonBody, setSessionCookie, clearSessionCookie, requireAuth, getAuthenticatedUser } from './_lib/auth.js';
+import { parseJsonBody, setSessionCookie, clearSessionCookie, getAuthenticatedUser, isAuthConfigError } from './_lib/auth.js';
 import {
   ensureDataStore,
   findActiveUserByEmail,
@@ -55,7 +55,10 @@ export default async function handler(req, res) {
     let auth = null;
     try {
       auth = await withTimeout(getAuthenticatedUser(req), AUTH_SESSION_CHECK_TIMEOUT_MS);
-    } catch {
+    } catch (error) {
+      if (isAuthConfigError(error)) {
+        return res.status(500).json({ status: 'error', message: error.message });
+      }
       // Fail closed so client can show login UI instead of hanging forever.
       clearSessionCookie(res);
       return res.status(401).json({ status: 'error', message: 'Unauthorized' });
