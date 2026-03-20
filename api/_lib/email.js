@@ -1,6 +1,15 @@
 const resendApiUrl = 'https://api.resend.com/emails';
+const EMAIL_DELIVERY_ENABLED = false;
 
 const sendEmail = async ({ to, subject, text }) => {
+  if (!EMAIL_DELIVERY_ENABLED) {
+    return {
+      sent: false,
+      skipped: true,
+      reason: 'Email delivery disabled in privacy mode',
+    };
+  }
+
   const apiKey = process.env.RESEND_API_KEY;
   const fromEmail = process.env.MAIL_FROM || process.env.RESEND_FROM;
 

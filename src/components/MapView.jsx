@@ -56,10 +56,6 @@ const FEATURED_BUBBLE_ANCHOR_ICON = divIcon({
   iconAnchor: [0, 0],
 });
 
-const MAP_DB_NAME = 'nanmuz_map_workspace_db';
-const MAP_DB_VERSION = 1;
-const MAP_DB_STORE = 'workspace';
-
 const MAX_UPLOAD_FILE_MB = 12;
 const MAX_CANVAS_EDGE = 1920;
 const MAX_THUMBNAIL_EDGE = 560;
@@ -69,6 +65,7 @@ const RECYCLE_BIN_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_PLACE_HISTORY = 12;
 const MAX_FAVORITE_PLACES = 16;
 const REGION_LOOKUP_ZOOM = 10;
+const REMOTE_GEOCODING_ENABLED = false;
 
 const CHINA_PROVINCE_ALIASES = {
   北京市: '北京',
@@ -99,51 +96,23 @@ const CHINA_REGION_NAME_MAP = {
   中华人民共和国: '',
 };
 
-const openMapDatabase = () => new Promise((resolve, reject) => {
-  if (typeof window === 'undefined' || !window.indexedDB) {
-    resolve(null);
-    return;
-  }
-
-  const request = window.indexedDB.open(MAP_DB_NAME, MAP_DB_VERSION);
-  request.onupgradeneeded = () => {
-    const database = request.result;
-    if (!database.objectStoreNames.contains(MAP_DB_STORE)) {
-      database.createObjectStore(MAP_DB_STORE);
-    }
-  };
-  request.onsuccess = () => resolve(request.result);
-  request.onerror = () => reject(request.error || new Error('IndexedDB open failed'));
-});
-
 const readWorkspaceFromDb = async (storageKey) => {
-  const database = await openMapDatabase();
-  if (!database) {
+  if (typeof window === 'undefined' || !window.sessionStorage || !storageKey) {
     return null;
   }
-
-  return new Promise((resolve, reject) => {
-    const transaction = database.transaction(MAP_DB_STORE, 'readonly');
-    const store = transaction.objectStore(MAP_DB_STORE);
-    const request = store.get(storageKey);
-    request.onsuccess = () => resolve(request.result || null);
-    request.onerror = () => reject(request.error || new Error('IndexedDB read failed'));
-  });
+  try {
+    const raw = window.sessionStorage.getItem(storageKey);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
 };
 
 const writeWorkspaceToDb = async (storageKey, payload) => {
-  const database = await openMapDatabase();
-  if (!database) {
-    throw new Error('IndexedDB unavailable');
+  if (typeof window === 'undefined' || !window.sessionStorage || !storageKey) {
+    throw new Error('Session storage unavailable');
   }
-
-  return new Promise((resolve, reject) => {
-    const transaction = database.transaction(MAP_DB_STORE, 'readwrite');
-    const store = transaction.objectStore(MAP_DB_STORE);
-    const request = store.put(payload, storageKey);
-    request.onsuccess = () => resolve();
-    request.onerror = () => reject(request.error || new Error('IndexedDB write failed'));
-  });
+  window.sessionStorage.setItem(storageKey, JSON.stringify(payload));
 };
 
 const TEXTS = {
@@ -196,10 +165,23 @@ const TEXTS = {
     shareCopyBtn: 'Copy link',
     shareLinkLabel: 'Share URL',
     shareBusyLabel: 'Updating...',
-    shareReadyHint: 'Anyone with this link can view the map in read-only mode.',
+    shareReadyHint: 'Anyone with this link can view the map in read-only mode for 7 days.',
     shareNotEnabledHint: 'Read-only link is disabled.',
     shareCopied: 'Share link copied.',
     shareCopyFailed: 'Failed to copy link.',
+    collaboratorTitle: 'Collaborators',
+    collaboratorInputPlaceholder: 'Paste share link or token',
+    collaboratorImportBtn: 'Import',
+    collaboratorImporting: 'Importing...',
+    collaboratorHideBtn: 'Hide',
+    collaboratorShowBtn: 'Show',
+    collaboratorDeleteBtn: 'Delete',
+    collaboratorImportedHint: 'Imported map users can be renamed/recolored locally.',
+    collaboratorImportSuccess: 'Collaborator imported.',
+    collaboratorImportFailed: 'Failed to import collaborator link.',
+    collaboratorEmpty: 'No collaborators yet.',
+    collaboratorTokenInvalid: 'Please provide a valid share token or link.',
+    collaboratorReadonlyHint: 'Collaborator points are read-only in your workspace.',
     shareDisableConfirm: 'Disable read-only link now?',
     shareRegenerateConfirm: 'Regenerate share link now? Old link will stop working.',
     readOnlyBanner: 'Read-only shared view',
@@ -257,6 +239,7 @@ const TEXTS = {
     conflictLoadedLatest: 'Loaded latest cloud version.',
     conflictOverwriteSuccess: 'Conflict resolved by overwrite.',
     geocodeError: 'Failed to search city. Try another keyword or enter coordinates manually.',
+    geocodePrivacyDisabled: 'Online city search is disabled in privacy mode. Enter coordinates manually or use local favorites/history.',
     noGeocodeResult: 'No city result found.',
     needUserName: 'Please enter a username first.',
     duplicateUserName: 'This username already exists.',
@@ -334,10 +317,23 @@ const TEXTS = {
     shareCopyBtn: '复制链接',
     shareLinkLabel: '分享链接',
     shareBusyLabel: '处理中...',
-    shareReadyHint: '任何持有该链接的人都可只读查看地图。',
+    shareReadyHint: '任何持有该链接的人都可在 7 天内只读查看地图。',
     shareNotEnabledHint: '只读分享未开启。',
     shareCopied: '分享链接已复制。',
     shareCopyFailed: '复制分享链接失败。',
+    collaboratorTitle: '协作好友',
+    collaboratorInputPlaceholder: '粘贴分享链接或 token',
+    collaboratorImportBtn: '导入',
+    collaboratorImporting: '导入中...',
+    collaboratorHideBtn: '隐藏',
+    collaboratorShowBtn: '显示',
+    collaboratorDeleteBtn: '删除',
+    collaboratorImportedHint: '导入后的好友可在本地改名和改色，不影响对方。',
+    collaboratorImportSuccess: '协作地图已导入。',
+    collaboratorImportFailed: '导入协作链接失败。',
+    collaboratorEmpty: '暂无协作好友。',
+    collaboratorTokenInvalid: '请输入有效的分享链接或 token。',
+    collaboratorReadonlyHint: '协作好友点位在你的地图里为只读。',
     shareDisableConfirm: '确认关闭只读分享吗？',
     shareRegenerateConfirm: '确认重置分享链接吗？旧链接将失效。',
     readOnlyBanner: '只读分享视图',
@@ -395,6 +391,7 @@ const TEXTS = {
     conflictLoadedLatest: '已加载云端最新版本。',
     conflictOverwriteSuccess: '已强制覆盖并解决冲突。',
     geocodeError: '城市搜索失败，请换关键词或直接输入经纬度。',
+    geocodePrivacyDisabled: '隐私模式下已关闭在线城市搜索。请手动输入坐标，或使用本地收藏/历史记录。',
     noGeocodeResult: '没有匹配到城市结果。',
     needUserName: '请先输入用户名。',
     duplicateUserName: '该用户名已存在。',
@@ -870,8 +867,9 @@ const placeMatchesQuery = (place, query) => {
 };
 
 const normalizeMapShare = (share) => ({
-  enabled: share?.enabled === true,
+  enabled: share?.enabled === true && isNonEmpty(share?.token) && isNonEmpty(share?.expiresAt) && Date.parse(share.expiresAt) > Date.now(),
   token: isNonEmpty(share?.token) ? share.token.trim() : '',
+  expiresAt: isNonEmpty(share?.expiresAt) ? share.expiresAt.trim() : '',
 });
 
 const buildClientShareUrl = (token) => {
@@ -881,8 +879,9 @@ const buildClientShareUrl = (token) => {
   }
   const url = new URL(window.location.href);
   url.searchParams.set('page', 'map');
-  url.searchParams.set('share', nextToken);
-  return `${url.origin}${url.pathname}?${url.searchParams.toString()}`;
+  url.searchParams.delete('share');
+  const nextSearch = url.searchParams.toString();
+  return `${url.origin}${url.pathname}${nextSearch ? `?${nextSearch}` : ''}#share=${encodeURIComponent(nextToken)}`;
 };
 
 const pruneRecycleItems = (items) => {
@@ -943,6 +942,88 @@ const persistPoint = (point) => {
   };
 };
 
+const normalizeCollaboratorPoint = (point, index) => {
+  const latitude = Number.parseFloat(point?.latitude);
+  const longitude = Number.parseFloat(point?.longitude);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    return null;
+  }
+  return {
+    id: isNonEmpty(point?.id) ? point.id : makeId(`collab_point_${index}`),
+    place: isNonEmpty(point?.place) ? point.place.trim() : '',
+    latitude: clampCoord(latitude, -90, 90),
+    longitude: clampCoord(longitude, -180, 180),
+    route: isNonEmpty(point?.route) ? point.route.trim() : '',
+    regionMeta: normalizeRegionMeta(point?.regionMeta),
+  };
+};
+
+const normalizeCollaborator = (item, index) => {
+  const colorFallback = COLOR_PALETTE[index % COLOR_PALETTE.length];
+  const color = normalizeHexColor(item?.color, colorFallback);
+  return {
+    id: isNonEmpty(item?.id) ? item.id : makeId(`collab_${index}`),
+    token: isNonEmpty(item?.token) ? item.token.trim() : '',
+    ownerId: isNonEmpty(item?.ownerId) ? item.ownerId.trim() : '',
+    ownerName: isNonEmpty(item?.ownerName) ? item.ownerName.trim() : '',
+    displayName: isNonEmpty(item?.displayName)
+      ? item.displayName.trim()
+      : (isNonEmpty(item?.ownerName) ? item.ownerName.trim() : `Friend ${index + 1}`),
+    color,
+    regionColor: normalizeHexColor(item?.regionColor, color),
+    hidden: item?.hidden === true,
+    points: Array.isArray(item?.points)
+      ? item.points.map((point, pointIndex) => normalizeCollaboratorPoint(point, pointIndex)).filter(Boolean)
+      : [],
+    importedAt: isNonEmpty(item?.importedAt) ? item.importedAt.trim() : new Date().toISOString(),
+  };
+};
+
+const persistCollaborator = (item) => ({
+  id: item.id,
+  token: item.token || '',
+  ownerId: item.ownerId || '',
+  ownerName: item.ownerName || '',
+  displayName: item.displayName || '',
+  color: item.color || '',
+  regionColor: item.regionColor || '',
+  hidden: item.hidden === true,
+  points: Array.isArray(item.points)
+    ? item.points.map((point) => ({
+      id: point.id,
+      place: point.place || '',
+      latitude: point.latitude,
+      longitude: point.longitude,
+      route: point.route || '',
+      regionMeta: normalizeRegionMeta(point.regionMeta),
+    }))
+    : [],
+  importedAt: item.importedAt || '',
+});
+
+const parseShareTokenInput = (value) => {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) {
+    return '';
+  }
+  try {
+    const url = new URL(trimmed);
+    const hash = url.hash.startsWith('#') ? url.hash.slice(1) : url.hash;
+    const hashParams = new URLSearchParams(hash);
+    const token = (hashParams.get('share') || '').trim();
+    if (token) {
+      return token;
+    }
+    return '';
+  } catch {
+    // Keep raw token when input is not a URL.
+  }
+  return trimmed;
+};
+
+const collaboratorUserViewId = (collaboratorId) => `collab_user_${collaboratorId}`;
+const collaboratorPointViewId = (collaboratorId, pointId) => `collab_point_${collaboratorId}_${pointId}`;
+
 const isPointWithinBounds = (point, bounds, padding = 0.2) => {
   if (!bounds) {
     return true;
@@ -962,6 +1043,7 @@ const parseWorkspace = (rawWorkspace, defaultName) => {
     id: makeId('user'),
     name: defaultName,
     color: COLOR_PALETTE[0],
+    regionColor: COLOR_PALETTE[0],
   };
 
   const safeWorkspace = rawWorkspace && typeof rawWorkspace === 'object' && !Array.isArray(rawWorkspace)
@@ -983,6 +1065,9 @@ const parseWorkspace = (rawWorkspace, defaultName) => {
         .map((point, index) => normalizePoint(point, index, loadedUsers))
         .filter(Boolean)
     : [];
+  const loadedCollaborators = Array.isArray(safeWorkspace?.collaborators)
+    ? safeWorkspace.collaborators.map((item, index) => normalizeCollaborator(item, index))
+    : [];
   const loadedSearchHistory = dedupePlaceBookmarks(safeWorkspace?.searchHistory, MAX_PLACE_HISTORY);
   const loadedFavoritePlaces = dedupePlaceBookmarks(safeWorkspace?.favoritePlaces, MAX_FAVORITE_PLACES);
   const loadedRecycleBin = pruneRecycleItems(
@@ -1002,6 +1087,7 @@ const parseWorkspace = (rawWorkspace, defaultName) => {
     scope: loadedScope,
     users: loadedUsers,
     points: loadedPoints,
+    collaborators: loadedCollaborators,
     searchHistory: loadedSearchHistory,
     favoritePlaces: loadedFavoritePlaces,
     recycleBin: loadedRecycleBin,
@@ -1018,6 +1104,7 @@ const workspaceToPayload = ({
   scope,
   users,
   points,
+  collaborators,
   searchHistory,
   favoritePlaces,
   recycleBin,
@@ -1028,6 +1115,7 @@ const workspaceToPayload = ({
   scope: scope === 'world' ? 'world' : 'china',
   users: Array.isArray(users) ? users : [],
   points: Array.isArray(points) ? points.map(persistPoint) : [],
+  collaborators: Array.isArray(collaborators) ? collaborators.map(persistCollaborator) : [],
   searchHistory: dedupePlaceBookmarks(searchHistory, MAX_PLACE_HISTORY),
   favoritePlaces: dedupePlaceBookmarks(favoritePlaces, MAX_FAVORITE_PLACES),
   recycleBin: pruneRecycleItems(Array.isArray(recycleBin) ? recycleBin : []),
@@ -1041,6 +1129,7 @@ const workspaceHash = ({
   scope,
   users,
   points,
+  collaborators,
   searchHistory,
   favoritePlaces,
   recycleBin,
@@ -1051,6 +1140,7 @@ const workspaceHash = ({
   scope: scope === 'world' ? 'world' : 'china',
   users: Array.isArray(users) ? users : [],
   points: Array.isArray(points) ? points.map(persistPoint) : [],
+  collaborators: Array.isArray(collaborators) ? collaborators.map(persistCollaborator) : [],
   searchHistory: dedupePlaceBookmarks(searchHistory, MAX_PLACE_HISTORY),
   favoritePlaces: dedupePlaceBookmarks(favoritePlaces, MAX_FAVORITE_PLACES),
   recycleBin: pruneRecycleItems(Array.isArray(recycleBin) ? recycleBin : []),
@@ -1069,7 +1159,6 @@ const buildPhotoReadUrl = (photo, ownerId, options = {}) => {
 
   if (pathname && isNonEmpty(shareToken)) {
     const params = new URLSearchParams({
-      token: shareToken.trim(),
       pathname,
     });
     return `/api/maps-share-photo?${params.toString()}`;
@@ -1527,6 +1616,7 @@ function MapView({
   const [scope, setScope] = useState('china');
   const [users, setUsers] = useState([]);
   const [points, setPoints] = useState([]);
+  const [collaborators, setCollaborators] = useState([]);
   const [searchHistory, setSearchHistory] = useState([]);
   const [favoritePlaces, setFavoritePlaces] = useState([]);
   const [recycleBin, setRecycleBin] = useState([]);
@@ -1580,6 +1670,8 @@ function MapView({
   const [shareUrl, setShareUrl] = useState('');
   const [isShareBusy, setIsShareBusy] = useState(false);
   const [isSharePanelOpen, setIsSharePanelOpen] = useState(false);
+  const [collaboratorLinkInput, setCollaboratorLinkInput] = useState('');
+  const [isCollaboratorImporting, setIsCollaboratorImporting] = useState(false);
 
   const [isLoaded, setIsLoaded] = useState(false);
   const [isServerHydrated, setIsServerHydrated] = useState(false);
@@ -1636,6 +1728,7 @@ function MapView({
         setScope(loadedWorkspace.scope);
         setUsers(loadedWorkspace.users);
         setPoints(loadedWorkspace.points);
+        setCollaborators(loadedWorkspace.collaborators);
         setSearchHistory(loadedWorkspace.searchHistory);
         setFavoritePlaces(loadedWorkspace.favoritePlaces);
         setRecycleBin(loadedWorkspace.recycleBin);
@@ -1663,7 +1756,7 @@ function MapView({
       if (storageKey) {
         try {
           const fromDb = await readWorkspaceFromDb(storageKey);
-          const localBackup = localStorage.getItem(storageKey);
+          const localBackup = window.sessionStorage.getItem(storageKey);
           const parsed = fromDb || (localBackup ? JSON.parse(localBackup) : null);
           loadedWorkspace = parseWorkspace(parsed, fallbackName);
         } catch {
@@ -1679,6 +1772,7 @@ function MapView({
       setScope(loadedWorkspace.scope);
       setUsers(loadedWorkspace.users);
       setPoints(loadedWorkspace.points);
+      setCollaborators(loadedWorkspace.collaborators);
       setSearchHistory(loadedWorkspace.searchHistory);
       setFavoritePlaces(loadedWorkspace.favoritePlaces);
       setRecycleBin(loadedWorkspace.recycleBin);
@@ -1755,6 +1849,7 @@ function MapView({
           setScope(serverWorkspace.scope);
           setUsers(serverWorkspace.users);
           setPoints(serverWorkspace.points);
+          setCollaborators(serverWorkspace.collaborators);
           setSearchHistory(serverWorkspace.searchHistory);
           setFavoritePlaces(serverWorkspace.favoritePlaces);
           setRecycleBin(serverWorkspace.recycleBin);
@@ -1794,6 +1889,7 @@ function MapView({
       scope,
       users,
       points,
+      collaborators,
       searchHistory,
       favoritePlaces,
       recycleBin,
@@ -1805,12 +1901,13 @@ function MapView({
     (async () => {
       try {
         await writeWorkspaceToDb(storageKey, payload);
-        localStorage.setItem(storageKey, JSON.stringify({
+        window.sessionStorage.setItem(storageKey, JSON.stringify({
           scope: payload.scope,
           showFeaturedBubbles: payload.showFeaturedBubbles,
           bubbleLayout: payload.bubbleLayout,
           users: payload.users,
           points: [],
+          collaborators: payload.collaborators,
           searchHistory: payload.searchHistory,
           favoritePlaces: payload.favoritePlaces,
           recycleBin: payload.recycleBin,
@@ -1819,13 +1916,13 @@ function MapView({
         }));
       } catch {
         try {
-          localStorage.setItem(storageKey, JSON.stringify(payload));
+          window.sessionStorage.setItem(storageKey, JSON.stringify(payload));
         } catch {
           setFormMessage(text.storageLimitError);
         }
       }
     })();
-  }, [bubbleLayout, favoritePlaces, isLoaded, points, readOnly, recycleBin, scope, searchHistory, showFeaturedBubbles, storageKey, text.storageLimitError, users, workspaceRevision]);
+  }, [bubbleLayout, collaborators, favoritePlaces, isLoaded, points, readOnly, recycleBin, scope, searchHistory, showFeaturedBubbles, storageKey, text.storageLimitError, users, workspaceRevision]);
 
   useEffect(() => {
     if (readOnly || !isLoaded || !isServerHydrated || !activeUserId) {
@@ -1837,6 +1934,7 @@ function MapView({
       scope,
       users,
       points,
+      collaborators,
       searchHistory,
       favoritePlaces,
       recycleBin,
@@ -1880,6 +1978,7 @@ function MapView({
             setScope(latest.scope);
             setUsers(latest.users);
             setPoints(latest.points);
+            setCollaborators(latest.collaborators);
             setSearchHistory(latest.searchHistory);
             setFavoritePlaces(latest.favoritePlaces);
             setRecycleBin(latest.recycleBin);
@@ -1951,6 +2050,7 @@ function MapView({
     activeUserId,
     activeUserName,
     bubbleLayout,
+    collaborators,
     isLoaded,
     isServerHydrated,
     language,
@@ -1972,28 +2072,37 @@ function MapView({
   ]);
 
   useEffect(() => {
-    if (!users.length) {
+    const allUserIds = [
+      ...users.map((user) => user.id),
+      ...collaborators.map((item) => collaboratorUserViewId(item.id)),
+    ];
+    if (!allUserIds.length) {
       setSelectedUserId('');
       setExpandedUserId('');
       return;
     }
 
-    if (!users.some((user) => user.id === selectedUserId)) {
-      setSelectedUserId(users[0].id);
+    if (!allUserIds.includes(selectedUserId)) {
+      setSelectedUserId(allUserIds[0]);
     }
-    if (expandedUserId && !users.some((user) => user.id === expandedUserId)) {
-      setExpandedUserId(users[0].id);
+    if (expandedUserId && !allUserIds.includes(expandedUserId)) {
+      setExpandedUserId(allUserIds[0]);
     }
-  }, [expandedUserId, selectedUserId, users]);
+  }, [collaborators, expandedUserId, selectedUserId, users]);
 
   useEffect(() => {
     if (!selectedPointId) {
       return;
     }
-    if (!points.some((point) => point.id === selectedPointId)) {
+    const hasLocalPoint = points.some((point) => point.id === selectedPointId);
+    const hasCollaboratorPoint = collaborators.some((item) => (
+      item.hidden !== true
+      && item.points.some((point) => collaboratorPointViewId(item.id, point.id) === selectedPointId)
+    ));
+    if (!hasLocalPoint && !hasCollaboratorPoint) {
       setSelectedPointId('');
     }
-  }, [points, selectedPointId]);
+  }, [collaborators, points, selectedPointId]);
 
   useEffect(() => {
     if (!selectedPointId) {
@@ -2087,15 +2196,55 @@ function MapView({
     setRecycleBin((previous) => pruneRecycleItems(previous));
   }, [cleanupPhotoStorage, recycleBin]);
 
+  const collaboratorUsers = useMemo(() => collaborators.map((item) => ({
+    id: collaboratorUserViewId(item.id),
+    collaboratorId: item.id,
+    name: item.displayName || item.ownerName || 'Friend',
+    color: normalizeHexColor(item.color, '#38bdf8'),
+    regionColor: normalizeHexColor(item.regionColor, normalizeHexColor(item.color, '#38bdf8')),
+    isCollaborator: true,
+    hidden: item.hidden === true,
+  })), [collaborators]);
+
+  const allUsers = useMemo(() => [
+    ...users.map((user) => ({ ...user, isCollaborator: false })),
+    ...collaboratorUsers,
+  ], [collaboratorUsers, users]);
+
+  const collaboratorPoints = useMemo(() => collaborators
+    .filter((item) => item.hidden !== true)
+    .flatMap((item) => item.points.map((point) => ({
+      id: collaboratorPointViewId(item.id, point.id),
+      sourcePointId: point.id,
+      collaboratorId: item.id,
+      isCollaboratorPoint: true,
+      userId: collaboratorUserViewId(item.id),
+      place: point.place || '',
+      latitude: point.latitude,
+      longitude: point.longitude,
+      route: point.route || '',
+      regionMeta: normalizeRegionMeta(point.regionMeta),
+      photos: [],
+      featuredPhotoId: null,
+      noFeatured: false,
+      featuredBox: null,
+    }))), [collaborators]);
+
+  const allPoints = useMemo(() => [...points, ...collaboratorPoints], [collaboratorPoints, points]);
+
   const userMap = useMemo(() => {
     const map = new Map();
-    users.forEach((user) => {
+    allUsers.forEach((user) => {
       map.set(user.id, user);
     });
     return map;
-  }, [users]);
+  }, [allUsers]);
 
   const fetchRegionMetaForCoordinates = useCallback(async (latitude, longitude) => {
+    if (!REMOTE_GEOCODING_ENABLED) {
+      return normalizeRegionMeta(null);
+    }
+
     const cacheKey = `${latitude.toFixed(5)},${longitude.toFixed(5)}`;
     const cached = regionLookupCacheRef.current.get(cacheKey);
     if (cached) {
@@ -2123,11 +2272,11 @@ function MapView({
     return meta;
   }, []);
 
-  const markerCountByUser = useMemo(() => points.reduce((accumulator, point) => {
+  const markerCountByUser = useMemo(() => allPoints.reduce((accumulator, point) => {
     accumulator[point.userId] = (accumulator[point.userId] || 0) + 1;
     return accumulator;
-  }, {}), [points]);
-  const markerCount = points.length;
+  }, {}), [allPoints]);
+  const markerCount = allPoints.length;
   const visibleRecycleBin = useMemo(
     () => pruneRecycleItems(recycleBin),
     [recycleBin],
@@ -2137,9 +2286,23 @@ function MapView({
     () => users.find((user) => user.id === selectedUserId) || null,
     [users, selectedUserId],
   );
+  const selectedCollaborator = useMemo(() => {
+    const collaboratorUser = collaboratorUsers.find((item) => item.id === selectedUserId);
+    if (!collaboratorUser) {
+      return null;
+    }
+    return collaborators.find((item) => item.id === collaboratorUser.collaboratorId) || null;
+  }, [collaboratorUsers, collaborators, selectedUserId]);
+  const expandedCollaborator = useMemo(() => {
+    const collaboratorUser = collaboratorUsers.find((item) => item.id === expandedUserId);
+    if (!collaboratorUser) {
+      return null;
+    }
+    return collaborators.find((item) => item.id === collaboratorUser.collaboratorId) || null;
+  }, [collaboratorUsers, collaborators, expandedUserId]);
   const expandedUserPoints = useMemo(
-    () => points.filter((point) => point.userId === expandedUserId),
-    [expandedUserId, points],
+    () => allPoints.filter((point) => point.userId === expandedUserId),
+    [allPoints, expandedUserId],
   );
   const localMatchPlaces = useMemo(() => {
     if (!isNonEmpty(cityQuery)) {
@@ -2151,7 +2314,7 @@ function MapView({
       .slice(0, 8);
   }, [cityQuery, favoritePlaces, searchHistory]);
 
-  const featuredPoints = useMemo(() => points
+  const featuredPoints = useMemo(() => allPoints
     .map((point) => {
       const featuredPhoto = getFeaturedPhoto(point);
       if (!featuredPhoto) {
@@ -2163,7 +2326,7 @@ function MapView({
         featuredPhoto,
       };
     })
-    .filter(Boolean), [points, userMap]);
+    .filter(Boolean), [allPoints, userMap]);
   const dockFeaturedPoints = useMemo(() => {
     if (bubbleLayout === 'map') {
       return featuredPoints;
@@ -2193,7 +2356,7 @@ function MapView({
     const mapRect = mapInstance.getContainer().getBoundingClientRect();
     const width = Math.max(1, mapRect.width);
     const height = Math.max(1, mapRect.height);
-    const markerPixels = points.map((point) => {
+    const markerPixels = allPoints.map((point) => {
       const pixel = mapInstance.latLngToContainerPoint([point.latitude, point.longitude]);
       return {
         id: point.id,
@@ -2299,25 +2462,25 @@ function MapView({
         },
       };
     });
-  }, [bubbleLayout, dockFeaturedPoints, mapInstance, points]);
+  }, [allPoints, bubbleLayout, dockFeaturedPoints, mapInstance]);
   const visiblePoints = useMemo(() => {
     if (!visibleBounds) {
-      return points;
+      return allPoints;
     }
-    return points.filter((point) => (
+    return allPoints.filter((point) => (
       point.id === selectedPointId
       || isPointWithinBounds(point, visibleBounds)
     ));
-  }, [points, selectedPointId, visibleBounds]);
+  }, [allPoints, selectedPointId, visibleBounds]);
 
   const selectedPoint = useMemo(
-    () => points.find((point) => point.id === selectedPointId) || null,
-    [points, selectedPointId],
+    () => allPoints.find((point) => point.id === selectedPointId) || null,
+    [allPoints, selectedPointId],
   );
   const selectedPointOwner = selectedPoint ? userMap.get(selectedPoint.userId) : null;
   const provinceVisitColorMap = useMemo(() => {
     const map = new Map();
-    points.forEach((point) => {
+    allPoints.forEach((point) => {
       const provinceName = normalizeChinaProvinceName(point.regionMeta?.provinceName);
       if (!point.regionMeta?.isChina || !provinceName) {
         return;
@@ -2326,10 +2489,10 @@ function MapView({
       map.set(provinceName, normalizeHexColor(owner?.regionColor, normalizeHexColor(owner?.color, '#f97316')));
     });
     return map;
-  }, [points, userMap]);
+  }, [allPoints, userMap]);
   const countryVisitColorMap = useMemo(() => {
     const map = new Map();
-    points.forEach((point) => {
+    allPoints.forEach((point) => {
       if (point.regionMeta?.isChina) {
         return;
       }
@@ -2342,27 +2505,27 @@ function MapView({
       map.set(countryKey, normalizeHexColor(owner?.regionColor, normalizeHexColor(owner?.color, '#0284c7')));
     });
     return map;
-  }, [points, userMap]);
+  }, [allPoints, userMap]);
   const visitedProvinceSet = useMemo(() => new Set(
-    points
+    allPoints
       .filter((point) => point.regionMeta?.isChina && isNonEmpty(point.regionMeta?.provinceName))
       .map((point) => normalizeChinaProvinceName(point.regionMeta.provinceName)),
-  ), [points]);
+  ), [allPoints]);
   const visitedCitySet = useMemo(() => new Set(
-    points
+    allPoints
       .filter((point) => point.regionMeta?.isChina && isNonEmpty(point.regionMeta?.cityName))
       .map((point) => normalizeChinaCityName(point.regionMeta.cityName)),
-  ), [points]);
+  ), [allPoints]);
   const hasChinaVisit = useMemo(
-    () => points.some((point) => point.regionMeta?.isChina),
-    [points],
+    () => allPoints.some((point) => point.regionMeta?.isChina),
+    [allPoints],
   );
   const visitedCountrySet = useMemo(() => new Set(
-    points
+    allPoints
       .filter((point) => !point.regionMeta?.isChina)
       .map((point) => normalizeCountryCode(point.regionMeta?.countryCode) || (point.regionMeta?.countryName || '').trim())
       .filter(Boolean),
-  ), [points]);
+  ), [allPoints]);
   const visitedCountryCount = visitedCountrySet.size + (hasChinaVisit ? 1 : 0);
   const chinaProvinceStyle = useCallback((feature) => {
     const provinceName = normalizeChinaProvinceName(feature?.properties?.name);
@@ -2608,14 +2771,30 @@ function MapView({
   }, [mapInstance]);
 
   useEffect(() => {
-    setEditUserName(selectedUser?.name || '');
-    const selectedColor = normalizeHexColor(selectedUser?.color, COLOR_PALETTE[0]);
-    const selectedRegionColor = normalizeHexColor(selectedUser?.regionColor, selectedColor);
+    const currentEditable = selectedCollaborator
+      ? {
+        name: selectedCollaborator.displayName,
+        color: selectedCollaborator.color,
+        regionColor: selectedCollaborator.regionColor,
+      }
+      : selectedUser;
+    setEditUserName(currentEditable?.name || '');
+    const selectedColor = normalizeHexColor(currentEditable?.color, COLOR_PALETTE[0]);
+    const selectedRegionColor = normalizeHexColor(currentEditable?.regionColor, selectedColor);
     setEditUserColor(selectedColor);
     setEditUserRgb(hexToRgbString(selectedColor));
     setEditRegionColor(selectedRegionColor);
     setEditRegionRgb(hexToRgbString(selectedRegionColor));
-  }, [selectedUser?.color, selectedUser?.id, selectedUser?.name, selectedUser?.regionColor]);
+  }, [
+    selectedCollaborator?.color,
+    selectedCollaborator?.displayName,
+    selectedCollaborator?.id,
+    selectedCollaborator?.regionColor,
+    selectedUser?.color,
+    selectedUser?.id,
+    selectedUser?.name,
+    selectedUser?.regionColor,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2752,7 +2931,7 @@ function MapView({
   };
 
   const handleRenameUser = () => {
-    if (!selectedUser) {
+    if (!selectedUser && !selectedCollaborator) {
       setFormMessage(text.needUserSelect);
       return;
     }
@@ -2763,9 +2942,11 @@ function MapView({
       return;
     }
 
-    if (users.some((user) => user.id !== selectedUser.id && user.name.toLowerCase() === nextName.toLowerCase())) {
-      setFormMessage(text.duplicateUserName);
-      return;
+    if (selectedUser) {
+      if (users.some((user) => user.id !== selectedUser.id && user.name.toLowerCase() === nextName.toLowerCase())) {
+        setFormMessage(text.duplicateUserName);
+        return;
+      }
     }
 
     const parsedColor = rgbToHex(editUserRgb);
@@ -2778,25 +2959,56 @@ function MapView({
       setFormMessage(text.invalidRgb);
       return;
     }
-    const normalizedColor = normalizeHexColor(parsedColor, selectedUser.color);
-    const normalizedRegionColor = normalizeHexColor(parsedRegionColor, selectedUser.regionColor || normalizedColor);
+    const normalizedColor = normalizeHexColor(parsedColor, selectedUser?.color || selectedCollaborator?.color || '#38bdf8');
+    const normalizedRegionColor = normalizeHexColor(
+      parsedRegionColor,
+      selectedUser?.regionColor || selectedCollaborator?.regionColor || normalizedColor,
+    );
 
-    setUsers((previous) => previous.map((user) => (
-      user.id === selectedUser.id
-        ? {
+    if (selectedUser) {
+      setUsers((previous) => previous.map((user) => (
+        user.id === selectedUser.id
+          ? {
             ...user,
             name: nextName,
             color: normalizedColor,
             regionColor: normalizedRegionColor,
           }
-        : user
-    )));
+          : user
+      )));
+    } else if (selectedCollaborator) {
+      setCollaborators((previous) => previous.map((item) => (
+        item.id === selectedCollaborator.id
+          ? {
+            ...item,
+            displayName: nextName,
+            color: normalizedColor,
+            regionColor: normalizedRegionColor,
+          }
+          : item
+      )));
+    }
+
     setFormMessage('');
   };
 
   const handleDeleteUser = () => {
-    if (!selectedUser) {
+    if (!selectedUser && !selectedCollaborator) {
       setFormMessage(text.needUserSelect);
+      return;
+    }
+
+    if (selectedCollaborator) {
+      const label = selectedCollaborator.displayName || selectedCollaborator.ownerName || 'Friend';
+      const shouldDeleteCollaborator = confirmDangerAction(
+        `${text.collaboratorDeleteBtn} "${label}"?`,
+        `${text.dangerSecondConfirm}\n"${label}"`,
+      );
+      if (!shouldDeleteCollaborator) {
+        return;
+      }
+      removeCollaborator(selectedCollaborator.id);
+      setFormMessage('');
       return;
     }
 
@@ -2841,6 +3053,34 @@ function MapView({
     setExpandedUserId(fallbackUser.id);
     setFormMessage('');
   };
+
+  const toggleCollaboratorVisibility = useCallback((collaboratorId) => {
+    if (!collaboratorId) {
+      return;
+    }
+    setCollaborators((previous) => previous.map((item) => (
+      item.id === collaboratorId
+        ? { ...item, hidden: !item.hidden }
+        : item
+    )));
+  }, []);
+
+  const removeCollaborator = useCallback((collaboratorId) => {
+    if (!collaboratorId) {
+      return;
+    }
+    const collaboratorUserId = collaboratorUserViewId(collaboratorId);
+    setCollaborators((previous) => previous.filter((item) => item.id !== collaboratorId));
+    if (selectedUserId === collaboratorUserId) {
+      setSelectedUserId(users[0]?.id || '');
+    }
+    if (expandedUserId === collaboratorUserId) {
+      setExpandedUserId(users[0]?.id || '');
+    }
+    if (selectedPointId.startsWith(`collab_point_${collaboratorId}_`)) {
+      setSelectedPointId('');
+    }
+  }, [expandedUserId, selectedPointId, selectedUserId, users]);
 
   const handleEditPointFromUserList = (pointId) => {
     setSelectedPointId(pointId);
@@ -2924,6 +3164,12 @@ function MapView({
     const query = cityQuery.trim();
     if (!query) {
       setSearchMessage(text.noGeocodeResult);
+      return;
+    }
+
+    if (!REMOTE_GEOCODING_ENABLED) {
+      setSearchResults([]);
+      setSearchMessage(text.geocodePrivacyDisabled);
       return;
     }
 
@@ -3074,6 +3320,101 @@ function MapView({
       setFormMessage(text.shareCopyFailed);
     }
   }, [shareEnabled, shareToken, shareUrl, text.shareCopied, text.shareCopyFailed]);
+
+  const importCollaboratorLink = useCallback(async () => {
+    if (readOnly) {
+      return;
+    }
+
+    const token = parseShareTokenInput(collaboratorLinkInput);
+    if (!token) {
+      setFormMessage(text.collaboratorTokenInvalid);
+      return;
+    }
+
+    setIsCollaboratorImporting(true);
+    try {
+      const response = await fetch('/api/maps-share', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          action: 'resolve',
+          token,
+        }),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || result?.status !== 'success') {
+        throw new Error(result?.message || text.collaboratorImportFailed);
+      }
+
+      const sharedOwnerName = isNonEmpty(result?.owner?.username)
+        ? result.owner.username.trim()
+        : (language === 'zh' ? '好友地图' : 'Shared map');
+      const parsed = parseWorkspace(result?.workspace, sharedOwnerName);
+      const importedPoints = parsed.points
+        .map((point, index) => normalizeCollaboratorPoint(point, index))
+        .filter(Boolean);
+
+      let importedCollabId = '';
+      setCollaborators((previous) => {
+        const existing = previous.find((item) => item.token === token);
+        const defaultColor = COLOR_PALETTE[(users.length + previous.length) % COLOR_PALETTE.length];
+        if (existing) {
+          importedCollabId = existing.id;
+          return previous.map((item) => (
+            item.id === existing.id
+              ? {
+                ...item,
+                ownerId: isNonEmpty(result?.owner?.id) ? result.owner.id.trim() : item.ownerId,
+                ownerName: sharedOwnerName,
+                points: importedPoints,
+                importedAt: new Date().toISOString(),
+              }
+              : item
+          ));
+        }
+
+        const nextId = makeId('collab');
+        importedCollabId = nextId;
+        return [
+          ...previous,
+          normalizeCollaborator({
+            id: nextId,
+            token,
+            ownerId: isNonEmpty(result?.owner?.id) ? result.owner.id.trim() : '',
+            ownerName: sharedOwnerName,
+            displayName: sharedOwnerName,
+            color: defaultColor,
+            regionColor: defaultColor,
+            hidden: false,
+            points: importedPoints,
+            importedAt: new Date().toISOString(),
+          }, previous.length),
+        ];
+      });
+
+      if (importedCollabId) {
+        const userId = collaboratorUserViewId(importedCollabId);
+        setSelectedUserId(userId);
+        setExpandedUserId(userId);
+      }
+      setCollaboratorLinkInput('');
+      setFormMessage(text.collaboratorImportSuccess);
+    } catch (error) {
+      setFormMessage(error?.message || text.collaboratorImportFailed);
+    } finally {
+      setIsCollaboratorImporting(false);
+    }
+  }, [
+    collaboratorLinkInput,
+    language,
+    readOnly,
+    text.collaboratorImportFailed,
+    text.collaboratorImportSuccess,
+    text.collaboratorTokenInvalid,
+    users.length,
+  ]);
 
   const makeUploadPlaceholder = (file, pointId) => ({
     id: makeId('uploading_photo'),
@@ -3854,6 +4195,78 @@ function MapView({
                 </div>
               </>
             )}
+
+            <div className="map-collaborator-panel">
+              <p className="map-label">{text.collaboratorTitle}</p>
+              <p className="map-muted">{text.collaboratorImportedHint}</p>
+              <div className="map-collaborator-import-row">
+                <input
+                  className="glass-input"
+                  value={collaboratorLinkInput}
+                  placeholder={text.collaboratorInputPlaceholder}
+                  onChange={(event) => setCollaboratorLinkInput(event.target.value)}
+                />
+                <button
+                  type="button"
+                  className="glass-button map-topbar-btn"
+                  onClick={importCollaboratorLink}
+                  disabled={isCollaboratorImporting}
+                >
+                  {isCollaboratorImporting ? text.collaboratorImporting : text.collaboratorImportBtn}
+                </button>
+              </div>
+
+              {collaborators.length === 0 && <p className="map-muted">{text.collaboratorEmpty}</p>}
+              {collaborators.length > 0 && (
+                <ul className="map-collaborator-list">
+                  {collaborators.map((item) => {
+                    const userId = collaboratorUserViewId(item.id);
+                    const label = item.displayName || item.ownerName || 'Friend';
+                    return (
+                      <li key={item.id}>
+                        <button
+                          type="button"
+                          className={`map-collaborator-name ${selectedUserId === userId ? 'active' : ''}`}
+                          onClick={() => {
+                            setSelectedUserId(userId);
+                            setExpandedUserId((previous) => (previous === userId ? '' : userId));
+                            setIsUserEditExpanded(true);
+                          }}
+                        >
+                          <span className="map-user-dot" style={{ backgroundColor: normalizeHexColor(item.color, '#38bdf8') }} />
+                          <span>{label}</span>
+                          {item.hidden ? <small>{text.collaboratorHideBtn}</small> : null}
+                        </button>
+                        <div className="map-collaborator-actions">
+                          <button
+                            type="button"
+                            className="glass-button"
+                            onClick={() => toggleCollaboratorVisibility(item.id)}
+                          >
+                            {item.hidden ? text.collaboratorShowBtn : text.collaboratorHideBtn}
+                          </button>
+                          <button
+                            type="button"
+                            className="glass-button map-danger-btn"
+                            onClick={() => {
+                              const shouldDelete = confirmDangerAction(
+                                `${text.collaboratorDeleteBtn} "${label}"?`,
+                                `${text.dangerSecondConfirm}\n"${label}"`,
+                              );
+                              if (shouldDelete) {
+                                removeCollaborator(item.id);
+                              }
+                            }}
+                          >
+                            {text.collaboratorDeleteBtn}
+                          </button>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
           </section>
         </div>
       )}
@@ -3883,14 +4296,14 @@ function MapView({
                   type="button"
                   className="glass-button map-user-edit-toggle-btn"
                   onClick={() => setIsUserEditExpanded((previous) => !previous)}
-                  disabled={!selectedUser}
+                  disabled={!selectedUser && !selectedCollaborator}
                 >
                   {text.userEditBtn}
                 </button>
               )}
             </div>
             <ul className="map-user-list">
-              {users.map((user) => {
+              {allUsers.map((user) => {
                 const markerCount = markerCountByUser[user.id] || 0;
                 const isExpanded = expandedUserId === user.id;
                 const regionColor = normalizeHexColor(user.regionColor, user.color);
@@ -3919,7 +4332,9 @@ function MapView({
                     <div className="map-user-main">
                       <span className="map-user-name">{user.name}</span>
                       <span className="map-user-submeta">
+                        {user.isCollaborator ? `${text.collaboratorTitle} · ` : ''}
                         {markerCount} {text.userPointsLabel}
+                        {user.hidden ? ` · ${text.collaboratorHideBtn}` : ''}
                       </span>
                     </div>
                     <span className="map-user-count">
@@ -3933,6 +4348,7 @@ function MapView({
             {expandedUserId && (
               <div className="map-user-places-box">
                 <p className="map-label">{text.userPlacesTitle}</p>
+                {expandedCollaborator && <p className="map-muted">{text.collaboratorReadonlyHint}</p>}
                 {expandedUserPoints.length === 0 && <p className="map-muted">{text.noUserPlaces}</p>}
                 {expandedUserPoints.length > 0 && (
                   <ul className="map-user-places-list">
@@ -3949,7 +4365,7 @@ function MapView({
                           >
                             {text.placeEditBtn}
                           </button>
-                          {!readOnly && (
+                          {!readOnly && !point.isCollaboratorPoint && (
                             <button
                               type="button"
                               className="glass-button map-danger-btn"
@@ -3974,7 +4390,7 @@ function MapView({
                     <span style={{ backgroundColor: editRegionColor }} />
                   </div>
                   <div className="map-user-edit-preview-text">
-                    <strong>{selectedUser?.name || text.editUserTitle}</strong>
+                    <strong>{selectedUser?.name || selectedCollaborator?.displayName || text.editUserTitle}</strong>
                     <span>{text.regionPreviewLabel}</span>
                   </div>
                 </div>
@@ -3986,7 +4402,7 @@ function MapView({
                   value={editUserName}
                   placeholder={text.editUserNamePlaceholder}
                   onChange={(event) => setEditUserName(event.target.value)}
-                  disabled={!selectedUser}
+                  disabled={!selectedUser && !selectedCollaborator}
                 />
                 <div className="map-inline-grid">
                   <div>
@@ -4001,7 +4417,7 @@ function MapView({
                         setEditUserRgb(hexToRgbString(event.target.value));
                         setFormMessage('');
                       }}
-                      disabled={!selectedUser}
+                      disabled={!selectedUser && !selectedCollaborator}
                     />
                   </div>
                   <div>
@@ -4011,7 +4427,7 @@ function MapView({
                       className="glass-input"
                       value={editUserRgb}
                       onChange={(event) => handleEditRgbChange(event.target.value)}
-                      disabled={!selectedUser}
+                      disabled={!selectedUser && !selectedCollaborator}
                     />
                   </div>
                 </div>
@@ -4028,7 +4444,7 @@ function MapView({
                         setEditRegionRgb(hexToRgbString(event.target.value));
                         setFormMessage('');
                       }}
-                      disabled={!selectedUser}
+                      disabled={!selectedUser && !selectedCollaborator}
                     />
                   </div>
                   <div>
@@ -4038,26 +4454,35 @@ function MapView({
                       className="glass-input"
                       value={editRegionRgb}
                       onChange={(event) => handleEditRegionRgbChange(event.target.value)}
-                      disabled={!selectedUser}
+                      disabled={!selectedUser && !selectedCollaborator}
                     />
                   </div>
                 </div>
-                <div className="map-user-edit-actions">
+                <div className={`map-user-edit-actions ${selectedCollaborator ? 'has-collaborator' : ''}`}>
                   <button
                     type="button"
                     className="glass-button map-user-edit-action-btn"
                     onClick={handleRenameUser}
-                    disabled={!selectedUser}
+                    disabled={!selectedUser && !selectedCollaborator}
                   >
                     {text.updateUserBtn}
                   </button>
+                  {selectedCollaborator && (
+                    <button
+                      type="button"
+                      className="glass-button map-user-edit-action-btn"
+                      onClick={() => toggleCollaboratorVisibility(selectedCollaborator.id)}
+                    >
+                      {selectedCollaborator.hidden ? text.collaboratorShowBtn : text.collaboratorHideBtn}
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="glass-button map-danger-btn map-user-edit-action-btn"
                     onClick={handleDeleteUser}
-                    disabled={!selectedUser || users.length <= 1}
+                    disabled={(!selectedUser && !selectedCollaborator) || (selectedUser && users.length <= 1)}
                   >
-                    {text.deleteUserBtn}
+                    {selectedCollaborator ? text.collaboratorDeleteBtn : text.deleteUserBtn}
                   </button>
                 </div>
               </div>
@@ -4328,7 +4753,7 @@ function MapView({
                 {markerCount === 0 && <p className="map-muted">{text.markersEmpty}</p>}
                 {markerCount > 0 && (
                   <ul className="map-marker-list">
-                    {points.map((point) => {
+                    {allPoints.map((point) => {
                       const owner = userMap.get(point.userId);
                       return (
                         <li
@@ -4678,7 +5103,7 @@ function MapView({
             ownerId={activeUserId}
             users={users}
             text={text}
-            readOnly={readOnly}
+            readOnly={readOnly || Boolean(selectedPoint?.isCollaboratorPoint)}
             photoSrcResolver={resolvePhotoSrc}
             onUpdatePoint={updatePoint}
             onUploadPhotos={uploadPhotos}

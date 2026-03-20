@@ -1,4 +1,4 @@
-import { parseJsonBody, setSessionCookie, clearSessionCookie, requireAuth, getAuthenticatedUser } from './_lib/auth.js';
+import { parseJsonBody, setSessionCookie, clearSessionCookie, getAuthenticatedUser } from './_lib/auth.js';
 import {
   ensureDataStore,
   findActiveUserByEmail,
@@ -84,7 +84,7 @@ export default async function handler(req, res) {
           return res.status(401).json({ status: 'error', message: 'Invalid email or password' });
         }
 
-        setSessionCookie(res, user);
+        await setSessionCookie(res, user);
         return res.status(200).json({
           status: 'success',
           user: publicUser(user),
@@ -126,7 +126,7 @@ export default async function handler(req, res) {
           await saveUsers(store.config, store.users);
           await savePlansByUser(store.config, store.plansByUser);
 
-          setSessionCookie(res, user);
+          await setSessionCookie(res, user);
 
           return res.status(201).json({
             status: 'success',

@@ -1,6 +1,8 @@
 import { Readable } from 'node:stream';
 import { get } from '@vercel/blob';
-import { ensureDataStore, getUserMapWorkspace } from './_lib/store.js';
+import { ensureDataStore, getUserMapWorkspace, isMapShareActive } from './_lib/store.js';
+
+const MAP_SHARE_COOKIE = 'nanmuz_map_share';
 
 const pickString = (value) => {
   if (Array.isArray(value)) {
@@ -8,6 +10,18 @@ const pickString = (value) => {
   }
   return typeof value === 'string' ? value : '';
 };
+
+const parseCookies = (cookieHeader = '') => Object.fromEntries(
+  cookieHeader
+    .split(';')
+    .map((chunk) => chunk.trim())
+    .filter(Boolean)
+    .map((chunk) => {
+      const index = chunk.indexOf('=');
+      return [chunk.slice(0, index), decodeURIComponent(chunk.slice(index + 1))];
+    })
+    .filter(([key]) => key)
+);
 
 const getPathnameFromUrl = (urlOrPathname) => {
   if (typeof urlOrPathname !== 'string' || !urlOrPathname) {
@@ -33,7 +47,7 @@ const findOwnerByShareToken = (store, token) => {
   const users = Array.isArray(store?.users) ? store.users : [];
   return users.find((user) => {
     const workspace = getUserMapWorkspace(store.mapsByUser, user.id);
-    return workspace?.share?.enabled && workspace?.share?.token === token;
+    return isMapShareActive(workspace?.share) && workspace.share.token === token;
   }) || null;
 };
 
@@ -52,9 +66,10 @@ export default async function handler(req, res) {
   }
 
   try {
-    const token = pickString(req.query.token).trim();
+    const cookies = parseCookies(req.headers.cookie || '');
+    const token = pickString(cookies[MAP_SHARE_COOKIE]).trim();
     if (!token) {
-      return res.status(400).json({ status: 'error', message: 'Missing share token' });
+      return res.status(401).json({ status: 'error', message: 'Missing share session' });
     }
 
     const store = await ensureDataStore();
@@ -84,7 +99,7 @@ export default async function handler(req, res) {
     if (Number.isFinite(blobResult.blob.size)) {
       res.setHeader('Content-Length', String(blobResult.blob.size));
     }
-    res.setHeader('Cache-Control', 'public, max-age=120, stale-while-revalidate=600');
+    res.setHeader('Cache-Control', 'private, no-store');
 
     const stream = Readable.fromWeb(blobResult.stream);
     stream.on('error', () => {

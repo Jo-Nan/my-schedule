@@ -18,6 +18,8 @@ import './index.css';
 const APP_VERSION = __APP_VERSION__;
 const APP_BUILD_TIME = __APP_BUILD_TIME__;
 const SESSION_RESTORE_TIMEOUT_MS = 12_000;
+const MAP_DB_NAME = 'nanmuz_map_workspace_db';
+const SENSITIVE_STORAGE_PREFIXES = ['nanmuz_plans_', 'nanmuz_map_workspace_'];
 
 const normalizeAttachment = (attachment, index = 0) => ({
   id: typeof attachment?.id === 'string' && attachment.id.trim()
@@ -119,10 +121,63 @@ const getInitialShareToken = () => {
     return '';
   }
   try {
-    const params = new URLSearchParams(window.location.search);
-    return (params.get('share') || '').trim();
+    const hash = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : window.location.hash;
+    const hashParams = new URLSearchParams(hash);
+    return (hashParams.get('share') || '').trim();
   } catch {
     return '';
+  }
+};
+
+const readSensitiveSessionValue = (key) => {
+  if (typeof window === 'undefined' || !key) {
+    return '';
+  }
+  try {
+    return window.sessionStorage.getItem(key) || '';
+  } catch {
+    return '';
+  }
+};
+
+const writeSensitiveSessionValue = (key, value) => {
+  if (typeof window === 'undefined' || !key) {
+    return;
+  }
+  try {
+    window.sessionStorage.setItem(key, value);
+  } catch {
+    // Ignore session storage quota failures.
+  }
+};
+
+const clearSensitiveBrowserData = async () => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  [window.localStorage, window.sessionStorage].forEach((storage) => {
+    try {
+      const keysToRemove = [];
+      for (let index = 0; index < storage.length; index += 1) {
+        const key = storage.key(index);
+        if (key && SENSITIVE_STORAGE_PREFIXES.some((prefix) => key.startsWith(prefix))) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach((key) => storage.removeItem(key));
+    } catch {
+      // Ignore browser storage access failures.
+    }
+  });
+
+  if (window.indexedDB) {
+    await new Promise((resolve) => {
+      const request = window.indexedDB.deleteDatabase(MAP_DB_NAME);
+      request.onsuccess = () => resolve();
+      request.onerror = () => resolve();
+      request.onblocked = () => resolve();
+    });
   }
 };
 
@@ -260,7 +315,9 @@ function App() {
     const syncViewModeWithUrl = () => {
       const params = new URLSearchParams(window.location.search);
       const isMapPage = params.get('page') === 'map';
-      const nextShareToken = (params.get('share') || '').trim();
+      const hash = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : window.location.hash;
+      const hashParams = new URLSearchParams(hash);
+      const nextShareToken = (hashParams.get('share') || '').trim();
       setShareTokenInUrl(nextShareToken);
       setViewMode((previous) => {
         if (isMapPage) {
@@ -271,7 +328,11 @@ function App() {
     };
 
     window.addEventListener('popstate', syncViewModeWithUrl);
-    return () => window.removeEventListener('popstate', syncViewModeWithUrl);
+    window.addEventListener('hashchange', syncViewModeWithUrl);
+    return () => {
+      window.removeEventListener('popstate', syncViewModeWithUrl);
+      window.removeEventListener('hashchange', syncViewModeWithUrl);
+    };
   }, []);
 
   useEffect(() => {
@@ -281,10 +342,12 @@ function App() {
 
     const url = new URL(window.location.href);
     const isMapInUrl = url.searchParams.get('page') === 'map';
-    const hasShareInUrl = url.searchParams.has('share');
+    const hashParams = new URLSearchParams(url.hash.startsWith('#') ? url.hash.slice(1) : url.hash);
+    const hasShareInUrl = url.searchParams.has('share') || hashParams.has('share');
 
     if (viewMode === 'map' && !isMapInUrl) {
       url.searchParams.set('page', 'map');
+      url.searchParams.delete('share');
       const nextSearch = url.searchParams.toString();
       window.history.pushState(
         { page: 'map' },
@@ -297,6 +360,7 @@ function App() {
     if (viewMode !== 'map' && (isMapInUrl || hasShareInUrl)) {
       url.searchParams.delete('page');
       url.searchParams.delete('share');
+      url.hash = '';
       const nextSearch = url.searchParams.toString();
       window.history.pushState(
         { page: 'schedule' },
@@ -361,8 +425,14 @@ function App() {
       setSharedMapError('');
 
       try {
-        const response = await fetch(`/api/maps-share?token=${encodeURIComponent(shareTokenInUrl)}&t=${Date.now()}`, {
+        const response = await fetch('/api/maps-share', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
           credentials: 'same-origin',
+          body: JSON.stringify({
+            action: 'resolve',
+            token: shareTokenInUrl,
+          }),
         });
         const result = await response.json().catch(() => null);
         if (!response.ok || result?.status !== 'success' || !result?.workspace) {
@@ -397,7 +467,7 @@ function App() {
       return;
     }
 
-    const savedPlans = localStorage.getItem(cacheKey);
+    const savedPlans = readSensitiveSessionValue(cacheKey);
     const parsedPlans = savedPlans ? JSON.parse(savedPlans) : [];
     const fallbackDate = getLocalDateStr();
     const normalizedPlans = Array.isArray(parsedPlans)
@@ -410,7 +480,7 @@ function App() {
 
   useEffect(() => {
     if (cacheKey) {
-      localStorage.setItem(cacheKey, JSON.stringify(plans));
+      writeSensitiveSessionValue(cacheKey, JSON.stringify(plans));
     }
 
     if (isInitializedRef.current && activeUser && currentUser) {
@@ -783,6 +853,7 @@ function App() {
         credentials: 'same-origin',
       });
     } finally {
+      await clearSensitiveBrowserData();
       setCurrentUser(null);
       setManagedUser(null);
       setPlans([]);

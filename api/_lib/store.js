@@ -30,14 +30,7 @@ const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
 const LOCAL_DATA_DIR = path.join(PROJECT_ROOT, '.local-data');
 let dataStoreMutationQueue = Promise.resolve();
 export const NORMAL_USER_STORAGE_LIMIT_BYTES = 15 * 1024 * 1024;
-
-const ADMIN_SEED = {
-  id: 'admin-nanmuz',
-  username: 'NanMuZ',
-  email: 'nanqiao.ai@gmail.com',
-  password: 'u7P#m2S9',
-  role: 'admin',
-};
+const runtimeSecretCache = new Map();
 
 export const normalizeEmail = (value = '') => value.trim().toLowerCase();
 
@@ -180,7 +173,62 @@ const sanitizeMapRecycleBin = (recycleBin) => (
 const sanitizeMapShare = (share = {}) => ({
   enabled: share?.enabled === true,
   token: typeof share?.token === 'string' ? share.token.trim() : '',
+  expiresAt: typeof share?.expiresAt === 'string' ? share.expiresAt.trim() : '',
 });
+
+export const isMapShareActive = (share = {}, now = Date.now()) => {
+  const normalized = sanitizeMapShare(share);
+  if (!normalized.enabled || !normalized.token || !normalized.expiresAt) {
+    return false;
+  }
+
+  const expiresAt = Date.parse(normalized.expiresAt);
+  return Number.isFinite(expiresAt) && expiresAt > now;
+};
+
+const sanitizeMapRegionMeta = (meta = {}) => ({
+  lookupStatus: meta?.lookupStatus === 'failed' ? 'failed' : (meta?.lookupStatus === 'resolved' ? 'resolved' : 'pending'),
+  isChina: meta?.isChina === true,
+  countryCode: typeof meta?.countryCode === 'string' ? meta.countryCode.trim().toUpperCase() : '',
+  countryName: typeof meta?.countryName === 'string' ? meta.countryName.trim() : '',
+  provinceName: typeof meta?.provinceName === 'string' ? meta.provinceName.trim() : '',
+  cityName: typeof meta?.cityName === 'string' ? meta.cityName.trim() : '',
+});
+
+const sanitizeMapCollaborators = (collaborators) => (
+  Array.isArray(collaborators)
+    ? collaborators.map((item) => ({
+      id: typeof item?.id === 'string' ? item.id : `collab_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
+      token: typeof item?.token === 'string' ? item.token.trim() : '',
+      ownerId: typeof item?.ownerId === 'string' ? item.ownerId.trim() : '',
+      ownerName: typeof item?.ownerName === 'string' ? item.ownerName.trim() : '',
+      displayName: typeof item?.displayName === 'string' ? item.displayName.trim() : '',
+      color: typeof item?.color === 'string' ? item.color.trim() : '',
+      regionColor: typeof item?.regionColor === 'string' ? item.regionColor.trim() : '',
+      hidden: item?.hidden === true,
+      points: Array.isArray(item?.points)
+        ? item.points
+          .map((point) => {
+            const latitude = Number.parseFloat(point?.latitude);
+            const longitude = Number.parseFloat(point?.longitude);
+            if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+              return null;
+            }
+            return {
+              id: typeof point?.id === 'string' ? point.id : `cp_${Date.now()}_${crypto.randomBytes(2).toString('hex')}`,
+              place: typeof point?.place === 'string' ? point.place : '',
+              latitude: Math.max(-90, Math.min(90, latitude)),
+              longitude: Math.max(-180, Math.min(180, longitude)),
+              route: typeof point?.route === 'string' ? point.route : '',
+              regionMeta: sanitizeMapRegionMeta(point?.regionMeta),
+            };
+          })
+          .filter(Boolean)
+        : [],
+      importedAt: typeof item?.importedAt === 'string' ? item.importedAt : new Date().toISOString(),
+    }))
+    : []
+);
 
 const sanitizeMapPlaceBookmarks = (places, maxSize = 20) => {
   const list = Array.isArray(places) ? places : [];
@@ -223,6 +271,7 @@ const sanitizeMapWorkspace = (workspace = {}) => {
       bubbleLayout: 'freestyle',
       users: [],
       points: [],
+      collaborators: [],
       searchHistory: [],
       favoritePlaces: [],
       recycleBin: [],
@@ -240,6 +289,7 @@ const sanitizeMapWorkspace = (workspace = {}) => {
     bubbleLayout: ['map', 'right', 'bottom', 'freestyle'].includes(workspace.bubbleLayout) ? workspace.bubbleLayout : 'freestyle',
     users: Array.isArray(workspace.users) ? workspace.users : [],
     points: Array.isArray(workspace.points) ? workspace.points : [],
+    collaborators: sanitizeMapCollaborators(workspace.collaborators),
     searchHistory: sanitizeMapPlaceBookmarks(workspace.searchHistory, 12),
     favoritePlaces: sanitizeMapPlaceBookmarks(workspace.favoritePlaces, 16),
     recycleBin: sanitizeMapRecycleBin(workspace.recycleBin),
@@ -305,6 +355,7 @@ const getStorageConfig = () => {
       messagesPath: process.env.GITHUB_MESSAGES_PATH || 'data/messages.json',
       mapsPath: process.env.GITHUB_MAPS_PATH || 'data/map-by-user.json',
       legacyPlansPath: process.env.GITHUB_PLANS_PATH || 'data/plans.json',
+      runtimeSecretsPath: process.env.GITHUB_RUNTIME_SECRETS_PATH || 'data/runtime-secrets.json',
     };
   }
 
@@ -315,7 +366,8 @@ const getStorageConfig = () => {
     snapshotsPath: path.join(LOCAL_DATA_DIR, 'plan-snapshots.json'),
     messagesPath: path.join(LOCAL_DATA_DIR, 'messages.json'),
     mapsPath: path.join(LOCAL_DATA_DIR, 'map-by-user.json'),
-    legacyPlansPath: path.join(PROJECT_ROOT, 'public', 'data', 'plans.json'),
+    legacyPlansPath: path.join(LOCAL_DATA_DIR, 'legacy-plans.json'),
+    runtimeSecretsPath: path.join(LOCAL_DATA_DIR, 'runtime-secrets.json'),
   };
 };
 
@@ -601,6 +653,62 @@ const writeJson = async (config, filePath, data, message) => {
   return writeLocalJson(filePath, data);
 };
 
+const normalizeRuntimeSecretValue = (value) => {
+  if (typeof value !== 'string') {
+    return '';
+  }
+  return value.trim();
+};
+
+export const getPersistentRuntimeSecret = async (secretName) => {
+  const normalizedName = normalizeRuntimeSecretValue(secretName);
+  if (!normalizedName) {
+    throw new Error('Runtime secret name is required');
+  }
+
+  const cached = runtimeSecretCache.get(normalizedName);
+  if (cached) {
+    return cached;
+  }
+
+  const config = getStorageConfig();
+  const result = await readJson(config, config.runtimeSecretsPath, {});
+  const existingSecrets = result.data && typeof result.data === 'object' && !Array.isArray(result.data)
+    ? result.data
+    : {};
+  const existingSecret = normalizeRuntimeSecretValue(existingSecrets[normalizedName]);
+
+  if (existingSecret) {
+    runtimeSecretCache.set(normalizedName, existingSecret);
+    return existingSecret;
+  }
+
+  const generatedSecret = crypto.randomBytes(32).toString('base64url');
+  const nextSecrets = {
+    ...existingSecrets,
+    [normalizedName]: generatedSecret,
+  };
+
+  try {
+    await writeJson(config, config.runtimeSecretsPath, nextSecrets, `Initialize runtime secret: ${normalizedName}`);
+    runtimeSecretCache.set(normalizedName, generatedSecret);
+    return generatedSecret;
+  } catch (error) {
+    const retryResult = await readJson(config, config.runtimeSecretsPath, {});
+    const retrySecrets = retryResult.data && typeof retryResult.data === 'object' && !Array.isArray(retryResult.data)
+      ? retryResult.data
+      : {};
+    const retrySecret = normalizeRuntimeSecretValue(retrySecrets[normalizedName]);
+
+    if (retrySecret) {
+      runtimeSecretCache.set(normalizedName, retrySecret);
+      return retrySecret;
+    }
+
+    throw error;
+  }
+};
+
 const readLegacyPlans = async (config) => {
   try {
     const result = await readJson(config, config.legacyPlansPath, []);
@@ -646,42 +754,16 @@ export const ensureDataStore = async () => {
     : {};
 
   let changed = false;
-  let admin = users.find((user) => normalizeEmail(user.email) === ADMIN_SEED.email);
 
   if (rawUsers.some((user) => !(typeof user?.managementId === 'string' && user.managementId.trim()))) {
     changed = true;
   }
 
-  if (!admin) {
-    admin = sanitizeUser({
-      id: ADMIN_SEED.id,
-      email: ADMIN_SEED.email,
-      username: ADMIN_SEED.username,
-      passwordHash: hashPassword(ADMIN_SEED.password),
-      role: ADMIN_SEED.role,
-      isActive: true,
-    });
-    users.push(admin);
-    changed = true;
-  } else {
-    if (admin.username !== ADMIN_SEED.username) {
-      admin.username = ADMIN_SEED.username;
-      changed = true;
-    }
-    if (admin.role !== ADMIN_SEED.role) {
-      admin.role = ADMIN_SEED.role;
-      changed = true;
-    }
-    if (!verifyPassword(ADMIN_SEED.password, admin.passwordHash)) {
-      admin.passwordHash = hashPassword(ADMIN_SEED.password);
-      admin.updatedAt = new Date().toISOString();
-      changed = true;
-    }
-  }
+  const primaryAdmin = users.find((user) => user.role === 'admin' && user.isActive !== false) || null;
 
-  if (!Array.isArray(plansByUser[admin.id])) {
+  if (primaryAdmin && !Array.isArray(plansByUser[primaryAdmin.id])) {
     const hasAnyPlans = Object.values(plansByUser).some((value) => Array.isArray(value) && value.length > 0);
-    plansByUser[admin.id] = hasAnyPlans ? [] : await readLegacyPlans(config);
+    plansByUser[primaryAdmin.id] = hasAnyPlans ? [] : await readLegacyPlans(config);
     changed = true;
   }
 
@@ -702,13 +784,13 @@ export const ensureDataStore = async () => {
     mapsByUser,
   });
 
-  if (!snapshotsByUser[admin.id]?.length && plansByUser[admin.id]?.length) {
-    snapshotsByUser[admin.id] = [
+  if (primaryAdmin && !snapshotsByUser[primaryAdmin.id]?.length && plansByUser[primaryAdmin.id]?.length) {
+    snapshotsByUser[primaryAdmin.id] = [
       sanitizeSnapshot({
         snapshotDate: getShanghaiDateString(),
         createdAt: new Date().toISOString(),
         source: 'migration',
-        plans: plansByUser[admin.id],
+        plans: plansByUser[primaryAdmin.id],
       }),
     ];
     changed = true;

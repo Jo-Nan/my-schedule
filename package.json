@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "admin:local": "node ./scripts/manage-local-user.mjs"
   },
   "dependencies": {
     "@surbowl/world-geo-json-zh": "^2.1.5",

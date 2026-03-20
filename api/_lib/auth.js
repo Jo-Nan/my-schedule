@@ -1,17 +1,27 @@
 import crypto from 'node:crypto';
-import { ensureDataStore, findUserById, publicUser } from './store.js';
+import { ensureDataStore, findUserById, getPersistentRuntimeSecret, publicUser } from './store.js';
 
 const SESSION_COOKIE = 'nanmuz_session';
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 14;
 
-const getSessionSecret = () => process.env.SESSION_SECRET || process.env.AUTH_SECRET || 'day-local-dev-secret';
+const getSessionSecret = async () => {
+  const configuredSecret = String(process.env.SESSION_SECRET || process.env.AUTH_SECRET || '').trim();
+  if (configuredSecret) {
+    return configuredSecret;
+  }
+
+  return getPersistentRuntimeSecret('session-signing-secret');
+};
 
 const base64UrlEncode = (value) => Buffer.from(value, 'utf-8').toString('base64url');
 const base64UrlDecode = (value) => Buffer.from(value, 'base64url').toString('utf-8');
 
-const sign = (value) => crypto.createHmac('sha256', getSessionSecret()).update(value).digest('base64url');
+const sign = async (value) => {
+  const sessionSecret = await getSessionSecret();
+  return crypto.createHmac('sha256', sessionSecret).update(value).digest('base64url');
+};
 
-export const createSessionToken = (user) => {
+export const createSessionToken = async (user) => {
   const now = Math.floor(Date.now() / 1000);
   const payload = {
     sub: user.id,
@@ -21,7 +31,7 @@ export const createSessionToken = (user) => {
     exp: now + SESSION_TTL_SECONDS,
   };
   const encoded = base64UrlEncode(JSON.stringify(payload));
-  return `${encoded}.${sign(encoded)}`;
+  return `${encoded}.${await sign(encoded)}`;
 };
 
 const parseCookies = (cookieHeader = '') => Object.fromEntries(
@@ -36,13 +46,13 @@ const parseCookies = (cookieHeader = '') => Object.fromEntries(
     .filter(([key]) => key)
 );
 
-const verifySessionToken = (token) => {
+const verifySessionToken = async (token) => {
   if (!token || !token.includes('.')) {
     return null;
   }
 
   const [encoded, signature] = token.split('.');
-  const expectedSignature = sign(encoded);
+  const expectedSignature = await sign(encoded);
   const receivedSignature = Buffer.from(signature, 'utf-8');
   const safeExpected = Buffer.from(expectedSignature, 'utf-8');
 
@@ -62,8 +72,8 @@ const verifySessionToken = (token) => {
   }
 };
 
-export const setSessionCookie = (res, user) => {
-  const token = createSessionToken(user);
+export const setSessionCookie = async (res, user) => {
+  const token = await createSessionToken(user);
   const parts = [
     `${SESSION_COOKIE}=${encodeURIComponent(token)}`,
     'Path=/',
@@ -97,7 +107,7 @@ export const clearSessionCookie = (res) => {
 
 export const getAuthenticatedUser = async (req) => {
   const cookies = parseCookies(req.headers.cookie || '');
-  const session = verifySessionToken(cookies[SESSION_COOKIE]);
+  const session = await verifySessionToken(cookies[SESSION_COOKIE]);
 
   if (!session) {
     return null;
