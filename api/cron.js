@@ -2,8 +2,29 @@ import { sendBirthdayGreetingEmail } from './_lib/email.js';
 import { ensureDataStore, getShanghaiDateString, saveUsers } from './_lib/store.js';
 import { getAuthenticatedUser } from './_lib/auth.js';
 
+const CRON_EMAIL_DELIVERY_ENABLED = false;
+const CRON_EMAILS_DISABLED_REASON = 'Scheduled email delivery is temporarily paused in code.';
+
+const buildCronPausedResponse = (message = CRON_EMAILS_DISABLED_REASON) => ({
+  status: 'success',
+  paused: true,
+  message,
+  sent: [],
+  failed: [],
+  skipped: [],
+});
+
 // 内部邮件发送函数
 const sendEmail = async ({ to, subject, text }) => {
+  if (!CRON_EMAIL_DELIVERY_ENABLED) {
+    return {
+      sent: false,
+      skipped: true,
+      disabled: true,
+      reason: CRON_EMAILS_DISABLED_REASON,
+    };
+  }
+
   const apiKey = process.env.RESEND_API_KEY;
   const fromEmail = process.env.MAIL_FROM || process.env.RESEND_FROM;
 
@@ -77,11 +98,13 @@ export default async function handler(req, res) {
         {
           id: 'birthday-greetings',
           name: '生日祝福',
-          description: '每天给有生日的用户发送祝福邮件',
+          description: CRON_EMAIL_DELIVERY_ENABLED
+            ? '每天给有生日的用户发送祝福邮件'
+            : '生日祝福邮件已临时暂停，模块仍保留。',
           schedule: 'Every day at 00:00 (Shanghai)',
           lastRun: null,
-          nextRun: `${today} 00:00`,
-          status: 'scheduled',
+          nextRun: CRON_EMAIL_DELIVERY_ENABLED ? `${today} 00:00` : null,
+          status: CRON_EMAIL_DELIVERY_ENABLED ? 'scheduled' : 'paused',
           stats: {
             usersWithBirthdayToday: usersWithBirthdayToday.length,
             alreadySentToday: alreadySentToday,
@@ -91,25 +114,29 @@ export default async function handler(req, res) {
         {
           id: 'daily-digest',
           name: '今日简报',
-          description: '每天早上 08:05 发送今日任务摘要',
+          description: CRON_EMAIL_DELIVERY_ENABLED
+            ? '每天早上 08:05 发送今日任务摘要'
+            : '今日简报邮件已临时暂停，模块仍保留。',
           schedule: 'Every day at 08:05 (Shanghai)',
           lastRun: null,
-          nextRun: `${today} 08:05`,
-          status: 'scheduled',
+          nextRun: CRON_EMAIL_DELIVERY_ENABLED ? `${today} 08:05` : null,
+          status: CRON_EMAIL_DELIVERY_ENABLED ? 'scheduled' : 'paused',
           stats: {
-            nextSend: 'All active users',
+            nextSend: CRON_EMAIL_DELIVERY_ENABLED ? 'All active users' : 'Paused',
           },
         },
         {
           id: 'evening-report',
           name: '晚报邮件',
-          description: '每天晚上 22:05 发送当日总结和任务详情',
+          description: CRON_EMAIL_DELIVERY_ENABLED
+            ? '每天晚上 22:05 发送当日总结和任务详情'
+            : '晚报邮件已临时暂停，模块仍保留。',
           schedule: 'Every day at 22:05 (Shanghai)',
           lastRun: null,
-          nextRun: `${today} 22:05`,
-          status: 'scheduled',
+          nextRun: CRON_EMAIL_DELIVERY_ENABLED ? `${today} 22:05` : null,
+          status: CRON_EMAIL_DELIVERY_ENABLED ? 'scheduled' : 'paused',
           stats: {
-            nextSend: 'All active users',
+            nextSend: CRON_EMAIL_DELIVERY_ENABLED ? 'All active users' : 'Paused',
           },
         },
       ];
@@ -124,6 +151,10 @@ export default async function handler(req, res) {
 
     // GET or POST /api/cron?action=birthday-greetings
     if (action === 'birthday-greetings') {
+      if (!CRON_EMAIL_DELIVERY_ENABLED) {
+        return res.status(200).json(buildCronPausedResponse('Birthday greeting emails are temporarily paused.'));
+      }
+
       const store = await ensureDataStore();
       const today = getShanghaiDateString();
       const monthDay = today.slice(5);
@@ -154,6 +185,10 @@ export default async function handler(req, res) {
 
     // POST /api/cron?action=daily-digest - Send morning digest
     if (action === 'daily-digest' && req.method === 'POST') {
+      if (!CRON_EMAIL_DELIVERY_ENABLED) {
+        return res.status(200).json(buildCronPausedResponse('Daily digest emails are temporarily paused.'));
+      }
+
       const store = await ensureDataStore();
       const today = getShanghaiDateString();
       const sent = [];
@@ -214,6 +249,10 @@ ${urgentPlans.map((p) => `• ${p.time} - ${p.event} (${p.person})`).join('\n')}
 
     // POST /api/cron?action=evening-report - Send evening report with task details
     if (action === 'evening-report' && req.method === 'POST') {
+      if (!CRON_EMAIL_DELIVERY_ENABLED) {
+        return res.status(200).json(buildCronPausedResponse('Evening report emails are temporarily paused.'));
+      }
+
       const store = await ensureDataStore();
       const today = getShanghaiDateString();
       const tomorrow = new Date(new Date(today).getTime() + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
@@ -287,6 +326,10 @@ ${tomorrowPlans.length > 5 ? `  ... 及其他 ${tomorrowPlans.length - 5} 个` :
 
     // POST /api/cron?action=test-daily-digest - Test daily digest for admin
     if (action === 'test-daily-digest' && req.method === 'POST') {
+      if (!CRON_EMAIL_DELIVERY_ENABLED) {
+        return res.status(200).json(buildCronPausedResponse('Daily digest test emails are temporarily paused.'));
+      }
+
       const auth = await getAuthenticatedUser(req);
       if (!auth || auth.user.role !== 'admin') {
         return res.status(403).json({ status: 'error', message: 'Admin access required' });
@@ -348,6 +391,10 @@ ${urgentPlans.map((p) => `• ${p.time} - ${p.event} (${p.person})`).join('\n')}
 
     // POST /api/cron?action=test-evening-report - Test evening report for admin
     if (action === 'test-evening-report' && req.method === 'POST') {
+      if (!CRON_EMAIL_DELIVERY_ENABLED) {
+        return res.status(200).json(buildCronPausedResponse('Evening report test emails are temporarily paused.'));
+      }
+
       const auth = await getAuthenticatedUser(req);
       if (!auth || auth.user.role !== 'admin') {
         return res.status(403).json({ status: 'error', message: 'Admin access required' });
@@ -422,6 +469,10 @@ ${tomorrowPlans.length > 5 ? `  ... 及其他 ${tomorrowPlans.length - 5} 个` :
 
     // POST /api/cron?action=test-birthday-greetings - Test birthday greeting for admin
     if (action === 'test-birthday-greetings' && req.method === 'POST') {
+      if (!CRON_EMAIL_DELIVERY_ENABLED) {
+        return res.status(200).json(buildCronPausedResponse('Birthday greeting test emails are temporarily paused.'));
+      }
+
       const auth = await getAuthenticatedUser(req);
       if (!auth || auth.user.role !== 'admin') {
         return res.status(403).json({ status: 'error', message: 'Admin access required' });

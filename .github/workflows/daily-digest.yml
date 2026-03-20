@@ -1,11 +1,6 @@
 name: Daily Digest Emails (08:05 & 22:05 Shanghai)
 
 on:
-  schedule:
-    # 08:05 Shanghai = 00:05 UTC (北京时间早上 8:05)
-    - cron: '5 0 * * *'
-    # 22:05 Shanghai = 14:05 UTC (北京时间晚上 22:05)
-    - cron: '5 14 * * *'
   workflow_dispatch:  # 支持手动触发
 
 jobs:

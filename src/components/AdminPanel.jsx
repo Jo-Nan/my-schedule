@@ -114,7 +114,7 @@ const AdminPanel = ({
       if (!response.ok || result.status !== 'success') {
         throw new Error(result.message || `Failed to trigger ${taskId}`);
       }
-      setMessage(`✅ Task triggered successfully. ${result.sent?.length || 0} emails sent.`);
+      setMessage(result.message || `✅ Task triggered successfully. ${result.sent?.length || 0} emails sent.`);
       await loadCronTasks();
     } catch (triggerError) {
       setError(triggerError.message || 'Failed to trigger cron task');
@@ -138,7 +138,7 @@ const AdminPanel = ({
         'test-evening-report': '📊 Evening Report',
         'test-birthday-greetings': '🎂 Birthday Greeting',
       }[testAction] || testAction;
-      setMessage(`✅ ${actionLabel} test email sent! Check your inbox.`);
+      setMessage(result.message || `✅ ${actionLabel} test email sent! Check your inbox.`);
       await loadCronTasks();
     } catch (triggerError) {
       setError(triggerError.message || 'Failed to send test email');
@@ -471,6 +471,7 @@ const AdminPanel = ({
                     <div style={styles.planTitle}>{task.name}</div>
                     <div style={styles.planMeta}>{task.description}</div>
                     <div style={styles.planMeta}>📅 {task.schedule}</div>
+                    <div style={styles.planMeta}>状态: {task.status || 'scheduled'}</div>
                     <div style={styles.planMeta}>
                       {task.stats?.usersWithBirthdayToday && (
                         <>
@@ -484,6 +485,7 @@ const AdminPanel = ({
                         className="glass-button" 
                         style={styles.triggerBtn}
                         onClick={() => handleTriggerCronTask(task.id)}
+                        disabled={task.status === 'paused'}
                       >
                         {t.adminCronTrigger}
                       </button>
@@ -492,6 +494,7 @@ const AdminPanel = ({
                           className="glass-button" 
                           style={{ ...styles.triggerBtn, fontSize: '12px', padding: '4px 8px' }}
                           onClick={() => handleTestEmailTrigger('test-birthday-greetings')}
+                          disabled={task.status === 'paused'}
                         >
                           🧪 Test
                         </button>
@@ -509,6 +512,7 @@ const AdminPanel = ({
                   className="glass-button" 
                   style={styles.triggerBtn}
                   onClick={() => handleTestEmailTrigger('test-daily-digest')}
+                  disabled={cronTasks.some((task) => task.id === 'daily-digest' && task.status === 'paused')}
                 >
                   📋 Test Daily Digest
                 </button>
@@ -516,6 +520,7 @@ const AdminPanel = ({
                   className="glass-button" 
                   style={styles.triggerBtn}
                   onClick={() => handleTestEmailTrigger('test-evening-report')}
+                  disabled={cronTasks.some((task) => task.id === 'evening-report' && task.status === 'paused')}
                 >
                   📊 Test Evening Report
                 </button>
@@ -523,6 +528,7 @@ const AdminPanel = ({
                   className="glass-button" 
                   style={styles.triggerBtn}
                   onClick={() => handleTestEmailTrigger('test-birthday-greetings')}
+                  disabled={cronTasks.some((task) => task.id === 'birthday-greetings' && task.status === 'paused')}
                 >
                   🎂 Test Birthday
                 </button>
