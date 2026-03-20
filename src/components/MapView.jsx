@@ -261,6 +261,8 @@ const TEXTS = {
     clearFeaturedBtn: 'Featured: None',
     featuredBubbleShow: 'Show featured bubbles',
     featuredBubbleHide: 'Hide featured bubbles',
+    markerNamesShow: 'Show marker names',
+    markerNamesHide: 'Hide marker names',
     featuredLayoutLabel: 'Bubble layout',
     featuredLayoutMap: 'Near pin',
     featuredLayoutRight: 'Right dock',
@@ -420,6 +422,8 @@ const TEXTS = {
     clearFeaturedBtn: '精选：无',
     featuredBubbleShow: '显示精选书签',
     featuredBubbleHide: '隐藏精选书签',
+    markerNamesShow: '显示地点用户名',
+    markerNamesHide: '隐藏地点用户名',
     featuredLayoutLabel: '书签布局',
     featuredLayoutMap: '点位旁边',
     featuredLayoutRight: '右侧停靠',
@@ -1208,6 +1212,7 @@ const parseWorkspace = (rawWorkspace, defaultName) => {
 
   const loadedScope = safeWorkspace?.scope === 'world' ? 'world' : 'china';
   const loadedShowFeaturedBubbles = safeWorkspace?.showFeaturedBubbles !== false;
+  const loadedShowMarkerNames = safeWorkspace?.showMarkerNames !== false;
   const loadedBubbleLayout = ['map', 'right', 'bottom', 'freestyle'].includes(safeWorkspace?.bubbleLayout)
     ? safeWorkspace.bubbleLayout
     : 'freestyle';
@@ -1251,6 +1256,7 @@ const parseWorkspace = (rawWorkspace, defaultName) => {
     share,
     revision,
     showFeaturedBubbles: loadedShowFeaturedBubbles,
+    showMarkerNames: loadedShowMarkerNames,
     bubbleLayout: loadedBubbleLayout,
     savedAt,
     savedAtStamp,
@@ -1267,6 +1273,7 @@ const workspaceToPayload = ({
   recycleBin,
   revision,
   showFeaturedBubbles,
+  showMarkerNames,
   bubbleLayout,
 }) => ({
   scope: scope === 'world' ? 'world' : 'china',
@@ -1278,6 +1285,7 @@ const workspaceToPayload = ({
   recycleBin: pruneRecycleItems(Array.isArray(recycleBin) ? recycleBin : []),
   revision: Number.isInteger(revision) && revision >= 0 ? revision : 0,
   showFeaturedBubbles: showFeaturedBubbles !== false,
+  showMarkerNames: showMarkerNames !== false,
   bubbleLayout: ['map', 'right', 'bottom', 'freestyle'].includes(bubbleLayout) ? bubbleLayout : 'freestyle',
   savedAt: new Date().toISOString(),
 });
@@ -1292,6 +1300,7 @@ const workspaceHash = ({
   recycleBin,
   revision,
   showFeaturedBubbles,
+  showMarkerNames,
   bubbleLayout,
 }) => JSON.stringify({
   scope: scope === 'world' ? 'world' : 'china',
@@ -1303,6 +1312,7 @@ const workspaceHash = ({
   recycleBin: pruneRecycleItems(Array.isArray(recycleBin) ? recycleBin : []),
   revision: Number.isInteger(revision) && revision >= 0 ? revision : 0,
   showFeaturedBubbles: showFeaturedBubbles !== false,
+  showMarkerNames: showMarkerNames !== false,
   bubbleLayout: ['map', 'right', 'bottom', 'freestyle'].includes(bubbleLayout) ? bubbleLayout : 'freestyle',
 });
 
@@ -1785,6 +1795,7 @@ function MapView({
   const [isRecycleBinExpanded, setIsRecycleBinExpanded] = useState(false);
   const [isUserEditExpanded, setIsUserEditExpanded] = useState(false);
   const [showFeaturedBubbles, setShowFeaturedBubbles] = useState(true);
+  const [showMarkerNames, setShowMarkerNames] = useState(true);
   const [bubbleLayout, setBubbleLayout] = useState('freestyle');
   const [selectedPointId, setSelectedPointId] = useState('');
   const [chinaBoundaryData, setChinaBoundaryData] = useState(null);
@@ -1920,6 +1931,7 @@ function MapView({
         setShareToken(effectiveToken);
         setShareUrl((loadedShare.enabled || tokenFromProps) ? buildClientShareUrl(effectiveToken) : '');
         setShowFeaturedBubbles(loadedWorkspace.showFeaturedBubbles);
+        setShowMarkerNames(loadedWorkspace.showMarkerNames);
         setBubbleLayout(loadedWorkspace.bubbleLayout);
         setSelectedUserId(normalizedUsers[0]?.id || '');
         setExpandedUserId(normalizedUsers[0]?.id || '');
@@ -1967,6 +1979,7 @@ function MapView({
       setShareToken(loadedShare.token);
       setShareUrl(loadedShare.enabled ? buildClientShareUrl(loadedShare.token) : '');
       setShowFeaturedBubbles(loadedWorkspace.showFeaturedBubbles);
+      setShowMarkerNames(loadedWorkspace.showMarkerNames);
       setBubbleLayout(loadedWorkspace.bubbleLayout);
       setSelectedUserId(normalizedUsers[0]?.id || '');
       setExpandedUserId(normalizedUsers[0]?.id || '');
@@ -2048,6 +2061,7 @@ function MapView({
           setShareToken(serverShare.token);
           setShareUrl(serverShare.enabled ? buildClientShareUrl(serverShare.token) : '');
           setShowFeaturedBubbles(serverWorkspace.showFeaturedBubbles);
+          setShowMarkerNames(serverWorkspace.showMarkerNames);
           setBubbleLayout(serverWorkspace.bubbleLayout);
           setSelectedUserId(normalizedUsers[0]?.id || '');
           setExpandedUserId(normalizedUsers[0]?.id || '');
@@ -2084,6 +2098,7 @@ function MapView({
       recycleBin,
       revision: workspaceRevision,
       showFeaturedBubbles,
+      showMarkerNames,
       bubbleLayout,
     });
 
@@ -2105,7 +2120,7 @@ function MapView({
         }
       }
     })();
-  }, [bubbleLayout, collaborators, favoritePlaces, isLoaded, points, readOnly, recycleBin, scope, searchHistory, showFeaturedBubbles, storageKey, text.storageLimitError, users, workspaceRevision]);
+  }, [bubbleLayout, collaborators, favoritePlaces, isLoaded, points, readOnly, recycleBin, scope, searchHistory, showFeaturedBubbles, showMarkerNames, storageKey, text.storageLimitError, users, workspaceRevision]);
 
   useEffect(() => {
     if (readOnly || !isLoaded || !isServerHydrated || !activeUserId) {
@@ -2123,6 +2138,7 @@ function MapView({
       recycleBin,
       revision: workspaceRevision,
       showFeaturedBubbles,
+      showMarkerNames,
       bubbleLayout,
     });
     const nextHash = workspaceHash(nextPayload);
@@ -2172,6 +2188,7 @@ function MapView({
             setShareToken(latestShare.token);
             setShareUrl(latestShare.enabled ? buildClientShareUrl(latestShare.token) : '');
             setShowFeaturedBubbles(latest.showFeaturedBubbles);
+            setShowMarkerNames(latest.showMarkerNames);
             setBubbleLayout(latest.bubbleLayout);
             setSelectedUserId(normalizedUsers[0]?.id || '');
             setExpandedUserId(normalizedUsers[0]?.id || '');
@@ -2254,6 +2271,7 @@ function MapView({
     reconcileLocalUsers,
     users,
     workspaceRevision,
+    showMarkerNames,
   ]);
 
   useEffect(() => {
@@ -4364,6 +4382,14 @@ function MapView({
             {showFeaturedBubbles ? text.featuredBubbleHide : text.featuredBubbleShow}
           </button>
 
+          <button
+            type="button"
+            className={`glass-button map-topbar-btn map-marker-name-toggle-btn ${showMarkerNames ? 'active' : ''}`}
+            onClick={() => setShowMarkerNames((previous) => !previous)}
+          >
+            {showMarkerNames ? text.markerNamesHide : text.markerNamesShow}
+          </button>
+
           <label className="map-layout-select-wrap">
             <span>{text.featuredLayoutLabel}</span>
             <select
@@ -5278,15 +5304,17 @@ function MapView({
                       weight: isSelectedMarker ? 4 : 3,
                     }}
                   >
-                    <Tooltip
-                      permanent
-                      direction="top"
-                      offset={[0, -10]}
-                      opacity={0.95}
-                      className="map-marker-tooltip"
-                    >
-                      {owner?.name || '-'}
-                    </Tooltip>
+                    {showMarkerNames && (
+                      <Tooltip
+                        permanent
+                        direction="top"
+                        offset={[0, -10]}
+                        opacity={0.95}
+                        className="map-marker-tooltip"
+                      >
+                        {owner?.name || '-'}
+                      </Tooltip>
+                    )}
                   </CircleMarker>
                 );
               })}

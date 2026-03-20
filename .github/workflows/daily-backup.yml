@@ -6,9 +6,14 @@ on:
     - cron: '0 20 * * *'
   workflow_dispatch:  # Allow manual trigger
 
+permissions:
+  contents: write
+
 jobs:
   backup:
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -16,17 +21,19 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
+          cache: 'npm'
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Create backups directory
         run: mkdir -p backups
 
       - name: Run backup script
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Prefer a dedicated PAT for cross-repo reads; fall back to workflow token.
+          GITHUB_TOKEN: ${{ secrets.DAY_DATA_TOKEN || secrets.GITHUB_TOKEN }}
           GITHUB_OWNER: Jo-Nan
           GITHUB_REPO: day-data
           GITHUB_BRANCH: main
