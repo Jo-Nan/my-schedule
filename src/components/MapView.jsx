@@ -1934,7 +1934,7 @@ function MapView({
         setShowMarkerNames(loadedWorkspace.showMarkerNames);
         setBubbleLayout(loadedWorkspace.bubbleLayout);
         setSelectedUserId(normalizedUsers[0]?.id || '');
-        setExpandedUserId(normalizedUsers[0]?.id || '');
+        setExpandedUserId('');
         setSelectedPointId('');
         setFormMessage('');
         setIsServerHydrated(true);
@@ -1982,7 +1982,7 @@ function MapView({
       setShowMarkerNames(loadedWorkspace.showMarkerNames);
       setBubbleLayout(loadedWorkspace.bubbleLayout);
       setSelectedUserId(normalizedUsers[0]?.id || '');
-      setExpandedUserId(normalizedUsers[0]?.id || '');
+      setExpandedUserId('');
       setSelectedPointId('');
       setNewUserColor(COLOR_PALETTE[1]);
       setNewUserRgb(hexToRgbString(COLOR_PALETTE[1]));
@@ -2289,7 +2289,7 @@ function MapView({
       setSelectedUserId(allUserIds[0]);
     }
     if (expandedUserId && !allUserIds.includes(expandedUserId)) {
-      setExpandedUserId(allUserIds[0]);
+      setExpandedUserId('');
     }
   }, [collaborators, expandedUserId, selectedUserId, users]);
 
@@ -4700,7 +4700,7 @@ function MapView({
                 className="glass-button map-collapse-btn"
                 onClick={() => setIsUserEditExpanded((previous) => !previous)}
                 aria-expanded={isUserEditExpanded}
-                disabled={!selectedUser && !selectedCollaborator}
+                disabled={!isUserEditExpanded && !selectedUser && !selectedCollaborator}
               >
                 <span>{text.userEditBtn}</span>
                 <span className="map-collapse-indicator">{isUserEditExpanded ? '−' : '+'}</span>
