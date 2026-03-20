@@ -14,6 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+      BACKUP_SOURCE_REPOSITORY: Jo-Nan/day-data
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
@@ -32,8 +33,15 @@ jobs:
 
       - name: Verify day-data access
         env:
-          BACKUP_API_TOKEN: ${{ secrets.DAY_DATA_TOKEN || secrets.GITHUB_TOKEN }}
+          CURRENT_REPOSITORY: ${{ github.repository }}
+          DAY_DATA_TOKEN: ${{ secrets.DAY_DATA_TOKEN }}
+          BACKUP_API_TOKEN: ${{ secrets.DAY_DATA_TOKEN || github.token }}
         run: |
+          if [ -z "$DAY_DATA_TOKEN" ] && [ "$BACKUP_SOURCE_REPOSITORY" != "$CURRENT_REPOSITORY" ]; then
+            echo "::error::DAY_DATA_TOKEN is required for cross-repo backups from $BACKUP_SOURCE_REPOSITORY. The workflow GITHUB_TOKEN only has access to $CURRENT_REPOSITORY."
+            exit 1
+          fi
+
           if [ -z "$BACKUP_API_TOKEN" ]; then
             echo "::error::No token available for backup reads. Set DAY_DATA_TOKEN or ensure GITHUB_TOKEN is available."
             exit 1
@@ -56,7 +64,7 @@ jobs:
       - name: Run backup script
         env:
           # Prefer a dedicated PAT for cross-repo reads; fall back to workflow token.
-          GITHUB_TOKEN: ${{ secrets.DAY_DATA_TOKEN || secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.DAY_DATA_TOKEN || github.token }}
           GITHUB_OWNER: Jo-Nan
           GITHUB_REPO: day-data
           GITHUB_BRANCH: main

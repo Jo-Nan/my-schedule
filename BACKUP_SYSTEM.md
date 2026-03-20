@@ -63,7 +63,8 @@ GitHub Actions 工作流文件：`.github/workflows/daily-backup.yml`
 备份脚本：`backup-daily.js`
 
 - 需要的环境变量（自动从 GitHub Actions secrets 读取）：
-  - `GITHUB_TOKEN`（GitHub Actions 自动提供）
+  - `DAY_DATA_TOKEN`（推荐，且跨仓库备份私有仓库时必需）
+  - `GITHUB_TOKEN`（GitHub Actions 自动提供，只对当前仓库有效）
   - `GITHUB_OWNER=Jo-Nan`
   - `GITHUB_REPO=day-data`
   - `GITHUB_BRANCH=main`
@@ -72,6 +73,22 @@ GitHub Actions 工作流文件：`.github/workflows/daily-backup.yml`
   - `GITHUB_SNAPSHOTS_PATH=data/plan-snapshots.json`
   - `GITHUB_MESSAGES_PATH=data/messages.json`
   - `GITHUB_PLANS_PATH=data/plans.json`（仅旧数据兼容）
+
+### Secret 要求
+
+- 如果备份源仓库和当前运行工作流的仓库不是同一个仓库，例如当前仓库是 `Jo-Nan/my-schedule`，但要读取 `Jo-Nan/day-data`，那么必须配置 `DAY_DATA_TOKEN`。
+- 原因是 GitHub Actions 自动注入的 `GITHUB_TOKEN` 默认只能访问当前仓库，不能直接读取另一个私有仓库的数据。
+- `DAY_DATA_TOKEN` 至少需要对 `Jo-Nan/day-data` 具备 `Contents: Read` 权限；如果组织开启了 SSO，还需要给这个 token 做 SSO 授权。
+
+### 常见报错定位
+
+- `Node.js 20 actions are deprecated`
+  - 这只是 Actions 运行时告警，不是本次 `exit code 1` 的直接原因。
+  - 当前仓库里的工作流已经升级到 `actions/checkout@v5` 和 `actions/setup-node@v5`，如果线上仍显示 `@v4`，说明运行的不是当前提交，或者有旧脚本重新生成了 workflow。
+- `DAY_DATA_TOKEN is required for cross-repo backups`
+  - 说明当前工作流正在从别的仓库拉备份源，但没有配置专用 token。
+- `Cannot read Jo-Nan/day-data/data/users.json (HTTP 403/404)`
+  - 通常表示 `DAY_DATA_TOKEN` 缺失、权限不够，或者 token 没有完成组织 SSO 授权。
 
 ## 常见问题
 
