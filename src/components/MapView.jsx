@@ -66,6 +66,9 @@ const MAX_PLACE_HISTORY = 12;
 const MAX_FAVORITE_PLACES = 16;
 const REGION_LOOKUP_ZOOM = 10;
 const REMOTE_GEOCODING_ENABLED = true;
+const MAP_LOCAL_CACHE_VERSION = 2;
+const MAP_LOCAL_CACHE_MODE_FULL = 'full';
+const MAP_LOCAL_CACHE_MODE_PARTIAL = 'partial';
 
 const CHINA_PROVINCE_ALIASES = {
   北京市: '北京',
@@ -96,23 +99,63 @@ const CHINA_REGION_NAME_MAP = {
   中华人民共和国: '',
 };
 
+const unwrapLocalWorkspaceCache = (rawValue) => {
+  if (!rawValue || typeof rawValue !== 'object' || Array.isArray(rawValue)) {
+    return {
+      workspace: null,
+      trusted: false,
+    };
+  }
+
+  const hasWrappedWorkspace = rawValue.workspace && typeof rawValue.workspace === 'object' && !Array.isArray(rawValue.workspace);
+  const workspace = hasWrappedWorkspace ? rawValue.workspace : rawValue;
+  const cacheVersion = Number.parseInt(rawValue.cacheVersion, 10);
+  const cacheMode = typeof rawValue.cacheMode === 'string' ? rawValue.cacheMode : '';
+  const trusted = cacheVersion >= MAP_LOCAL_CACHE_VERSION && cacheMode === MAP_LOCAL_CACHE_MODE_FULL;
+
+  return {
+    workspace,
+    trusted,
+  };
+};
+
 const readWorkspaceFromDb = async (storageKey) => {
   if (typeof window === 'undefined' || !window.sessionStorage || !storageKey) {
-    return null;
+    return {
+      workspace: null,
+      trusted: false,
+    };
   }
   try {
     const raw = window.sessionStorage.getItem(storageKey);
-    return raw ? JSON.parse(raw) : null;
+    if (!raw) {
+      return {
+        workspace: null,
+        trusted: false,
+      };
+    }
+    return unwrapLocalWorkspaceCache(JSON.parse(raw));
   } catch {
-    return null;
+    return {
+      workspace: null,
+      trusted: false,
+    };
   }
 };
 
-const writeWorkspaceToDb = async (storageKey, payload) => {
+const writeWorkspaceToDb = async (storageKey, payload, options = {}) => {
   if (typeof window === 'undefined' || !window.sessionStorage || !storageKey) {
     throw new Error('Session storage unavailable');
   }
-  window.sessionStorage.setItem(storageKey, JSON.stringify(payload));
+  const cacheMode = options.cacheMode === MAP_LOCAL_CACHE_MODE_PARTIAL
+    ? MAP_LOCAL_CACHE_MODE_PARTIAL
+    : MAP_LOCAL_CACHE_MODE_FULL;
+  const wrapped = {
+    cacheVersion: MAP_LOCAL_CACHE_VERSION,
+    cacheMode,
+    workspace: payload,
+  };
+  window.sessionStorage.setItem(storageKey, JSON.stringify(wrapped));
 };
 
 const TEXTS = {
@@ -176,7 +219,7 @@ const TEXTS = {
     collaboratorHideBtn: 'Hide',
     collaboratorShowBtn: 'Show',
     collaboratorDeleteBtn: 'Delete',
-    collaboratorImportedHint: 'Imported map users can be renamed/recolored locally.',
+    collaboratorImportedHint: 'Imported collaborators are read-only. Use copy to create an editable local user.',
     collaboratorImportSuccess: 'Collaborator imported.',
     collaboratorImportFailed: 'Failed to import collaborator link.',
     collaboratorEmpty: 'No collaborators yet.',
@@ -332,7 +375,7 @@ const TEXTS = {
     collaboratorHideBtn: '隐藏',
     collaboratorShowBtn: '显示',
     collaboratorDeleteBtn: '删除',
-    collaboratorImportedHint: '导入后的好友可在本地改名和改色，不影响对方。',
+    collaboratorImportedHint: '导入后的好友为只读；可“备份为用户”后再编辑。',
     collaboratorImportSuccess: '协作地图已导入。',
     collaboratorImportFailed: '导入协作链接失败。',
     collaboratorEmpty: '暂无协作好友。',
@@ -1686,6 +1729,7 @@ function MapView({
   const autoUploadTimerRef = useRef(null);
   const lastServerHashRef = useRef('');
   const localLoadedAtRef = useRef(0);
+  const isLocalCacheTrustedRef = useRef(false);
   const addPointFileInputRef = useRef(null);
   const bookmarkEditorRef = useRef(null);
   const mapCanvasColumnRef = useRef(null);
@@ -1733,6 +1777,7 @@ function MapView({
           return;
         }
         localLoadedAtRef.current = loadedWorkspace.savedAtStamp;
+        isLocalCacheTrustedRef.current = true;
         setScope(loadedWorkspace.scope);
         setUsers(loadedWorkspace.users);
         setPoints(loadedWorkspace.points);
@@ -1759,16 +1804,19 @@ function MapView({
       }
 
       const fallbackName = activeUserName || (language === 'zh' ? '用户' : 'User');
-      let loadedWorkspace = parseWorkspace(null, defaultName);
+      let loadedWorkspace = parseWorkspace(null, fallbackName);
+      let localCacheTrusted = false;
 
       if (storageKey) {
         try {
-          const fromDb = await readWorkspaceFromDb(storageKey);
-          const localBackup = window.sessionStorage.getItem(storageKey);
-          const parsed = fromDb || (localBackup ? JSON.parse(localBackup) : null);
-          loadedWorkspace = parseWorkspace(parsed, fallbackName);
+          const cached = await readWorkspaceFromDb(storageKey);
+          if (cached.workspace) {
+            loadedWorkspace = parseWorkspace(cached.workspace, fallbackName);
+            localCacheTrusted = cached.trusted === true;
+          }
         } catch {
           loadedWorkspace = parseWorkspace(null, fallbackName);
+          localCacheTrusted = false;
         }
       }
 
@@ -1777,6 +1825,7 @@ function MapView({
       }
 
       localLoadedAtRef.current = loadedWorkspace.savedAtStamp;
+      isLocalCacheTrustedRef.current = localCacheTrusted;
       setScope(loadedWorkspace.scope);
       setUsers(loadedWorkspace.users);
       setPoints(loadedWorkspace.points);
@@ -1853,7 +1902,10 @@ function MapView({
 
         lastServerHashRef.current = serverHash;
 
-        if (serverWorkspace.savedAtStamp >= localLoadedAtRef.current) {
+        const shouldUseServerWorkspace = !isLocalCacheTrustedRef.current
+          || serverWorkspace.savedAtStamp >= localLoadedAtRef.current;
+
+        if (shouldUseServerWorkspace) {
           setScope(serverWorkspace.scope);
           setUsers(serverWorkspace.users);
           setPoints(serverWorkspace.points);
@@ -1908,23 +1960,17 @@ function MapView({
 
     (async () => {
       try {
-        await writeWorkspaceToDb(storageKey, payload);
-        window.sessionStorage.setItem(storageKey, JSON.stringify({
-          scope: payload.scope,
-          showFeaturedBubbles: payload.showFeaturedBubbles,
-          bubbleLayout: payload.bubbleLayout,
-          users: payload.users,
-          points: [],
-          collaborators: payload.collaborators,
-          searchHistory: payload.searchHistory,
-          favoritePlaces: payload.favoritePlaces,
-          recycleBin: payload.recycleBin,
-          revision: payload.revision,
-          savedAt: payload.savedAt,
-        }));
+        await writeWorkspaceToDb(storageKey, payload, {
+          cacheMode: MAP_LOCAL_CACHE_MODE_FULL,
+        });
       } catch {
         try {
-          window.sessionStorage.setItem(storageKey, JSON.stringify(payload));
+          await writeWorkspaceToDb(storageKey, {
+            ...payload,
+            points: [],
+          }, {
+            cacheMode: MAP_LOCAL_CACHE_MODE_PARTIAL,
+          });
         } catch {
           setFormMessage(text.storageLimitError);
         }
