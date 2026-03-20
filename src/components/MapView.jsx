@@ -4587,19 +4587,7 @@ function MapView({
             </div>
           </section>
 
-          <section className="map-panel">
-            <div className="map-user-panel-head">
-              {!readOnly && (
-                <button
-                  type="button"
-                  className="glass-button map-user-edit-toggle-btn"
-                  onClick={() => setIsUserEditExpanded((previous) => !previous)}
-                  disabled={!selectedUser}
-                >
-                  {text.userEditBtn}
-                </button>
-              )}
-            </div>
+          <section className="map-panel map-user-list-panel">
             <ul className="map-user-list">
               {allUsers.map((user) => {
                 const markerCount = markerCountByUser[user.id] || 0;
@@ -4703,105 +4691,122 @@ function MapView({
                 )}
               </div>
             )}
-
-            {!readOnly && isUserEditExpanded && (
-              <div className="map-user-edit-box">
-                {selectedCollaborator && (
-                  <p className="map-muted">{text.collaboratorReadonlyImported}</p>
-                )}
-                {!selectedCollaborator && selectedUser?.isPrimary && (
-                  <p className="map-muted">{text.primaryUserRenameHint}</p>
-                )}
-                <div className="map-user-edit-preview">
-                  <div className="map-user-edit-preview-swatch">
-                    <span style={{ backgroundColor: editUserColor }} />
-                    <span style={{ backgroundColor: editRegionColor }} />
-                  </div>
-                  <div className="map-user-edit-preview-text">
-                    <strong>{selectedUser?.name || selectedCollaborator?.displayName || text.editUserTitle}</strong>
-                    <span>{text.regionPreviewLabel}</span>
-                  </div>
-                </div>
-
-                <label className="map-label" htmlFor="map_edit_user_name">{text.editUserTitle}</label>
-                <input
-                  id="map_edit_user_name"
-                  className="glass-input"
-                  value={editUserName}
-                  placeholder={text.editUserNamePlaceholder}
-                  onChange={(event) => setEditUserName(event.target.value)}
-                  disabled={!selectedUser || selectedUser.isPrimary}
-                />
-                <div className="map-inline-grid">
-                  <div>
-                    <label className="map-label" htmlFor="map_edit_user_color_hex">{text.colorHexLabel}</label>
-                    <input
-                      id="map_edit_user_color_hex"
-                      type="color"
-                      className="map-color-input"
-                      value={editUserColor}
-                      onChange={(event) => {
-                        setEditUserColor(event.target.value);
-                        setEditUserRgb(hexToRgbString(event.target.value));
-                        setFormMessage('');
-                      }}
-                      disabled={!selectedUser}
-                    />
-                  </div>
-                  <div>
-                    <label className="map-label" htmlFor="map_edit_user_color_rgb">{text.colorRgbLabel}</label>
-                    <input
-                      id="map_edit_user_color_rgb"
-                      className="glass-input"
-                      value={editUserRgb}
-                      onChange={(event) => handleEditRgbChange(event.target.value)}
-                      disabled={!selectedUser}
-                    />
-                  </div>
-                </div>
-                <div className="map-inline-grid">
-                  <div>
-                    <label className="map-label" htmlFor="map_edit_region_color_hex">{text.regionColorLabel}</label>
-                    <input
-                      id="map_edit_region_color_hex"
-                      type="color"
-                      className="map-color-input"
-                      value={editRegionColor}
-                      onChange={(event) => {
-                        setEditRegionColor(event.target.value);
-                        setEditRegionRgb(hexToRgbString(event.target.value));
-                        setFormMessage('');
-                      }}
-                      disabled={!selectedUser}
-                    />
-                  </div>
-                  <div>
-                    <label className="map-label" htmlFor="map_edit_region_color_rgb">{text.regionColorRgbLabel}</label>
-                    <input
-                      id="map_edit_region_color_rgb"
-                      className="glass-input"
-                      value={editRegionRgb}
-                      onChange={(event) => handleEditRegionRgbChange(event.target.value)}
-                      disabled={!selectedUser}
-                    />
-                  </div>
-                </div>
-                <div className="map-user-edit-actions">
-                  <button
-                    type="button"
-                    className="glass-button map-user-edit-action-btn"
-                    onClick={handleRenameUser}
-                    disabled={!selectedUser}
-                  >
-                    {text.updateUserBtn}
-                  </button>
-                </div>
-              </div>
-            )}
           </section>
 
           {!readOnly && (
-            <section className="map-panel">
+            <section className={`map-panel map-module-panel ${isUserEditExpanded ? 'is-expanded' : ''}`}>
+              <button
+                type="button"
+                className="glass-button map-collapse-btn"
+                onClick={() => setIsUserEditExpanded((previous) => !previous)}
+                aria-expanded={isUserEditExpanded}
+                disabled={!selectedUser && !selectedCollaborator}
+              >
+                <span>{text.userEditBtn}</span>
+                <span className="map-collapse-indicator">{isUserEditExpanded ? '−' : '+'}</span>
+              </button>
+
+              {isUserEditExpanded && (
+                <div className="map-collapsible-body">
+                  <div className="map-user-edit-box">
+                    {selectedCollaborator && (
+                      <p className="map-muted">{text.collaboratorReadonlyImported}</p>
+                    )}
+                    {!selectedCollaborator && selectedUser?.isPrimary && (
+                      <p className="map-muted">{text.primaryUserRenameHint}</p>
+                    )}
+                    <div className="map-user-edit-preview">
+                      <div className="map-user-edit-preview-swatch">
+                        <span style={{ backgroundColor: editUserColor }} />
+                        <span style={{ backgroundColor: editRegionColor }} />
+                      </div>
+                      <div className="map-user-edit-preview-text">
+                        <strong>{selectedUser?.name || selectedCollaborator?.displayName || text.editUserTitle}</strong>
+                        <span>{text.regionPreviewLabel}</span>
+                      </div>
+                    </div>
+
+                    <label className="map-label" htmlFor="map_edit_user_name">{text.editUserTitle}</label>
+                    <input
+                      id="map_edit_user_name"
+                      className="glass-input"
+                      value={editUserName}
+                      placeholder={text.editUserNamePlaceholder}
+                      onChange={(event) => setEditUserName(event.target.value)}
+                      disabled={!selectedUser || selectedUser.isPrimary}
+                    />
+                    <div className="map-inline-grid">
+                      <div>
+                        <label className="map-label" htmlFor="map_edit_user_color_hex">{text.colorHexLabel}</label>
+                        <input
+                          id="map_edit_user_color_hex"
+                          type="color"
+                          className="map-color-input"
+                          value={editUserColor}
+                          onChange={(event) => {
+                            setEditUserColor(event.target.value);
+                            setEditUserRgb(hexToRgbString(event.target.value));
+                            setFormMessage('');
+                          }}
+                          disabled={!selectedUser}
+                        />
+                      </div>
+                      <div>
+                        <label className="map-label" htmlFor="map_edit_user_color_rgb">{text.colorRgbLabel}</label>
+                        <input
+                          id="map_edit_user_color_rgb"
+                          className="glass-input"
+                          value={editUserRgb}
+                          onChange={(event) => handleEditRgbChange(event.target.value)}
+                          disabled={!selectedUser}
+                        />
+                      </div>
+                    </div>
+                    <div className="map-inline-grid">
+                      <div>
+                        <label className="map-label" htmlFor="map_edit_region_color_hex">{text.regionColorLabel}</label>
+                        <input
+                          id="map_edit_region_color_hex"
+                          type="color"
+                          className="map-color-input"
+                          value={editRegionColor}
+                          onChange={(event) => {
+                            setEditRegionColor(event.target.value);
+                            setEditRegionRgb(hexToRgbString(event.target.value));
+                            setFormMessage('');
+                          }}
+                          disabled={!selectedUser}
+                        />
+                      </div>
+                      <div>
+                        <label className="map-label" htmlFor="map_edit_region_color_rgb">{text.regionColorRgbLabel}</label>
+                        <input
+                          id="map_edit_region_color_rgb"
+                          className="glass-input"
+                          value={editRegionRgb}
+                          onChange={(event) => handleEditRegionRgbChange(event.target.value)}
+                          disabled={!selectedUser}
+                        />
+                      </div>
+                    </div>
+                    <div className="map-user-edit-actions">
+                      <button
+                        type="button"
+                        className="glass-button map-user-edit-action-btn"
+                        onClick={handleRenameUser}
+                        disabled={!selectedUser}
+                      >
+                        {text.updateUserBtn}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </section>
+          )}
+
+          {!readOnly && (
+            <section className={`map-panel map-module-panel ${isAddUserExpanded ? 'is-expanded' : ''}`}>
               <button
                 type="button"
                 className="glass-button map-collapse-btn"
@@ -4857,7 +4862,7 @@ function MapView({
           )}
 
           {!readOnly && (
-            <section className="map-panel">
+            <section className={`map-panel map-module-panel ${isAddCityExpanded ? 'is-expanded' : ''}`}>
               <button
                 type="button"
                 className="glass-button map-collapse-btn"
@@ -5048,7 +5053,7 @@ function MapView({
             </section>
           )}
 
-          <section className="map-panel">
+          <section className={`map-panel map-module-panel ${isMarkersExpanded ? 'is-expanded' : ''}`}>
             <button
               type="button"
               className="glass-button map-collapse-btn"
@@ -5093,7 +5098,7 @@ function MapView({
           </section>
 
           {!readOnly && (
-            <section className="map-panel">
+            <section className={`map-panel map-module-panel ${isRecycleBinExpanded ? 'is-expanded' : ''}`}>
               <button
                 type="button"
                 className="glass-button map-collapse-btn"
@@ -5201,7 +5206,10 @@ function MapView({
             </svg>
           )}
 
-          <div className="map-canvas-shell" ref={mapCanvasShellRef}>
+          <div
+            className={`map-canvas-shell ${showMarkerNames ? '' : 'marker-names-hidden'}`.trim()}
+            ref={mapCanvasShellRef}
+          >
             <div className="map-canvas-overlay-head">
               <div className="map-canvas-headline">
                 {scope === 'china' ? text.chinaScope : text.worldScope}
@@ -5308,8 +5316,8 @@ function MapView({
                       permanent
                       direction="top"
                       offset={[0, -10]}
-                      opacity={showMarkerNames ? 0.95 : 0}
-                      className={`map-marker-tooltip ${showMarkerNames ? '' : 'is-hidden'}`.trim()}
+                      opacity={0.95}
+                      className="map-marker-tooltip"
                     >
                       {owner?.name || '-'}
                     </Tooltip>

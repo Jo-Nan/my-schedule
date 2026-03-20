@@ -281,6 +281,34 @@
   gap: 0.55rem;
 }
 
+.map-module-panel {
+  position: relative;
+  overflow: hidden;
+}
+
+.map-module-panel.is-expanded {
+  border-color: rgba(14, 165, 233, 0.48);
+  background:
+    linear-gradient(135deg, rgba(14, 165, 233, 0.14), rgba(59, 130, 246, 0.08)),
+    rgba(255, 255, 255, 0.08);
+  box-shadow:
+    0 12px 24px rgba(14, 165, 233, 0.12),
+    0 0 0 1px rgba(14, 165, 233, 0.18) inset;
+}
+
+.map-module-panel.is-expanded::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.04) 0 8px,
+      rgba(255, 255, 255, 0.01) 8px 16px
+    );
+}
+
 .map-panel h3 {
   margin: 0;
   font-size: var(--map-font-title);
@@ -516,9 +544,6 @@
 }
 
 .map-user-edit-box {
-  margin-top: 0.45rem;
-  padding-top: 0.7rem;
-  border-top: 1px dashed rgba(148, 163, 184, 0.35);
   display: flex;
   flex-direction: column;
   gap: 0.52rem;
@@ -892,7 +917,7 @@
   display: none;
 }
 
-.map-marker-tooltip.is-hidden {
+.map-canvas-shell.marker-names-hidden .map-marker-tooltip {
   display: none;
 }
 

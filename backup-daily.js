@@ -169,7 +169,15 @@ const getRetryDelayMs = (response, attempt) => {
   return Math.min(RATE_LIMIT_RETRY_CAP_MS, 1000 * (attempt + 1));
 };
 
-const fetchJsonFromGitHub = async ({ url, token, branch, fallbackValue, required }) => {
+const fetchJsonFromGitHub = async ({
+  url,
+  token,
+  branch,
+  fallbackValue,
+  required,
+  datasetKey,
+  sourcePath,
+}) => {
   for (let attempt = 0; attempt <= RATE_LIMIT_MAX_RETRIES; attempt += 1) {
     const response = await fetch(`${url}?ref=${encodeURIComponent(branch)}`, {
       headers: githubHeaders(token),
@@ -189,24 +197,33 @@ const fetchJsonFromGitHub = async ({ url, token, branch, fallbackValue, required
         await delay(getRetryDelayMs(response, attempt));
         continue;
       }
-      throw new Error(`Failed to fetch from GitHub: ${response.status} - ${text}`);
+      throw new Error(
+        `Failed to fetch dataset "${datasetKey}" (${sourcePath}): `
+        + `${response.status} - ${text}`,
+      );
     }
 
     const payload = await response.json();
     
     if (!payload.content) {
-      throw new Error('No content field in GitHub response');
+      throw new Error(`No content field in GitHub response for dataset "${datasetKey}" (${sourcePath})`);
     }
 
     // Decode base64 content
     const decodedContent = Buffer.from(payload.content, 'base64').toString('utf-8');
-    return {
-      data: JSON.parse(decodedContent),
-      exists: true,
-    };
+    try {
+      return {
+        data: JSON.parse(decodedContent),
+        exists: true,
+      };
+    } catch (jsonError) {
+      throw new Error(
+        `Invalid JSON in dataset "${datasetKey}" (${sourcePath}): ${jsonError.message}`,
+      );
+    }
   }
 
-  throw new Error('Failed to fetch from GitHub: retries exhausted');
+  throw new Error(`Failed to fetch dataset "${datasetKey}" (${sourcePath}): retries exhausted`);
 };
 
 const getBackupDateStamp = () => {
@@ -266,6 +283,8 @@ const main = async () => {
         branch: config.branch,
         fallbackValue: dataset.fallbackValue,
         required: dataset.required,
+        datasetKey: dataset.key,
+        sourcePath: dataset.sourcePath,
       });
 
       files.push({
