@@ -892,6 +892,10 @@
   display: none;
 }
 
+.map-marker-tooltip.is-hidden {
+  display: none;
+}
+
 .map-featured-bubble-anchor {
   background: transparent;
   border: none;

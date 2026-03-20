@@ -5304,17 +5304,15 @@ function MapView({
                       weight: isSelectedMarker ? 4 : 3,
                     }}
                   >
-                    {showMarkerNames && (
-                      <Tooltip
-                        permanent
-                        direction="top"
-                        offset={[0, -10]}
-                        opacity={0.95}
-                        className="map-marker-tooltip"
-                      >
-                        {owner?.name || '-'}
-                      </Tooltip>
-                    )}
+                    <Tooltip
+                      permanent
+                      direction="top"
+                      offset={[0, -10]}
+                      opacity={showMarkerNames ? 0.95 : 0}
+                      className={`map-marker-tooltip ${showMarkerNames ? '' : 'is-hidden'}`.trim()}
+                    >
+                      {owner?.name || '-'}
+                    </Tooltip>
                   </CircleMarker>
                 );
               })}
