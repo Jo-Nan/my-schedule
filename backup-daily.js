@@ -323,7 +323,10 @@ const main = async () => {
     }
     
   } catch (error) {
-    console.error('[Backup] ❌ Error during backup:', error.message);
+    const message = error?.message || 'Unknown error';
+    console.error(`[Backup] ❌ Error during backup: ${message}`);
+    // Emit an explicit GitHub Actions error annotation for quick diagnosis.
+    console.error(`::error::Daily backup failed - ${message}`);
     process.exit(1);
   }
 };
