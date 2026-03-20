@@ -1,7 +1,7 @@
 import { Readable } from 'node:stream';
 import { del, get } from '@vercel/blob';
 import { handleUpload } from '@vercel/blob/client';
-import { getAuthenticatedUser, isAuthConfigError, parseJsonBody } from './_lib/auth.js';
+import { getAuthenticatedUser, parseJsonBody } from './_lib/auth.js';
 import { findUserById } from './_lib/store.js';
 
 const MAX_UPLOAD_SIZE_BYTES = 100 * 1024 * 1024;
@@ -154,12 +154,6 @@ export default async function handler(req, res) {
 
       return res.status(200).json(response);
     } catch (error) {
-      if (isAuthConfigError(error)) {
-        return res.status(500).json({
-          status: 'error',
-          message: error.message,
-        });
-      }
       return res.status(400).json({
         status: 'error',
         message: error.message || 'Failed to generate upload token',
@@ -229,12 +223,6 @@ export default async function handler(req, res) {
       stream.pipe(res);
       return;
     } catch (error) {
-      if (isAuthConfigError(error)) {
-        return res.status(500).json({
-          status: 'error',
-          message: error.message,
-        });
-      }
       return res.status(500).json({
         status: 'error',
         message: error.message || 'Failed to read attachment',
@@ -268,9 +256,6 @@ export default async function handler(req, res) {
       await del(pathname);
       return res.status(200).json({ status: 'success' });
     } catch (error) {
-      if (isAuthConfigError(error)) {
-        return res.status(500).json({ status: 'error', message: error.message });
-      }
       return res.status(500).json({ status: 'error', message: error.message || 'Failed to delete attachment' });
     }
   }

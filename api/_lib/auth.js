@@ -3,32 +3,8 @@ import { ensureDataStore, findUserById, publicUser } from './store.js';
 
 const SESSION_COOKIE = 'nanmuz_session';
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 14;
-let devSessionSecret = '';
 
-const makeAuthConfigError = (message) => {
-  const error = new Error(message);
-  error.code = 'AUTH_CONFIG_ERROR';
-  return error;
-};
-
-export const isAuthConfigError = (error) => error?.code === 'AUTH_CONFIG_ERROR';
-
-const getSessionSecret = () => {
-  const configuredSecret = String(process.env.SESSION_SECRET || process.env.AUTH_SECRET || '').trim();
-  if (configuredSecret) {
-    return configuredSecret;
-  }
-
-  if (process.env.VERCEL || process.env.NODE_ENV === 'production') {
-    throw makeAuthConfigError('SESSION_SECRET or AUTH_SECRET must be configured.');
-  }
-
-  if (!devSessionSecret) {
-    devSessionSecret = crypto.randomBytes(32).toString('base64url');
-  }
-
-  return devSessionSecret;
-};
+const getSessionSecret = () => process.env.SESSION_SECRET || process.env.AUTH_SECRET || 'day-local-dev-secret';
 
 const base64UrlEncode = (value) => Buffer.from(value, 'utf-8').toString('base64url');
 const base64UrlDecode = (value) => Buffer.from(value, 'base64url').toString('utf-8');
@@ -138,16 +114,7 @@ export const getAuthenticatedUser = async (req) => {
 };
 
 export const requireAuth = async (req, res) => {
-  let result = null;
-  try {
-    result = await getAuthenticatedUser(req);
-  } catch (error) {
-    if (isAuthConfigError(error)) {
-      res.status(500).json({ status: 'error', message: error.message });
-      return null;
-    }
-    throw error;
-  }
+  const result = await getAuthenticatedUser(req);
   if (!result) {
     res.status(401).json({ status: 'error', message: 'Unauthorized' });
     return null;

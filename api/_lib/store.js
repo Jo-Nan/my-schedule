@@ -29,8 +29,15 @@ const __dirname = path.dirname(__filename);
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
 const LOCAL_DATA_DIR = path.join(PROJECT_ROOT, '.local-data');
 let dataStoreMutationQueue = Promise.resolve();
-let hasWarnedInvalidBootstrapAdminConfig = false;
 export const NORMAL_USER_STORAGE_LIMIT_BYTES = 15 * 1024 * 1024;
+
+const ADMIN_SEED = {
+  id: 'admin-nanmuz',
+  username: 'NanMuZ',
+  email: 'nanqiao.ai@gmail.com',
+  password: 'u7P#m2S9',
+  role: 'admin',
+};
 
 export const normalizeEmail = (value = '') => value.trim().toLowerCase();
 
@@ -279,32 +286,6 @@ export const getShanghaiDateString = (date = new Date()) => {
 };
 
 export const isValidBirthday = (value = '') => /^\d{4}-\d{2}-\d{2}$/.test(value);
-
-const getBootstrapAdminConfig = () => {
-  const email = normalizeEmail(process.env.BOOTSTRAP_ADMIN_EMAIL || '');
-  const password = String(process.env.BOOTSTRAP_ADMIN_PASSWORD || '');
-  const username = String(process.env.BOOTSTRAP_ADMIN_USERNAME || 'Admin').trim() || 'Admin';
-
-  if (!email && !password) {
-    return null;
-  }
-
-  if (!email || !password) {
-    if (!hasWarnedInvalidBootstrapAdminConfig) {
-      hasWarnedInvalidBootstrapAdminConfig = true;
-      console.warn(
-        'Ignoring bootstrap admin config because both BOOTSTRAP_ADMIN_EMAIL and BOOTSTRAP_ADMIN_PASSWORD are required.',
-      );
-    }
-    return null;
-  }
-
-  return {
-    email,
-    password,
-    username,
-  };
-};
 
 const getStorageConfig = () => {
   const token = process.env.GITHUB_TOKEN;
@@ -665,40 +646,42 @@ export const ensureDataStore = async () => {
     : {};
 
   let changed = false;
-  const bootstrapAdmin = getBootstrapAdminConfig();
+  let admin = users.find((user) => normalizeEmail(user.email) === ADMIN_SEED.email);
 
   if (rawUsers.some((user) => !(typeof user?.managementId === 'string' && user.managementId.trim()))) {
     changed = true;
   }
 
-  if (bootstrapAdmin) {
-    const existingBootstrapAdmin = users.find((user) => normalizeEmail(user.email) === bootstrapAdmin.email);
-    if (!existingBootstrapAdmin) {
-      const createdAt = new Date().toISOString();
-      users.push(sanitizeUser({
-        id: createUserId(),
-        managementId: createManagementUserId({
-          email: bootstrapAdmin.email,
-          username: bootstrapAdmin.username,
-          createdAt,
-        }),
-        email: bootstrapAdmin.email,
-        username: bootstrapAdmin.username,
-        passwordHash: hashPassword(bootstrapAdmin.password),
-        role: 'admin',
-        isActive: true,
-        createdAt,
-        updatedAt: createdAt,
-      }));
+  if (!admin) {
+    admin = sanitizeUser({
+      id: ADMIN_SEED.id,
+      email: ADMIN_SEED.email,
+      username: ADMIN_SEED.username,
+      passwordHash: hashPassword(ADMIN_SEED.password),
+      role: ADMIN_SEED.role,
+      isActive: true,
+    });
+    users.push(admin);
+    changed = true;
+  } else {
+    if (admin.username !== ADMIN_SEED.username) {
+      admin.username = ADMIN_SEED.username;
+      changed = true;
+    }
+    if (admin.role !== ADMIN_SEED.role) {
+      admin.role = ADMIN_SEED.role;
+      changed = true;
+    }
+    if (!verifyPassword(ADMIN_SEED.password, admin.passwordHash)) {
+      admin.passwordHash = hashPassword(ADMIN_SEED.password);
+      admin.updatedAt = new Date().toISOString();
       changed = true;
     }
   }
 
-  const primaryAdmin = users.find((user) => user.role === 'admin' && user.isActive !== false) || null;
-
-  if (primaryAdmin && !Array.isArray(plansByUser[primaryAdmin.id])) {
+  if (!Array.isArray(plansByUser[admin.id])) {
     const hasAnyPlans = Object.values(plansByUser).some((value) => Array.isArray(value) && value.length > 0);
-    plansByUser[primaryAdmin.id] = hasAnyPlans ? [] : await readLegacyPlans(config);
+    plansByUser[admin.id] = hasAnyPlans ? [] : await readLegacyPlans(config);
     changed = true;
   }
 
@@ -719,13 +702,13 @@ export const ensureDataStore = async () => {
     mapsByUser,
   });
 
-  if (primaryAdmin && !snapshotsByUser[primaryAdmin.id]?.length && plansByUser[primaryAdmin.id]?.length) {
-    snapshotsByUser[primaryAdmin.id] = [
+  if (!snapshotsByUser[admin.id]?.length && plansByUser[admin.id]?.length) {
+    snapshotsByUser[admin.id] = [
       sanitizeSnapshot({
         snapshotDate: getShanghaiDateString(),
         createdAt: new Date().toISOString(),
         source: 'migration',
-        plans: plansByUser[primaryAdmin.id],
+        plans: plansByUser[admin.id],
       }),
     ];
     changed = true;
