@@ -65,7 +65,7 @@ const RECYCLE_BIN_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_PLACE_HISTORY = 12;
 const MAX_FAVORITE_PLACES = 16;
 const REGION_LOOKUP_ZOOM = 10;
-const REMOTE_GEOCODING_ENABLED = false;
+const REMOTE_GEOCODING_ENABLED = true;
 
 const CHINA_PROVINCE_ALIASES = {
   北京市: '北京',
@@ -182,6 +182,10 @@ const TEXTS = {
     collaboratorEmpty: 'No collaborators yet.',
     collaboratorTokenInvalid: 'Please provide a valid share token or link.',
     collaboratorReadonlyHint: 'Collaborator points are read-only in your workspace.',
+    collaboratorReadonlyImported: 'Imported collaborator profile is read-only.',
+    collaboratorFriendTag: 'friend',
+    collaboratorCopyBtn: 'Copy as user',
+    collaboratorCopySuccess: 'Copied as editable user.',
     shareDisableConfirm: 'Disable read-only link now?',
     shareRegenerateConfirm: 'Regenerate share link now? Old link will stop working.',
     readOnlyBanner: 'Read-only shared view',
@@ -334,6 +338,10 @@ const TEXTS = {
     collaboratorEmpty: '暂无协作好友。',
     collaboratorTokenInvalid: '请输入有效的分享链接或 token。',
     collaboratorReadonlyHint: '协作好友点位在你的地图里为只读。',
+    collaboratorReadonlyImported: '导入的好友资料不可直接编辑。',
+    collaboratorFriendTag: '好友',
+    collaboratorCopyBtn: '备份为用户',
+    collaboratorCopySuccess: '已备份为可编辑用户。',
     shareDisableConfirm: '确认关闭只读分享吗？',
     shareRegenerateConfirm: '确认重置分享链接吗？旧链接将失效。',
     readOnlyBanner: '只读分享视图',
@@ -2931,7 +2939,11 @@ function MapView({
   };
 
   const handleRenameUser = () => {
-    if (!selectedUser && !selectedCollaborator) {
+    if (selectedCollaborator) {
+      setFormMessage(text.collaboratorReadonlyImported);
+      return;
+    }
+    if (!selectedUser) {
       setFormMessage(text.needUserSelect);
       return;
     }
@@ -2959,56 +2971,33 @@ function MapView({
       setFormMessage(text.invalidRgb);
       return;
     }
-    const normalizedColor = normalizeHexColor(parsedColor, selectedUser?.color || selectedCollaborator?.color || '#38bdf8');
+    const normalizedColor = normalizeHexColor(parsedColor, selectedUser?.color || '#38bdf8');
     const normalizedRegionColor = normalizeHexColor(
       parsedRegionColor,
-      selectedUser?.regionColor || selectedCollaborator?.regionColor || normalizedColor,
+      selectedUser?.regionColor || normalizedColor,
     );
 
-    if (selectedUser) {
-      setUsers((previous) => previous.map((user) => (
-        user.id === selectedUser.id
-          ? {
-            ...user,
-            name: nextName,
-            color: normalizedColor,
-            regionColor: normalizedRegionColor,
-          }
-          : user
-      )));
-    } else if (selectedCollaborator) {
-      setCollaborators((previous) => previous.map((item) => (
-        item.id === selectedCollaborator.id
-          ? {
-            ...item,
-            displayName: nextName,
-            color: normalizedColor,
-            regionColor: normalizedRegionColor,
-          }
-          : item
-      )));
-    }
+    setUsers((previous) => previous.map((user) => (
+      user.id === selectedUser.id
+        ? {
+          ...user,
+          name: nextName,
+          color: normalizedColor,
+          regionColor: normalizedRegionColor,
+        }
+        : user
+    )));
 
     setFormMessage('');
   };
 
   const handleDeleteUser = () => {
-    if (!selectedUser && !selectedCollaborator) {
-      setFormMessage(text.needUserSelect);
+    if (selectedCollaborator) {
+      setFormMessage(text.collaboratorReadonlyImported);
       return;
     }
-
-    if (selectedCollaborator) {
-      const label = selectedCollaborator.displayName || selectedCollaborator.ownerName || 'Friend';
-      const shouldDeleteCollaborator = confirmDangerAction(
-        `${text.collaboratorDeleteBtn} "${label}"?`,
-        `${text.dangerSecondConfirm}\n"${label}"`,
-      );
-      if (!shouldDeleteCollaborator) {
-        return;
-      }
-      removeCollaborator(selectedCollaborator.id);
-      setFormMessage('');
+    if (!selectedUser) {
+      setFormMessage(text.needUserSelect);
       return;
     }
 
@@ -3081,6 +3070,50 @@ function MapView({
       setSelectedPointId('');
     }
   }, [expandedUserId, selectedPointId, selectedUserId, users]);
+
+  const copyCollaboratorAsUser = useCallback((collaboratorId) => {
+    const collaborator = collaborators.find((item) => item.id === collaboratorId);
+    if (!collaborator) {
+      return;
+    }
+
+    const baseName = (collaborator.displayName || collaborator.ownerName || 'Friend').trim() || 'Friend';
+    let nextName = `${baseName} (copy)`;
+    let suffix = 2;
+    while (users.some((user) => user.name.toLowerCase() === nextName.toLowerCase())) {
+      nextName = `${baseName} (copy ${suffix})`;
+      suffix += 1;
+    }
+
+    const color = normalizeHexColor(collaborator.color, COLOR_PALETTE[users.length % COLOR_PALETTE.length]);
+    const regionColor = normalizeHexColor(collaborator.regionColor, color);
+    const nextUser = {
+      id: makeId('user'),
+      name: nextName,
+      color,
+      regionColor,
+    };
+    const copiedPoints = collaborator.points.map((point) => ({
+      id: makeId('point'),
+      userId: nextUser.id,
+      place: point.place || '',
+      latitude: point.latitude,
+      longitude: point.longitude,
+      route: point.route || '',
+      regionMeta: normalizeRegionMeta(point.regionMeta),
+      photos: [],
+      featuredPhotoId: null,
+      noFeatured: false,
+      featuredBox: null,
+    }));
+
+    setUsers((previous) => [...previous, nextUser]);
+    setPoints((previous) => [...previous, ...copiedPoints]);
+    setSelectedUserId(nextUser.id);
+    setExpandedUserId(nextUser.id);
+    setIsUserEditExpanded(true);
+    setFormMessage(text.collaboratorCopySuccess);
+  }, [collaborators, text.collaboratorCopySuccess, users]);
 
   const handleEditPointFromUserList = (pointId) => {
     setSelectedPointId(pointId);
@@ -3356,12 +3389,10 @@ function MapView({
         .map((point, index) => normalizeCollaboratorPoint(point, index))
         .filter(Boolean);
 
-      let importedCollabId = '';
       setCollaborators((previous) => {
         const existing = previous.find((item) => item.token === token);
         const defaultColor = COLOR_PALETTE[(users.length + previous.length) % COLOR_PALETTE.length];
         if (existing) {
-          importedCollabId = existing.id;
           return previous.map((item) => (
             item.id === existing.id
               ? {
@@ -3376,7 +3407,6 @@ function MapView({
         }
 
         const nextId = makeId('collab');
-        importedCollabId = nextId;
         return [
           ...previous,
           normalizeCollaborator({
@@ -3393,12 +3423,6 @@ function MapView({
           }, previous.length),
         ];
       });
-
-      if (importedCollabId) {
-        const userId = collaboratorUserViewId(importedCollabId);
-        setSelectedUserId(userId);
-        setExpandedUserId(userId);
-      }
       setCollaboratorLinkInput('');
       setFormMessage(text.collaboratorImportSuccess);
     } catch (error) {
@@ -4230,14 +4254,20 @@ function MapView({
                           onClick={() => {
                             setSelectedUserId(userId);
                             setExpandedUserId((previous) => (previous === userId ? '' : userId));
-                            setIsUserEditExpanded(true);
                           }}
                         >
                           <span className="map-user-dot" style={{ backgroundColor: normalizeHexColor(item.color, '#38bdf8') }} />
-                          <span>{label}</span>
+                          <span>{label} ({text.collaboratorFriendTag})</span>
                           {item.hidden ? <small>{text.collaboratorHideBtn}</small> : null}
                         </button>
                         <div className="map-collaborator-actions">
+                          <button
+                            type="button"
+                            className="glass-button"
+                            onClick={() => copyCollaboratorAsUser(item.id)}
+                          >
+                            {text.collaboratorCopyBtn}
+                          </button>
                           <button
                             type="button"
                             className="glass-button"
@@ -4296,7 +4326,7 @@ function MapView({
                   type="button"
                   className="glass-button map-user-edit-toggle-btn"
                   onClick={() => setIsUserEditExpanded((previous) => !previous)}
-                  disabled={!selectedUser && !selectedCollaborator}
+                  disabled={!selectedUser}
                 >
                   {text.userEditBtn}
                 </button>
@@ -4330,9 +4360,11 @@ function MapView({
                       <span className="map-user-region-dot" style={{ backgroundColor: regionColor }} />
                     </div>
                     <div className="map-user-main">
-                      <span className="map-user-name">{user.name}</span>
+                      <span className="map-user-name">
+                        {user.name}
+                        {user.isCollaborator ? ` (${text.collaboratorFriendTag})` : ''}
+                      </span>
                       <span className="map-user-submeta">
-                        {user.isCollaborator ? `${text.collaboratorTitle} · ` : ''}
                         {markerCount} {text.userPointsLabel}
                         {user.hidden ? ` · ${text.collaboratorHideBtn}` : ''}
                       </span>
@@ -4384,6 +4416,9 @@ function MapView({
 
             {!readOnly && isUserEditExpanded && (
               <div className="map-user-edit-box">
+                {selectedCollaborator && (
+                  <p className="map-muted">{text.collaboratorReadonlyImported}</p>
+                )}
                 <div className="map-user-edit-preview">
                   <div className="map-user-edit-preview-swatch">
                     <span style={{ backgroundColor: editUserColor }} />
@@ -4402,7 +4437,7 @@ function MapView({
                   value={editUserName}
                   placeholder={text.editUserNamePlaceholder}
                   onChange={(event) => setEditUserName(event.target.value)}
-                  disabled={!selectedUser && !selectedCollaborator}
+                  disabled={!selectedUser}
                 />
                 <div className="map-inline-grid">
                   <div>
@@ -4417,7 +4452,7 @@ function MapView({
                         setEditUserRgb(hexToRgbString(event.target.value));
                         setFormMessage('');
                       }}
-                      disabled={!selectedUser && !selectedCollaborator}
+                      disabled={!selectedUser}
                     />
                   </div>
                   <div>
@@ -4427,7 +4462,7 @@ function MapView({
                       className="glass-input"
                       value={editUserRgb}
                       onChange={(event) => handleEditRgbChange(event.target.value)}
-                      disabled={!selectedUser && !selectedCollaborator}
+                      disabled={!selectedUser}
                     />
                   </div>
                 </div>
@@ -4444,7 +4479,7 @@ function MapView({
                         setEditRegionRgb(hexToRgbString(event.target.value));
                         setFormMessage('');
                       }}
-                      disabled={!selectedUser && !selectedCollaborator}
+                      disabled={!selectedUser}
                     />
                   </div>
                   <div>
@@ -4454,35 +4489,26 @@ function MapView({
                       className="glass-input"
                       value={editRegionRgb}
                       onChange={(event) => handleEditRegionRgbChange(event.target.value)}
-                      disabled={!selectedUser && !selectedCollaborator}
+                      disabled={!selectedUser}
                     />
                   </div>
                 </div>
-                <div className={`map-user-edit-actions ${selectedCollaborator ? 'has-collaborator' : ''}`}>
+                <div className="map-user-edit-actions">
                   <button
                     type="button"
                     className="glass-button map-user-edit-action-btn"
                     onClick={handleRenameUser}
-                    disabled={!selectedUser && !selectedCollaborator}
+                    disabled={!selectedUser}
                   >
                     {text.updateUserBtn}
                   </button>
-                  {selectedCollaborator && (
-                    <button
-                      type="button"
-                      className="glass-button map-user-edit-action-btn"
-                      onClick={() => toggleCollaboratorVisibility(selectedCollaborator.id)}
-                    >
-                      {selectedCollaborator.hidden ? text.collaboratorShowBtn : text.collaboratorHideBtn}
-                    </button>
-                  )}
                   <button
                     type="button"
                     className="glass-button map-danger-btn map-user-edit-action-btn"
                     onClick={handleDeleteUser}
-                    disabled={(!selectedUser && !selectedCollaborator) || (selectedUser && users.length <= 1)}
+                    disabled={!selectedUser || users.length <= 1}
                   >
-                    {selectedCollaborator ? text.collaboratorDeleteBtn : text.deleteUserBtn}
+                    {text.deleteUserBtn}
                   </button>
                 </div>
               </div>
