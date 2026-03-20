@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { upload } from '@vercel/blob/client';
 import {
   CircleMarker,
+  GeoJSON,
   MapContainer,
   Marker,
   TileLayer,
@@ -67,6 +68,22 @@ const MAP_AUTO_UPLOAD_DELAY_MS = 1200;
 const RECYCLE_BIN_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_PLACE_HISTORY = 12;
 const MAX_FAVORITE_PLACES = 16;
+const REGION_LOOKUP_ZOOM = 10;
+
+const CHINA_PROVINCE_ALIASES = {
+  北京市: '北京',
+  天津市: '天津',
+  上海市: '上海',
+  重庆市: '重庆',
+  内蒙古自治区: '内蒙古',
+  广西壮族自治区: '广西',
+  西藏自治区: '西藏',
+  宁夏回族自治区: '宁夏',
+  新疆维吾尔自治区: '新疆',
+  香港特别行政区: '香港',
+  澳门特别行政区: '澳门',
+  台湾省: '台湾',
+};
 
 const openMapDatabase = () => new Promise((resolve, reject) => {
   if (typeof window === 'undefined' || !window.indexedDB) {
@@ -233,6 +250,9 @@ const TEXTS = {
     dangerSecondConfirm: 'This action cannot be undone. Please confirm again.',
     deletePointConfirm: 'Delete this map point?',
     deletePhotoConfirm: 'Delete this photo?',
+    visitedStatsTitle: 'Visited',
+    visitedCityCountLabel: 'Cities',
+    visitedCountryCountLabel: 'Countries',
     recycleBinTitle: 'Recycle bin',
     recycleBinHint: 'Deleted items can be restored within 7 days.',
     recycleBinEmpty: 'Recycle bin is empty.',
@@ -365,6 +385,9 @@ const TEXTS = {
     dangerSecondConfirm: '删除后不可恢复，请再次确认。',
     deletePointConfirm: '确认删除这个点位吗？',
     deletePhotoConfirm: '确认删除这张照片吗？',
+    visitedStatsTitle: '已去过',
+    visitedCityCountLabel: '城市',
+    visitedCountryCountLabel: '国家',
     recycleBinTitle: '回收站',
     recycleBinHint: '删除内容可在 7 天内恢复。',
     recycleBinEmpty: '回收站为空。',
@@ -395,6 +418,90 @@ const normalizeHexColor = (value, fallback) => {
   const trimmed = value.trim();
   const match = trimmed.match(/^#([0-9a-fA-F]{6})$/);
   return match ? `#${match[1].toLowerCase()}` : fallback;
+};
+
+const normalizeCountryCode = (value) => {
+  if (typeof value !== 'string') {
+    return '';
+  }
+  return value.trim().toUpperCase();
+};
+
+const pickFirstNonEmpty = (...values) => values.find((value) => isNonEmpty(value)) || '';
+
+const normalizeChinaProvinceName = (value) => {
+  if (!isNonEmpty(value)) {
+    return '';
+  }
+  const trimmed = value.trim();
+  if (CHINA_PROVINCE_ALIASES[trimmed]) {
+    return CHINA_PROVINCE_ALIASES[trimmed];
+  }
+  return trimmed
+    .replace(/壮族自治区|回族自治区|维吾尔自治区|自治区|特别行政区|省|市$/g, '')
+    .trim();
+};
+
+const normalizeChinaCityName = (value) => {
+  if (!isNonEmpty(value)) {
+    return '';
+  }
+  return value
+    .trim()
+    .replace(/特别行政区|自治州|自治县|地区|盟|林区|市辖区|市|县$/g, '')
+    .trim();
+};
+
+const normalizeRegionMeta = (value) => {
+  const lookupStatus = value?.lookupStatus === 'failed'
+    ? 'failed'
+    : (value?.lookupStatus === 'resolved' ? 'resolved' : 'pending');
+  const countryCode = normalizeCountryCode(value?.countryCode);
+  const isChina = value?.isChina === true || countryCode === 'CN';
+  return {
+    lookupStatus,
+    isChina,
+    countryCode,
+    countryName: isNonEmpty(value?.countryName) ? value.countryName.trim() : '',
+    provinceName: normalizeChinaProvinceName(value?.provinceName),
+    cityName: normalizeChinaCityName(value?.cityName),
+  };
+};
+
+const extractRegionMeta = (result) => {
+  const address = result?.address && typeof result.address === 'object' && !Array.isArray(result.address)
+    ? result.address
+    : {};
+  const countryCode = normalizeCountryCode(
+    pickFirstNonEmpty(address.country_code, result?.country_code, result?.countryCode),
+  );
+  const countryName = pickFirstNonEmpty(address.country, result?.country, result?.countryName);
+  const isChina = countryCode === 'CN' || countryName === '中国';
+  const rawProvince = pickFirstNonEmpty(
+    address.state,
+    address.province,
+    address.region,
+    result?.provinceName,
+  );
+  const rawCity = pickFirstNonEmpty(
+    address.city,
+    address.town,
+    address.municipality,
+    address.county,
+    address.city_district,
+    address.state_district,
+    result?.cityName,
+    result?.name,
+  );
+
+  return normalizeRegionMeta({
+    lookupStatus: 'resolved',
+    isChina,
+    countryCode,
+    countryName,
+    provinceName: isChina ? rawProvince : '',
+    cityName: isChina ? rawCity : '',
+  });
 };
 
 const hexToRgbString = (hexColor) => {
@@ -502,6 +609,7 @@ const normalizePoint = (point, index, users) => {
     latitude: clampCoord(latitude, -90, 90),
     longitude: clampCoord(longitude, -180, 180),
     route: isNonEmpty(point?.route) ? point.route.trim() : '',
+    regionMeta: normalizeRegionMeta(point?.regionMeta),
     photos,
     featuredPhotoId,
     noFeatured,
@@ -769,6 +877,7 @@ const persistPoint = (point) => {
     latitude: point.latitude,
     longitude: point.longitude,
     route: point.route || '',
+    regionMeta: normalizeRegionMeta(point?.regionMeta),
     photos: persistedPhotos,
     featuredPhotoId,
     noFeatured: Boolean(point.noFeatured),
@@ -1380,6 +1489,8 @@ function MapView({
   const [showFeaturedBubbles, setShowFeaturedBubbles] = useState(true);
   const [bubbleLayout, setBubbleLayout] = useState('freestyle');
   const [selectedPointId, setSelectedPointId] = useState('');
+  const [chinaBoundaryData, setChinaBoundaryData] = useState(null);
+  const [worldBoundaryData, setWorldBoundaryData] = useState(null);
 
   const [newUserName, setNewUserName] = useState('');
   const [newUserColor, setNewUserColor] = useState(COLOR_PALETTE[0]);
@@ -1394,6 +1505,7 @@ function MapView({
   const [isSearching, setIsSearching] = useState(false);
   const [searchMessage, setSearchMessage] = useState('');
   const [isPlaceDropdownOpen, setIsPlaceDropdownOpen] = useState(false);
+  const [draftRegionMeta, setDraftRegionMeta] = useState(() => normalizeRegionMeta(null));
 
   const [latitudeInput, setLatitudeInput] = useState('');
   const [longitudeInput, setLongitudeInput] = useState('');
@@ -1433,6 +1545,8 @@ function MapView({
   const uploadRunnerActiveRef = useRef(false);
   const failedUploadFileRef = useRef(new Map());
   const activeWorkspaceKeyRef = useRef('');
+  const regionLookupCacheRef = useRef(new Map());
+  const regionLookupBusyRef = useRef(false);
   const placeSearchWrapRef = useRef(null);
 
   useEffect(() => () => {
@@ -1928,6 +2042,34 @@ function MapView({
     return map;
   }, [users]);
 
+  const fetchRegionMetaForCoordinates = useCallback(async (latitude, longitude) => {
+    const cacheKey = `${latitude.toFixed(5)},${longitude.toFixed(5)}`;
+    const cached = regionLookupCacheRef.current.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    const params = new URLSearchParams({
+      format: 'jsonv2',
+      lat: `${latitude}`,
+      lon: `${longitude}`,
+      zoom: `${REGION_LOOKUP_ZOOM}`,
+      addressdetails: '1',
+    });
+    const response = await fetch(`https://nominatim.openstreetmap.org/reverse?${params.toString()}`, {
+      headers: {
+        'Accept-Language': 'zh-CN,zh;q=0.95,en;q=0.7',
+      },
+    });
+    if (!response.ok) {
+      throw new Error('Reverse geocode request failed');
+    }
+    const payload = await response.json();
+    const meta = extractRegionMeta(payload);
+    regionLookupCacheRef.current.set(cacheKey, meta);
+    return meta;
+  }, []);
+
   const markerCountByUser = useMemo(() => points.reduce((accumulator, point) => {
     accumulator[point.userId] = (accumulator[point.userId] || 0) + 1;
     return accumulator;
@@ -2120,6 +2262,45 @@ function MapView({
     [points, selectedPointId],
   );
   const selectedPointOwner = selectedPoint ? userMap.get(selectedPoint.userId) : null;
+  const visitedProvinceSet = useMemo(() => new Set(
+    points
+      .filter((point) => point.regionMeta?.isChina && isNonEmpty(point.regionMeta?.provinceName))
+      .map((point) => normalizeChinaProvinceName(point.regionMeta.provinceName)),
+  ), [points]);
+  const visitedCitySet = useMemo(() => new Set(
+    points
+      .filter((point) => point.regionMeta?.isChina && isNonEmpty(point.regionMeta?.cityName))
+      .map((point) => normalizeChinaCityName(point.regionMeta.cityName)),
+  ), [points]);
+  const visitedCountrySet = useMemo(() => new Set(
+    points
+      .filter((point) => !point.regionMeta?.isChina)
+      .map((point) => normalizeCountryCode(point.regionMeta?.countryCode) || (point.regionMeta?.countryName || '').trim())
+      .filter(Boolean),
+  ), [points]);
+  const chinaProvinceStyle = useCallback((feature) => {
+    const provinceName = normalizeChinaProvinceName(feature?.properties?.name);
+    const isVisited = visitedProvinceSet.has(provinceName);
+    return {
+      color: isVisited ? '#f97316' : 'rgba(15, 23, 42, 0.18)',
+      weight: isVisited ? 1.4 : 0.8,
+      fillColor: isVisited ? 'rgba(249, 115, 22, 0.32)' : 'rgba(255, 255, 255, 0.02)',
+      fillOpacity: isVisited ? 0.5 : 0.08,
+      dashArray: isVisited ? null : '2 5',
+    };
+  }, [visitedProvinceSet]);
+  const worldCountryStyle = useCallback((feature) => {
+    const countryCode = normalizeCountryCode(feature?.properties?.iso_a2);
+    const countryName = isNonEmpty(feature?.properties?.name) ? feature.properties.name.trim() : '';
+    const isVisited = visitedCountrySet.has(countryCode) || visitedCountrySet.has(countryName);
+    return {
+      color: isVisited ? '#0284c7' : 'rgba(15, 23, 42, 0.14)',
+      weight: isVisited ? 1.2 : 0.6,
+      fillColor: isVisited ? 'rgba(14, 165, 233, 0.26)' : 'rgba(255, 255, 255, 0.02)',
+      fillOpacity: isVisited ? 0.42 : 0.06,
+      dashArray: isVisited ? null : '2 5',
+    };
+  }, [visitedCountrySet]);
   const uploadProcessedCount = uploadQueueStatus.completed + uploadQueueStatus.failed;
   const uploadProgressPercent = uploadQueueStatus.total > 0
     ? Math.round((uploadProcessedCount / uploadQueueStatus.total) * 100)
@@ -2345,6 +2526,77 @@ function MapView({
     setEditUserRgb(hexToRgbString(selectedColor));
   }, [selectedUser?.id, selectedUser?.name, selectedUser?.color]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    if (scope === 'china' && !chinaBoundaryData) {
+      import('china-map-geojson/lib/china').then((module) => {
+        if (!cancelled) {
+          setChinaBoundaryData(module.default || module);
+        }
+      }).catch(() => {});
+    }
+
+    if (scope === 'world' && !worldBoundaryData) {
+      import('@surbowl/world-geo-json-zh').then((module) => {
+        if (!cancelled) {
+          setWorldBoundaryData(module.default || module);
+        }
+      }).catch(() => {});
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [chinaBoundaryData, scope, worldBoundaryData]);
+
+  useEffect(() => {
+    if (readOnly || regionLookupBusyRef.current) {
+      return undefined;
+    }
+
+    const targetPoint = points.find((point) => point.regionMeta?.lookupStatus === 'pending');
+    if (!targetPoint) {
+      return undefined;
+    }
+
+    let cancelled = false;
+    regionLookupBusyRef.current = true;
+
+    (async () => {
+      try {
+        const regionMeta = await fetchRegionMetaForCoordinates(targetPoint.latitude, targetPoint.longitude);
+        if (!cancelled) {
+          setPoints((previous) => previous.map((point) => (
+            point.id === targetPoint.id
+              ? { ...point, regionMeta }
+              : point
+          )));
+        }
+      } catch {
+        if (!cancelled) {
+          setPoints((previous) => previous.map((point) => (
+            point.id === targetPoint.id
+              ? {
+                  ...point,
+                  regionMeta: {
+                    ...normalizeRegionMeta(point.regionMeta),
+                    lookupStatus: 'failed',
+                  },
+                }
+              : point
+          )));
+        }
+      } finally {
+        regionLookupBusyRef.current = false;
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchRegionMetaForCoordinates, points, readOnly]);
+
   const handleNewRgbChange = (value) => {
     setNewUserRgb(value);
     const parsed = rgbToHex(value);
@@ -2548,6 +2800,7 @@ function MapView({
     setCityQuery(normalized.name);
     setLatitudeInput(normalized.latitude.toFixed(6));
     setLongitudeInput(normalized.longitude.toFixed(6));
+    setDraftRegionMeta(normalizeRegionMeta(place?.regionMeta));
     setSearchResults([]);
     setSearchMessage('');
     setFormMessage('');
@@ -2595,6 +2848,7 @@ function MapView({
               name: item.display_name || query,
               latitude: Number.parseFloat(item.lat),
               longitude: Number.parseFloat(item.lon),
+              regionMeta: extractRegionMeta(item),
             }))
             .filter((item) => Number.isFinite(item.latitude) && Number.isFinite(item.longitude))
         : [];
@@ -2764,6 +3018,9 @@ function MapView({
       latitude,
       longitude,
       route: routeInput.trim(),
+      regionMeta: draftRegionMeta.lookupStatus === 'resolved'
+        ? normalizeRegionMeta(draftRegionMeta)
+        : normalizeRegionMeta({ lookupStatus: 'pending' }),
       photos: placeholderPhotos,
       featuredPhotoId: null,
       noFeatured: false,
@@ -2780,6 +3037,7 @@ function MapView({
     setLatitudeInput('');
     setLongitudeInput('');
     setRouteInput('');
+    setDraftRegionMeta(normalizeRegionMeta(null));
     setAddPointFiles([]);
     if (addPointFileInputRef.current) {
       addPointFileInputRef.current.value = '';
@@ -3704,17 +3962,18 @@ function MapView({
                   <label className="map-label" htmlFor="map_city_search">{text.cityInputLabel}</label>
                   <div className="map-search-combobox" ref={placeSearchWrapRef}>
                     <div className="map-search-row">
-                      <input
-                        id="map_city_search"
-                        className="glass-input"
-                        value={cityQuery}
-                        placeholder={text.cityInputPlaceholder}
-                        onFocus={() => setIsPlaceDropdownOpen(true)}
-                        onChange={(event) => {
-                          setCityQuery(event.target.value);
-                          setIsPlaceDropdownOpen(true);
-                        }}
-                      />
+                  <input
+                    id="map_city_search"
+                    className="glass-input"
+                    value={cityQuery}
+                    placeholder={text.cityInputPlaceholder}
+                    onFocus={() => setIsPlaceDropdownOpen(true)}
+                    onChange={(event) => {
+                      setCityQuery(event.target.value);
+                      setDraftRegionMeta(normalizeRegionMeta(null));
+                      setIsPlaceDropdownOpen(true);
+                    }}
+                  />
                       <button type="button" className="glass-button" onClick={handleSearchCity} disabled={isSearching}>
                         {isSearching ? text.citySearching : text.citySearchBtn}
                       </button>
@@ -3816,7 +4075,10 @@ function MapView({
                         id="map_latitude"
                         className="glass-input"
                         value={latitudeInput}
-                        onChange={(event) => setLatitudeInput(event.target.value)}
+                        onChange={(event) => {
+                          setLatitudeInput(event.target.value);
+                          setDraftRegionMeta(normalizeRegionMeta(null));
+                        }}
                       />
                     </div>
                     <div>
@@ -3825,7 +4087,10 @@ function MapView({
                         id="map_longitude"
                         className="glass-input"
                         value={longitudeInput}
-                        onChange={(event) => setLongitudeInput(event.target.value)}
+                        onChange={(event) => {
+                          setLongitudeInput(event.target.value);
+                          setDraftRegionMeta(normalizeRegionMeta(null));
+                        }}
                       />
                     </div>
                   </div>
@@ -4026,8 +4291,23 @@ function MapView({
           )}
 
           <div className="map-canvas-shell" ref={mapCanvasShellRef}>
-            <div className="map-canvas-headline">
-              {scope === 'china' ? text.chinaScope : text.worldScope}
+            <div className="map-canvas-overlay-head">
+              <div className="map-canvas-headline">
+                {scope === 'china' ? text.chinaScope : text.worldScope}
+              </div>
+              <div className="map-visited-stats-card">
+                <span className="map-visited-stats-title">{text.visitedStatsTitle}</span>
+                <div className="map-visited-stats-grid">
+                  <div className="map-visited-stat-pill">
+                    <strong>{visitedCitySet.size}</strong>
+                    <span>{text.visitedCityCountLabel}</span>
+                  </div>
+                  <div className="map-visited-stat-pill">
+                    <strong>{visitedCountrySet.size}</strong>
+                    <span>{text.visitedCountryCountLabel}</span>
+                  </div>
+                </div>
+              </div>
             </div>
             <MapContainer
               className="map-canvas"
@@ -4044,6 +4324,22 @@ function MapView({
                 attribution='&copy; OpenStreetMap contributors'
                 url='https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
               />
+              {scope === 'china' && chinaBoundaryData && (
+                <GeoJSON
+                  key="china-visited-overlay"
+                  data={chinaBoundaryData}
+                  style={chinaProvinceStyle}
+                  interactive={false}
+                />
+              )}
+              {scope === 'world' && worldBoundaryData && (
+                <GeoJSON
+                  key="world-visited-overlay"
+                  data={worldBoundaryData}
+                  style={worldCountryStyle}
+                  interactive={false}
+                />
+              )}
 
               {showFeaturedBubbles && bubbleLayout === 'map' && featuredPoints.map(({ point, owner, featuredPhoto }, index) => {
                 const bubbleSize = getPhotoBubbleSize(featuredPhoto);

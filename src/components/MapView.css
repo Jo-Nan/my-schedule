@@ -569,11 +569,19 @@
     linear-gradient(180deg, rgba(15, 23, 42, 0.15), rgba(15, 23, 42, 0.04));
 }
 
-.map-canvas-headline {
+.map-canvas-overlay-head {
   position: absolute;
   top: 0.75rem;
   right: 0.75rem;
   z-index: 620;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.45rem;
+  pointer-events: none;
+}
+
+.map-canvas-headline {
   padding: 0.38rem 0.72rem;
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.45);
@@ -581,6 +589,53 @@
   color: #f8fafc;
   font-size: 0.78rem;
   letter-spacing: 0.02em;
+}
+
+.map-visited-stats-card {
+  min-width: 150px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 16px 34px rgba(15, 23, 42, 0.14);
+  backdrop-filter: blur(10px);
+  padding: 0.55rem;
+}
+
+.map-visited-stats-title {
+  display: block;
+  margin-bottom: 0.4rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #475569;
+  text-transform: uppercase;
+}
+
+.map-visited-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.42rem;
+}
+
+.map-visited-stat-pill {
+  border-radius: 12px;
+  padding: 0.46rem 0.48rem;
+  background: linear-gradient(180deg, rgba(248, 250, 252, 0.96), rgba(226, 232, 240, 0.7));
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  display: flex;
+  flex-direction: column;
+  gap: 0.14rem;
+}
+
+.map-visited-stat-pill strong {
+  font-size: 1rem;
+  line-height: 1;
+  color: #0f172a;
+}
+
+.map-visited-stat-pill span {
+  font-size: 0.68rem;
+  color: #475569;
 }
 
 .map-canvas {
@@ -1180,6 +1235,19 @@
   .map-canvas-shell,
   .map-canvas {
     min-height: 56vh;
+  }
+
+  .map-canvas-overlay-head {
+    top: 0.6rem;
+    right: 0.6rem;
+    left: 0.6rem;
+    align-items: stretch;
+  }
+
+  .map-visited-stats-card {
+    align-self: flex-end;
+    min-width: 136px;
+    max-width: min(68vw, 180px);
   }
 
   .map-layout-select-wrap {
