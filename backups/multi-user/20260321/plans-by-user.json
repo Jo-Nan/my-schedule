@@ -457,6 +457,34 @@
       "status": "uncompleted",
       "sortOrder": 1774013905407,
       "updatedAt": 1774013905407
+    },
+    {
+      "id": "1774125289824-k223vxf",
+      "event": "补办学术打卡",
+      "date": "2026-03-23",
+      "time": "",
+      "person": "雷老师",
+      "ddl": "",
+      "details": "",
+      "attachments": [],
+      "progress": 0,
+      "status": "uncompleted",
+      "sortOrder": 1774125289824,
+      "updatedAt": 1774125289824
+    },
+    {
+      "id": "1774125310569-i2hp6re",
+      "event": "吃饭-中午",
+      "date": "2026-03-23",
+      "time": "",
+      "person": "llx",
+      "ddl": "",
+      "details": "后湖湘菜",
+      "attachments": [],
+      "progress": 0,
+      "status": "uncompleted",
+      "sortOrder": 1774125310569,
+      "updatedAt": 1774125310569
     }
   ],
   "user_1773386461610_259085c2": [
