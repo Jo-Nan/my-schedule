@@ -549,30 +549,39 @@ const normalizeMergeKeyText = (value) => {
     .toLowerCase();
 };
 
-const pointLocationKey = (point) => {
+const pointLocationKeys = (point) => {
   const meta = normalizeRegionMeta(point?.regionMeta);
   const city = normalizeMergeKeyText(meta.cityName);
   const province = normalizeMergeKeyText(meta.provinceName);
   const countryCode = normalizeCountryCode(meta.countryCode);
   const countryName = normalizeMergeKeyText(meta.countryName);
   const countryKey = countryCode || countryName;
+  const keys = [];
 
   if (city) {
-    return `${countryKey || 'na'}__${province || 'na'}__${city}`;
+    keys.push(`${countryKey || 'na'}__${province || 'na'}__${city}`);
   }
 
   const placeName = normalizeMergeKeyText(point?.place);
   if (placeName) {
-    return `${countryKey || 'na'}__place__${placeName}`;
+    keys.push(`${countryKey || 'na'}__place__${placeName}`);
   }
 
   const latitude = Number.parseFloat(point?.latitude);
   const longitude = Number.parseFloat(point?.longitude);
-  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
-    return '';
+  if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+    keys.push(`${latitude.toFixed(4)}__${longitude.toFixed(4)}`);
   }
-  return `${latitude.toFixed(4)}__${longitude.toFixed(4)}`;
+
+  return [...new Set(keys)];
 };
+
+const pointHasFiniteCoord = (point) => (
+  Number.isFinite(point?.latitude) && Number.isFinite(point?.longitude)
+);
+
+const pointHasOverlap = (point, overlapKeySet) => pointLocationKeys(point)
+  .some((key) => overlapKeySet.has(key));
 
 const areIdArraysEqual = (left, right) => {
   if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) {
@@ -2622,7 +2631,10 @@ function MapView({
       featuredBox: null,
     }))), [collaborators]);
 
-  const allPoints = useMemo(() => [...points, ...collaboratorPoints], [collaboratorPoints, points]);
+  const allPoints = useMemo(
+    () => [...points, ...collaboratorPoints].filter((point) => pointHasFiniteCoord(point)),
+    [collaboratorPoints, points],
+  );
 
   const userMap = useMemo(() => {
     const map = new Map();
@@ -2654,16 +2666,14 @@ function MapView({
     }
     const locationUserSetMap = new Map();
     mergePairPoints.forEach((point) => {
-      const key = pointLocationKey(point);
-      if (!key) {
-        return;
-      }
-      const existing = locationUserSetMap.get(key);
-      if (existing) {
-        existing.add(point.userId);
-      } else {
-        locationUserSetMap.set(key, new Set([point.userId]));
-      }
+      pointLocationKeys(point).forEach((key) => {
+        const existing = locationUserSetMap.get(key);
+        if (existing) {
+          existing.add(point.userId);
+        } else {
+          locationUserSetMap.set(key, new Set([point.userId]));
+        }
+      });
     });
     const overlapKeys = new Set();
     locationUserSetMap.forEach((userSet, key) => {
@@ -5395,7 +5405,7 @@ function MapView({
                   <ul className="map-marker-list">
                     {markerListPoints.map((point) => {
                       const owner = userMap.get(point.userId);
-                      const isOverlapPoint = mergeModeReady && overlapLocationKeySet.has(pointLocationKey(point));
+                      const isOverlapPoint = mergeModeReady && pointHasOverlap(point, overlapLocationKeySet);
                       const markerColor = isOverlapPoint ? mergeOverlapColor : (owner?.color || '#94a3b8');
                       const markerOwnerLabel = isOverlapPoint
                         ? `${text.mergeOverlapLabel}${mergePairLabel ? ` (${mergePairLabel})` : ''}`
@@ -5623,7 +5633,7 @@ function MapView({
 
               {visiblePoints.map((point) => {
                 const owner = userMap.get(point.userId);
-                const isOverlapPoint = mergeModeReady && overlapLocationKeySet.has(pointLocationKey(point));
+                const isOverlapPoint = mergeModeReady && pointHasOverlap(point, overlapLocationKeySet);
                 const markerColor = isOverlapPoint ? mergeOverlapColor : (owner?.color || '#64748b');
                 const isSelectedMarker = selectedPointId === point.id;
                 const tooltipLabel = isOverlapPoint
