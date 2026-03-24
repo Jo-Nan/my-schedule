@@ -243,6 +243,40 @@
   padding: 0.24rem 0.52rem;
 }
 
+.map-display-mode-select-wrap {
+  box-shadow: none;
+}
+
+.map-merge-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+  padding: 0.3rem 0.62rem;
+  border-radius: 999px;
+  border: 1px solid var(--glass-border);
+  background: rgba(15, 23, 42, 0.06);
+}
+
+.map-merge-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.32rem;
+  color: var(--text-secondary);
+  font-size: var(--map-font-meta);
+  font-weight: 600;
+}
+
+.map-merge-select {
+  min-width: 118px;
+  max-width: 168px;
+}
+
+.map-merge-hint {
+  font-size: var(--map-font-meta);
+  color: var(--text-secondary);
+}
+
 .map-scope-toggle {
   display: inline-flex;
   gap: 0.4rem;

@@ -263,10 +263,30 @@ const sanitizeMapPlaceBookmarks = (places, maxSize = 20) => {
   return output;
 };
 
+const sanitizeMapDisplayMode = (value) => (value === 'merge' ? 'merge' : 'default');
+
+const sanitizeMapMergePairUserIds = (value) => {
+  const source = Array.isArray(value) ? value : [value];
+  const unique = [];
+  source.forEach((item) => {
+    if (typeof item !== 'string') {
+      return;
+    }
+    const trimmed = item.trim();
+    if (!trimmed || unique.includes(trimmed)) {
+      return;
+    }
+    unique.push(trimmed);
+  });
+  return unique.slice(0, 2);
+};
+
 const sanitizeMapWorkspace = (workspace = {}) => {
   if (!workspace || typeof workspace !== 'object' || Array.isArray(workspace)) {
     return {
       scope: 'china',
+      displayMode: 'default',
+      mergePairUserIds: [],
       showFeaturedBubbles: true,
       showMarkerNames: true,
       bubbleLayout: 'freestyle',
@@ -286,6 +306,8 @@ const sanitizeMapWorkspace = (workspace = {}) => {
 
   return {
     scope: workspace.scope === 'world' ? 'world' : 'china',
+    displayMode: sanitizeMapDisplayMode(workspace.displayMode),
+    mergePairUserIds: sanitizeMapMergePairUserIds(workspace.mergePairUserIds),
     showFeaturedBubbles: workspace.showFeaturedBubbles !== false,
     showMarkerNames: workspace.showMarkerNames !== false,
     bubbleLayout: ['map', 'right', 'bottom', 'freestyle'].includes(workspace.bubbleLayout) ? workspace.bubbleLayout : 'freestyle',
