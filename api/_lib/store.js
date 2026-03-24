@@ -264,6 +264,11 @@ const sanitizeMapPlaceBookmarks = (places, maxSize = 20) => {
 };
 
 const sanitizeMapDisplayMode = (value) => (value === 'merge' ? 'merge' : 'default');
+const sanitizeMapMergeOverlapColor = (value) => (
+  typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value.trim())
+    ? value.trim().toLowerCase()
+    : '#0f172a'
+);
 
 const sanitizeMapMergePairUserIds = (value) => {
   const source = Array.isArray(value) ? value : [value];
@@ -278,7 +283,7 @@ const sanitizeMapMergePairUserIds = (value) => {
     }
     unique.push(trimmed);
   });
-  return unique.slice(0, 2);
+  return unique;
 };
 
 const sanitizeMapWorkspace = (workspace = {}) => {
@@ -287,6 +292,7 @@ const sanitizeMapWorkspace = (workspace = {}) => {
       scope: 'china',
       displayMode: 'default',
       mergePairUserIds: [],
+      mergeOverlapColor: '#0f172a',
       showFeaturedBubbles: true,
       showMarkerNames: true,
       bubbleLayout: 'freestyle',
@@ -308,6 +314,7 @@ const sanitizeMapWorkspace = (workspace = {}) => {
     scope: workspace.scope === 'world' ? 'world' : 'china',
     displayMode: sanitizeMapDisplayMode(workspace.displayMode),
     mergePairUserIds: sanitizeMapMergePairUserIds(workspace.mergePairUserIds),
+    mergeOverlapColor: sanitizeMapMergeOverlapColor(workspace.mergeOverlapColor),
     showFeaturedBubbles: workspace.showFeaturedBubbles !== false,
     showMarkerNames: workspace.showMarkerNames !== false,
     bubbleLayout: ['map', 'right', 'bottom', 'freestyle'].includes(workspace.bubbleLayout) ? workspace.bubbleLayout : 'freestyle',

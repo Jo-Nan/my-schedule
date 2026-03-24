@@ -71,8 +71,8 @@ const MAP_LOCAL_CACHE_MODE_FULL = 'full';
 const MAP_LOCAL_CACHE_MODE_PARTIAL = 'partial';
 const MAP_DISPLAY_MODE_DEFAULT = 'default';
 const MAP_DISPLAY_MODE_MERGE = 'merge';
-const MERGE_OVERLAP_COLOR = '#0f172a';
-const MERGE_COORD_PRECISION = 4;
+const MERGE_MIN_USER_COUNT = 2;
+const DEFAULT_MERGE_OVERLAP_COLOR = '#0f172a';
 
 const CHINA_PROVINCE_ALIASES = {
   北京市: '北京',
@@ -270,11 +270,11 @@ const TEXTS = {
     displayModeLabel: 'Display',
     displayModeDefault: 'Default',
     displayModeMerge: 'Merge overlap',
-    mergeUserOneLabel: 'User A',
-    mergeUserTwoLabel: 'User B',
-    mergeModeHint: 'Overlap points use the merge color; unique points keep each user color.',
+    mergeUsersLabel: 'Users',
+    mergeModeHint: 'Same-city points shared by at least two selected users use the merge color.',
     mergeModeNeedUsers: 'Add at least two visible users to enable merge mode.',
     mergeOverlapLabel: 'Overlap',
+    mergeColorLabel: 'Merge color',
     featuredLayoutLabel: 'Bubble layout',
     featuredLayoutMap: 'Near pin',
     featuredLayoutRight: 'Right dock',
@@ -439,11 +439,11 @@ const TEXTS = {
     displayModeLabel: '显示模式',
     displayModeDefault: '普通显示',
     displayModeMerge: '合并显示',
-    mergeUserOneLabel: '用户 A',
-    mergeUserTwoLabel: '用户 B',
-    mergeModeHint: '重合点使用合并色，非重合点保留各自用户色。',
+    mergeUsersLabel: '参与用户',
+    mergeModeHint: '同城且被至少两位已选用户命中的点位使用合并色，非重合点保留各自用户色。',
     mergeModeNeedUsers: '至少需要两个可见用户才能启用合并显示。',
     mergeOverlapLabel: '重合',
+    mergeColorLabel: '合并颜色',
     featuredLayoutLabel: '书签布局',
     featuredLayoutMap: '点位旁边',
     featuredLayoutRight: '右侧停靠',
@@ -534,16 +534,44 @@ const normalizeMergePairUserIds = (value) => {
       unique.push(normalized);
     }
   });
-  return unique.slice(0, 2);
+  return unique;
 };
 
-const pointCoordKey = (point, precision = MERGE_COORD_PRECISION) => {
+const normalizeMergeOverlapColor = (value) => normalizeHexColor(value, DEFAULT_MERGE_OVERLAP_COLOR);
+
+const normalizeMergeKeyText = (value) => {
+  if (!isNonEmpty(value)) {
+    return '';
+  }
+  return value
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+};
+
+const pointLocationKey = (point) => {
+  const meta = normalizeRegionMeta(point?.regionMeta);
+  const city = normalizeMergeKeyText(meta.cityName);
+  const province = normalizeMergeKeyText(meta.provinceName);
+  const countryCode = normalizeCountryCode(meta.countryCode);
+  const countryName = normalizeMergeKeyText(meta.countryName);
+  const countryKey = countryCode || countryName;
+
+  if (city) {
+    return `${countryKey || 'na'}__${province || 'na'}__${city}`;
+  }
+
+  const placeName = normalizeMergeKeyText(point?.place);
+  if (placeName) {
+    return `${countryKey || 'na'}__place__${placeName}`;
+  }
+
   const latitude = Number.parseFloat(point?.latitude);
   const longitude = Number.parseFloat(point?.longitude);
   if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
     return '';
   }
-  return `${latitude.toFixed(precision)}__${longitude.toFixed(precision)}`;
+  return `${latitude.toFixed(4)}__${longitude.toFixed(4)}`;
 };
 
 const areIdArraysEqual = (left, right) => {
@@ -590,6 +618,15 @@ const normalizeChinaCityName = (value) => {
     .trim();
 };
 
+const normalizeGenericRegionName = (value) => {
+  if (!isNonEmpty(value)) {
+    return '';
+  }
+  return value
+    .trim()
+    .replace(/\s+/g, ' ');
+};
+
 const isChinaRegion = (countryCode, countryName) => (
   CHINA_REGION_CODES.has(normalizeCountryCode(countryCode))
   || Object.prototype.hasOwnProperty.call(CHINA_REGION_NAME_MAP, String(countryName || '').trim())
@@ -628,8 +665,10 @@ const normalizeRegionMeta = (value) => {
     countryName,
     provinceName: isChina
       ? inferChinaProvinceName(countryCode, countryName, value?.provinceName)
-      : '',
-    cityName: normalizeChinaCityName(value?.cityName),
+      : normalizeGenericRegionName(value?.provinceName),
+    cityName: isChina
+      ? normalizeChinaCityName(value?.cityName)
+      : normalizeGenericRegionName(value?.cityName),
   };
 };
 
@@ -664,8 +703,8 @@ const extractRegionMeta = (result) => {
     isChina,
     countryCode,
     countryName,
-    provinceName: isChina ? rawProvince : '',
-    cityName: isChina ? rawCity : '',
+    provinceName: rawProvince,
+    cityName: rawCity,
   });
 };
 
@@ -1273,6 +1312,7 @@ const parseWorkspace = (rawWorkspace, defaultName) => {
   const loadedScope = safeWorkspace?.scope === 'world' ? 'world' : 'china';
   const loadedDisplayMode = normalizeDisplayMode(safeWorkspace?.displayMode);
   const loadedMergePairUserIds = normalizeMergePairUserIds(safeWorkspace?.mergePairUserIds);
+  const loadedMergeOverlapColor = normalizeMergeOverlapColor(safeWorkspace?.mergeOverlapColor);
   const loadedShowFeaturedBubbles = safeWorkspace?.showFeaturedBubbles !== false;
   const loadedShowMarkerNames = safeWorkspace?.showMarkerNames !== false;
   const loadedBubbleLayout = ['map', 'right', 'bottom', 'freestyle'].includes(safeWorkspace?.bubbleLayout)
@@ -1311,6 +1351,7 @@ const parseWorkspace = (rawWorkspace, defaultName) => {
     scope: loadedScope,
     displayMode: loadedDisplayMode,
     mergePairUserIds: loadedMergePairUserIds,
+    mergeOverlapColor: loadedMergeOverlapColor,
     users: loadedUsers,
     points: loadedPoints,
     collaborators: loadedCollaborators,
@@ -1331,6 +1372,7 @@ const workspaceToPayload = ({
   scope,
   displayMode,
   mergePairUserIds,
+  mergeOverlapColor,
   users,
   points,
   collaborators,
@@ -1345,6 +1387,7 @@ const workspaceToPayload = ({
   scope: scope === 'world' ? 'world' : 'china',
   displayMode: normalizeDisplayMode(displayMode),
   mergePairUserIds: normalizeMergePairUserIds(mergePairUserIds),
+  mergeOverlapColor: normalizeMergeOverlapColor(mergeOverlapColor),
   users: Array.isArray(users) ? users : [],
   points: Array.isArray(points) ? points.map(persistPoint) : [],
   collaborators: Array.isArray(collaborators) ? collaborators.map(persistCollaborator) : [],
@@ -1362,6 +1405,7 @@ const workspaceHash = ({
   scope,
   displayMode,
   mergePairUserIds,
+  mergeOverlapColor,
   users,
   points,
   collaborators,
@@ -1376,6 +1420,7 @@ const workspaceHash = ({
   scope: scope === 'world' ? 'world' : 'china',
   displayMode: normalizeDisplayMode(displayMode),
   mergePairUserIds: normalizeMergePairUserIds(mergePairUserIds),
+  mergeOverlapColor: normalizeMergeOverlapColor(mergeOverlapColor),
   users: Array.isArray(users) ? users : [],
   points: Array.isArray(points) ? points.map(persistPoint) : [],
   collaborators: Array.isArray(collaborators) ? collaborators.map(persistCollaborator) : [],
@@ -1855,6 +1900,7 @@ function MapView({
   const [scope, setScope] = useState('china');
   const [displayMode, setDisplayMode] = useState(MAP_DISPLAY_MODE_DEFAULT);
   const [mergePairUserIds, setMergePairUserIds] = useState([]);
+  const [mergeOverlapColor, setMergeOverlapColor] = useState(DEFAULT_MERGE_OVERLAP_COLOR);
   const [users, setUsers] = useState([]);
   const [points, setPoints] = useState([]);
   const [collaborators, setCollaborators] = useState([]);
@@ -1993,6 +2039,7 @@ function MapView({
         setScope(loadedWorkspace.scope);
         setDisplayMode(loadedWorkspace.displayMode);
         setMergePairUserIds(loadedWorkspace.mergePairUserIds);
+        setMergeOverlapColor(loadedWorkspace.mergeOverlapColor);
         setUsers(normalizedUsers);
         setPoints(loadedWorkspace.points);
         setCollaborators(loadedWorkspace.collaborators);
@@ -2045,6 +2092,7 @@ function MapView({
       setScope(loadedWorkspace.scope);
       setDisplayMode(loadedWorkspace.displayMode);
       setMergePairUserIds(loadedWorkspace.mergePairUserIds);
+      setMergeOverlapColor(loadedWorkspace.mergeOverlapColor);
       setUsers(normalizedUsers);
       setPoints(loadedWorkspace.points);
       setCollaborators(loadedWorkspace.collaborators);
@@ -2129,6 +2177,7 @@ function MapView({
           setScope(serverWorkspace.scope);
           setDisplayMode(serverWorkspace.displayMode);
           setMergePairUserIds(serverWorkspace.mergePairUserIds);
+          setMergeOverlapColor(serverWorkspace.mergeOverlapColor);
           setUsers(normalizedUsers);
           setPoints(serverWorkspace.points);
           setCollaborators(serverWorkspace.collaborators);
@@ -2172,6 +2221,7 @@ function MapView({
       scope,
       displayMode,
       mergePairUserIds,
+      mergeOverlapColor,
       users,
       points,
       collaborators,
@@ -2202,7 +2252,7 @@ function MapView({
         }
       }
     })();
-  }, [bubbleLayout, collaborators, displayMode, favoritePlaces, isLoaded, mergePairUserIds, points, readOnly, recycleBin, scope, searchHistory, showFeaturedBubbles, showMarkerNames, storageKey, text.storageLimitError, users, workspaceRevision]);
+  }, [bubbleLayout, collaborators, displayMode, favoritePlaces, isLoaded, mergeOverlapColor, mergePairUserIds, points, readOnly, recycleBin, scope, searchHistory, showFeaturedBubbles, showMarkerNames, storageKey, text.storageLimitError, users, workspaceRevision]);
 
   useEffect(() => {
     if (readOnly || !isLoaded || !isServerHydrated || !activeUserId) {
@@ -2214,6 +2264,7 @@ function MapView({
       scope,
       displayMode,
       mergePairUserIds,
+      mergeOverlapColor,
       users,
       points,
       collaborators,
@@ -2262,6 +2313,7 @@ function MapView({
             setScope(latest.scope);
             setDisplayMode(latest.displayMode);
             setMergePairUserIds(latest.mergePairUserIds);
+            setMergeOverlapColor(latest.mergeOverlapColor);
             setUsers(normalizedUsers);
             setPoints(latest.points);
             setCollaborators(latest.collaborators);
@@ -2302,6 +2354,7 @@ function MapView({
           setWorkspaceRevision(forcedWorkspace.revision);
           setDisplayMode(forcedWorkspace.displayMode);
           setMergePairUserIds(forcedWorkspace.mergePairUserIds);
+          setMergeOverlapColor(forcedWorkspace.mergeOverlapColor);
           const forcedShare = normalizeMapShare(forcedWorkspace.share);
           setShareEnabled(forcedShare.enabled);
           setShareToken(forcedShare.token);
@@ -2322,6 +2375,7 @@ function MapView({
         setWorkspaceRevision(savedWorkspace.revision);
         setDisplayMode(savedWorkspace.displayMode);
         setMergePairUserIds(savedWorkspace.mergePairUserIds);
+        setMergeOverlapColor(savedWorkspace.mergeOverlapColor);
         const savedShare = normalizeMapShare(savedWorkspace.share);
         setShareEnabled(savedShare.enabled);
         setShareToken(savedShare.token);
@@ -2349,6 +2403,7 @@ function MapView({
     points,
     searchHistory,
     favoritePlaces,
+    mergeOverlapColor,
     mergePairUserIds,
     recycleBin,
     scope,
@@ -2524,7 +2579,7 @@ function MapView({
   );
 
   useEffect(() => {
-    if (mergeCandidateUserIds.length < 2) {
+    if (mergeCandidateUserIds.length < MERGE_MIN_USER_COUNT) {
       if (displayMode === MAP_DISPLAY_MODE_MERGE) {
         setDisplayMode(MAP_DISPLAY_MODE_DEFAULT);
       }
@@ -2537,15 +2592,14 @@ function MapView({
     const normalized = normalizeMergePairUserIds(mergePairUserIds)
       .filter((userId) => mergeCandidateUserIds.includes(userId));
     const fallbackIds = mergeCandidateUserIds.filter((userId) => !normalized.includes(userId));
-    while (normalized.length < 2 && fallbackIds.length) {
+    while (normalized.length < MERGE_MIN_USER_COUNT && fallbackIds.length) {
       const candidateId = fallbackIds.shift();
       if (candidateId) {
         normalized.push(candidateId);
       }
     }
-    const nextPair = normalized.slice(0, 2);
-    if (!areIdArraysEqual(mergePairUserIds, nextPair)) {
-      setMergePairUserIds(nextPair);
+    if (!areIdArraysEqual(mergePairUserIds, normalized)) {
+      setMergePairUserIds(normalized);
     }
   }, [displayMode, mergeCandidateUserIds, mergePairUserIds]);
 
@@ -2577,13 +2631,16 @@ function MapView({
     });
     return map;
   }, [allUsers]);
-  const mergeModeReady = displayMode === MAP_DISPLAY_MODE_MERGE && mergePairUserIds.length === 2;
-  const mergePairLabel = useMemo(() => (
-    mergePairUserIds
+  const mergeModeReady = displayMode === MAP_DISPLAY_MODE_MERGE && mergePairUserIds.length >= MERGE_MIN_USER_COUNT;
+  const mergePairLabel = useMemo(() => {
+    const names = mergePairUserIds
       .map((userId) => userMap.get(userId)?.name || '')
-      .filter(Boolean)
-      .join(' + ')
-  ), [mergePairUserIds, userMap]);
+      .filter(Boolean);
+    if (names.length <= MERGE_MIN_USER_COUNT) {
+      return names.join(' + ');
+    }
+    return `${names.slice(0, 2).join(' + ')} +${names.length - 2}`;
+  }, [mergePairUserIds, userMap]);
   const mergePairSet = useMemo(() => new Set(mergePairUserIds), [mergePairUserIds]);
   const mergePairPoints = useMemo(() => {
     if (!mergeModeReady) {
@@ -2591,32 +2648,31 @@ function MapView({
     }
     return allPoints.filter((point) => mergePairSet.has(point.userId));
   }, [allPoints, mergeModeReady, mergePairSet]);
-  const overlapCoordKeySet = useMemo(() => {
+  const overlapLocationKeySet = useMemo(() => {
     if (!mergeModeReady) {
       return new Set();
     }
-    const [firstUserId, secondUserId] = mergePairUserIds;
-    const firstCoords = new Set();
-    const secondCoords = new Set();
+    const locationUserSetMap = new Map();
     mergePairPoints.forEach((point) => {
-      const key = pointCoordKey(point);
+      const key = pointLocationKey(point);
       if (!key) {
         return;
       }
-      if (point.userId === firstUserId) {
-        firstCoords.add(key);
-      } else if (point.userId === secondUserId) {
-        secondCoords.add(key);
+      const existing = locationUserSetMap.get(key);
+      if (existing) {
+        existing.add(point.userId);
+      } else {
+        locationUserSetMap.set(key, new Set([point.userId]));
       }
     });
-    const overlap = new Set();
-    firstCoords.forEach((key) => {
-      if (secondCoords.has(key)) {
-        overlap.add(key);
+    const overlapKeys = new Set();
+    locationUserSetMap.forEach((userSet, key) => {
+      if (userSet.size >= MERGE_MIN_USER_COUNT) {
+        overlapKeys.add(key);
       }
     });
-    return overlap;
-  }, [mergeModeReady, mergePairPoints, mergePairUserIds]);
+    return overlapKeys;
+  }, [mergeModeReady, mergePairPoints]);
   const pointsForDisplayMode = useMemo(() => (
     mergeModeReady ? mergePairPoints : allPoints
   ), [allPoints, mergeModeReady, mergePairPoints]);
@@ -4525,21 +4581,33 @@ function MapView({
     return text.recyclePointLabel;
   };
   const currentShareUrl = shareUrl || (shareEnabled ? buildClientShareUrl(shareToken) : '');
-  const updateMergePairUserId = useCallback((index, nextUserId) => {
-    if (!nextUserId) {
+  const toggleMergeUserId = useCallback((userId, enabled) => {
+    if (!isNonEmpty(userId)) {
       return;
     }
     setMergePairUserIds((previous) => {
-      const current = normalizeMergePairUserIds(previous);
-      const next = [current[0] || '', current[1] || ''];
-      next[index] = nextUserId;
-      if (next[0] && next[0] === next[1]) {
-        const fallback = mergeCandidateUsers.find((user) => user.id !== nextUserId)?.id || '';
-        next[index === 0 ? 1 : 0] = fallback;
+      const current = normalizeMergePairUserIds(previous)
+        .filter((id) => mergeCandidateUserIds.includes(id));
+      const hasCurrent = current.includes(userId);
+      if (enabled) {
+        if (hasCurrent) {
+          return current;
+        }
+        return normalizeMergePairUserIds([...current, userId]);
+      }
+      if (!hasCurrent) {
+        return current;
+      }
+      const next = current.filter((id) => id !== userId);
+      if (next.length < MERGE_MIN_USER_COUNT) {
+        const fallback = mergeCandidateUserIds.find((id) => id !== userId && !next.includes(id));
+        if (fallback) {
+          next.push(fallback);
+        }
       }
       return normalizeMergePairUserIds(next);
     });
-  }, [mergeCandidateUsers]);
+  }, [mergeCandidateUserIds]);
 
   return (
     <section className="glass-panel map-view-root">
@@ -4578,48 +4646,55 @@ function MapView({
               <option value={MAP_DISPLAY_MODE_DEFAULT}>{text.displayModeDefault}</option>
               <option
                 value={MAP_DISPLAY_MODE_MERGE}
-                disabled={mergeCandidateUsers.length < 2}
+                disabled={mergeCandidateUsers.length < MERGE_MIN_USER_COUNT}
               >
                 {text.displayModeMerge}
               </option>
             </select>
           </label>
 
-          {displayMode === MAP_DISPLAY_MODE_MERGE && mergeCandidateUsers.length >= 2 && (
+          {displayMode === MAP_DISPLAY_MODE_MERGE && mergeCandidateUsers.length >= MERGE_MIN_USER_COUNT && (
             <div className="map-merge-controls">
+              <div className="map-merge-field map-merge-users">
+                <span>{text.mergeUsersLabel}</span>
+                <div className="map-merge-user-list">
+                  {mergeCandidateUsers.map((user) => {
+                    const checked = mergePairUserIds.includes(user.id);
+                    const isLocked = checked
+                      && mergePairUserIds.length <= MERGE_MIN_USER_COUNT
+                      && mergeCandidateUsers.length <= MERGE_MIN_USER_COUNT;
+                    return (
+                      <label
+                        key={`merge_user_toggle_${user.id}`}
+                        className={`map-merge-user-chip ${checked ? 'active' : ''}`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={isLocked}
+                          onChange={(event) => toggleMergeUserId(user.id, event.target.checked)}
+                        />
+                        <span className="map-user-dot" style={{ backgroundColor: user.color }} />
+                        <span>{user.name}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
               <label className="map-merge-field">
-                <span>{text.mergeUserOneLabel}</span>
-                <select
-                  className="map-layout-select map-merge-select"
-                  value={mergePairUserIds[0] || ''}
-                  onChange={(event) => updateMergePairUserId(0, event.target.value)}
-                >
-                  {mergeCandidateUsers.map((user) => (
-                    <option key={`merge_user_a_${user.id}`} value={user.id}>
-                      {user.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="map-merge-field">
-                <span>{text.mergeUserTwoLabel}</span>
-                <select
-                  className="map-layout-select map-merge-select"
-                  value={mergePairUserIds[1] || ''}
-                  onChange={(event) => updateMergePairUserId(1, event.target.value)}
-                >
-                  {mergeCandidateUsers.map((user) => (
-                    <option key={`merge_user_b_${user.id}`} value={user.id}>
-                      {user.name}
-                    </option>
-                  ))}
-                </select>
+                <span>{text.mergeColorLabel}</span>
+                <input
+                  type="color"
+                  className="map-color-input map-merge-color-input"
+                  value={mergeOverlapColor}
+                  onChange={(event) => setMergeOverlapColor(normalizeMergeOverlapColor(event.target.value))}
+                />
               </label>
               <span className="map-merge-hint">{text.mergeModeHint}</span>
             </div>
           )}
 
-          {displayMode === MAP_DISPLAY_MODE_MERGE && mergeCandidateUsers.length < 2 && (
+          {displayMode === MAP_DISPLAY_MODE_MERGE && mergeCandidateUsers.length < MERGE_MIN_USER_COUNT && (
             <span className="map-merge-hint">{text.mergeModeNeedUsers}</span>
           )}
 
@@ -5320,8 +5395,8 @@ function MapView({
                   <ul className="map-marker-list">
                     {markerListPoints.map((point) => {
                       const owner = userMap.get(point.userId);
-                      const isOverlapPoint = mergeModeReady && overlapCoordKeySet.has(pointCoordKey(point));
-                      const markerColor = isOverlapPoint ? MERGE_OVERLAP_COLOR : (owner?.color || '#94a3b8');
+                      const isOverlapPoint = mergeModeReady && overlapLocationKeySet.has(pointLocationKey(point));
+                      const markerColor = isOverlapPoint ? mergeOverlapColor : (owner?.color || '#94a3b8');
                       const markerOwnerLabel = isOverlapPoint
                         ? `${text.mergeOverlapLabel}${mergePairLabel ? ` (${mergePairLabel})` : ''}`
                         : (owner?.name || '-');
@@ -5548,8 +5623,8 @@ function MapView({
 
               {visiblePoints.map((point) => {
                 const owner = userMap.get(point.userId);
-                const isOverlapPoint = mergeModeReady && overlapCoordKeySet.has(pointCoordKey(point));
-                const markerColor = isOverlapPoint ? MERGE_OVERLAP_COLOR : (owner?.color || '#64748b');
+                const isOverlapPoint = mergeModeReady && overlapLocationKeySet.has(pointLocationKey(point));
+                const markerColor = isOverlapPoint ? mergeOverlapColor : (owner?.color || '#64748b');
                 const isSelectedMarker = selectedPointId === point.id;
                 const tooltipLabel = isOverlapPoint
                   ? `${text.mergeOverlapLabel}${mergePairLabel ? ` (${mergePairLabel})` : ''}`
