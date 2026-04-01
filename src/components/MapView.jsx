@@ -271,7 +271,7 @@ const TEXTS = {
     displayModeDefault: 'Default',
     displayModeMerge: 'Merge overlap',
     mergeUsersLabel: 'Users',
-    mergeModeHint: 'Same-city points shared by at least two selected users use the merge color.',
+    mergeModeHint: 'Shared provinces/countries and shared city points use merge color; unique city points keep user colors.',
     mergeModeNeedUsers: 'Add at least two visible users to enable merge mode.',
     mergeOverlapLabel: 'Overlap',
     mergeColorLabel: 'Merge color',
@@ -440,7 +440,7 @@ const TEXTS = {
     displayModeDefault: '普通显示',
     displayModeMerge: '合并显示',
     mergeUsersLabel: '参与用户',
-    mergeModeHint: '同城且被至少两位已选用户命中的点位使用合并色，非重合点保留各自用户色。',
+    mergeModeHint: '共同去过的省份/国家与同城点位使用合并色，不同城市点位保留各自用户色。',
     mergeModeNeedUsers: '至少需要两个可见用户才能启用合并显示。',
     mergeOverlapLabel: '重合',
     mergeColorLabel: '合并颜色',
@@ -553,13 +553,16 @@ const pointLocationKeys = (point) => {
   const meta = normalizeRegionMeta(point?.regionMeta);
   const city = normalizeMergeKeyText(meta.cityName);
   const province = normalizeMergeKeyText(meta.provinceName);
-  const countryCode = normalizeCountryCode(meta.countryCode);
-  const countryName = normalizeMergeKeyText(meta.countryName);
-  const countryKey = countryCode || countryName;
+  const countryKey = normalizeCountryCode(meta.countryCode) || normalizeMergeKeyText(meta.countryName);
   const keys = [];
 
   if (city) {
-    keys.push(`${countryKey || 'na'}__${province || 'na'}__${city}`);
+    if (meta.isChina) {
+      keys.push(`cn__${province || 'na'}__${city}`);
+    } else {
+      keys.push(`${countryKey || 'na'}__${city}`);
+    }
+    return keys;
   }
 
   const placeName = normalizeMergeKeyText(point?.place);
@@ -601,6 +604,47 @@ const normalizeCountryCode = (value) => {
   }
   return value.trim().toUpperCase();
 };
+
+const normalizeWorldCountryKey = (countryCode, countryName) => {
+  const normalizedCode = normalizeCountryCode(countryCode);
+  if (normalizedCode) {
+    return normalizedCode;
+  }
+  return normalizeMergeKeyText(countryName);
+};
+
+const pointWorldCountryKey = (point) => {
+  const meta = normalizeRegionMeta(point?.regionMeta);
+  if (meta.isChina) {
+    return '';
+  }
+  return normalizeWorldCountryKey(meta.countryCode, meta.countryName);
+};
+
+const intersectSets = (left, right) => {
+  const result = new Set();
+  left.forEach((value) => {
+    if (right.has(value)) {
+      result.add(value);
+    }
+  });
+  return result;
+};
+
+const subtractSets = (left, right) => {
+  const result = new Set();
+  left.forEach((value) => {
+    if (!right.has(value)) {
+      result.add(value);
+    }
+  });
+  return result;
+};
+
+const setHasCountry = (set, countryCode, countryName) => (
+  (isNonEmpty(countryCode) && set.has(countryCode))
+  || (isNonEmpty(countryName) && set.has(countryName))
+);
 
 const pickFirstNonEmpty = (...values) => values.find((value) => isNonEmpty(value)) || '';
 
@@ -2599,7 +2643,8 @@ function MapView({
     }
 
     const normalized = normalizeMergePairUserIds(mergePairUserIds)
-      .filter((userId) => mergeCandidateUserIds.includes(userId));
+      .filter((userId) => mergeCandidateUserIds.includes(userId))
+      .slice(0, MERGE_MIN_USER_COUNT);
     const fallbackIds = mergeCandidateUserIds.filter((userId) => !normalized.includes(userId));
     while (normalized.length < MERGE_MIN_USER_COUNT && fallbackIds.length) {
       const candidateId = fallbackIds.shift();
@@ -2648,10 +2693,7 @@ function MapView({
     const names = mergePairUserIds
       .map((userId) => userMap.get(userId)?.name || '')
       .filter(Boolean);
-    if (names.length <= MERGE_MIN_USER_COUNT) {
-      return names.join(' + ');
-    }
-    return `${names.slice(0, 2).join(' + ')} +${names.length - 2}`;
+    return names.join(' + ');
   }, [mergePairUserIds, userMap]);
   const mergePairSet = useMemo(() => new Set(mergePairUserIds), [mergePairUserIds]);
   const mergePairPoints = useMemo(() => {
@@ -2660,6 +2702,53 @@ function MapView({
     }
     return allPoints.filter((point) => mergePairSet.has(point.userId));
   }, [allPoints, mergeModeReady, mergePairSet]);
+  const mergePairRegionState = useMemo(() => {
+    if (!mergeModeReady || mergePairUserIds.length < MERGE_MIN_USER_COUNT) {
+      return null;
+    }
+
+    const [leftUserId, rightUserId] = mergePairUserIds;
+    const leftProvinceSet = new Set();
+    const rightProvinceSet = new Set();
+    const leftCountrySet = new Set();
+    const rightCountrySet = new Set();
+
+    mergePairPoints.forEach((point) => {
+      if (point.userId !== leftUserId && point.userId !== rightUserId) {
+        return;
+      }
+
+      const targetProvinceSet = point.userId === leftUserId ? leftProvinceSet : rightProvinceSet;
+      const targetCountrySet = point.userId === leftUserId ? leftCountrySet : rightCountrySet;
+      const normalizedMeta = normalizeRegionMeta(point.regionMeta);
+
+      if (normalizedMeta.isChina) {
+        const provinceName = normalizeChinaProvinceName(normalizedMeta.provinceName);
+        if (provinceName) {
+          targetProvinceSet.add(provinceName);
+        }
+        return;
+      }
+
+      const countryKey = pointWorldCountryKey(point);
+      if (countryKey) {
+        targetCountrySet.add(countryKey);
+      }
+    });
+
+    const leftUser = userMap.get(leftUserId);
+    const rightUser = userMap.get(rightUserId);
+    return {
+      overlapProvinceSet: intersectSets(leftProvinceSet, rightProvinceSet),
+      leftOnlyProvinceSet: subtractSets(leftProvinceSet, rightProvinceSet),
+      rightOnlyProvinceSet: subtractSets(rightProvinceSet, leftProvinceSet),
+      overlapCountrySet: intersectSets(leftCountrySet, rightCountrySet),
+      leftOnlyCountrySet: subtractSets(leftCountrySet, rightCountrySet),
+      rightOnlyCountrySet: subtractSets(rightCountrySet, leftCountrySet),
+      leftRegionColor: normalizeHexColor(leftUser?.regionColor, normalizeHexColor(leftUser?.color, '#f97316')),
+      rightRegionColor: normalizeHexColor(rightUser?.regionColor, normalizeHexColor(rightUser?.color, '#f97316')),
+    };
+  }, [mergeModeReady, mergePairPoints, mergePairUserIds, userMap]);
   const overlapLocationKeySet = useMemo(() => {
     if (!mergeModeReady) {
       return new Set();
@@ -2937,7 +3026,7 @@ function MapView({
   const selectedPointOwner = selectedPoint ? userMap.get(selectedPoint.userId) : null;
   const provinceVisitColorMap = useMemo(() => {
     const map = new Map();
-    allPoints.forEach((point) => {
+    pointsForDisplayMode.forEach((point) => {
       const provinceName = normalizeChinaProvinceName(point.regionMeta?.provinceName);
       if (!point.regionMeta?.isChina || !provinceName) {
         return;
@@ -2946,15 +3035,14 @@ function MapView({
       map.set(provinceName, normalizeHexColor(owner?.regionColor, normalizeHexColor(owner?.color, '#f97316')));
     });
     return map;
-  }, [allPoints, userMap]);
+  }, [pointsForDisplayMode, userMap]);
   const countryVisitColorMap = useMemo(() => {
     const map = new Map();
-    allPoints.forEach((point) => {
+    pointsForDisplayMode.forEach((point) => {
       if (point.regionMeta?.isChina) {
         return;
       }
-      const countryKey = normalizeCountryCode(point.regionMeta?.countryCode)
-        || (point.regionMeta?.countryName || '').trim();
+      const countryKey = pointWorldCountryKey(point);
       if (!countryKey) {
         return;
       }
@@ -2962,12 +3050,18 @@ function MapView({
       map.set(countryKey, normalizeHexColor(owner?.regionColor, normalizeHexColor(owner?.color, '#0284c7')));
     });
     return map;
-  }, [allPoints, userMap]);
-  const visitedProvinceSet = useMemo(() => new Set(
-    allPoints
+  }, [pointsForDisplayMode, userMap]);
+  const overlayVisitedProvinceSet = useMemo(() => new Set(
+    pointsForDisplayMode
       .filter((point) => point.regionMeta?.isChina && isNonEmpty(point.regionMeta?.provinceName))
       .map((point) => normalizeChinaProvinceName(point.regionMeta.provinceName)),
-  ), [allPoints]);
+  ), [pointsForDisplayMode]);
+  const overlayVisitedCountrySet = useMemo(() => new Set(
+    pointsForDisplayMode
+      .filter((point) => !point.regionMeta?.isChina)
+      .map((point) => pointWorldCountryKey(point))
+      .filter(Boolean),
+  ), [pointsForDisplayMode]);
   const visitedCitySet = useMemo(() => new Set(
     allPoints
       .filter((point) => point.regionMeta?.isChina && isNonEmpty(point.regionMeta?.cityName))
@@ -2980,13 +3074,41 @@ function MapView({
   const visitedCountrySet = useMemo(() => new Set(
     allPoints
       .filter((point) => !point.regionMeta?.isChina)
-      .map((point) => normalizeCountryCode(point.regionMeta?.countryCode) || (point.regionMeta?.countryName || '').trim())
+      .map((point) => pointWorldCountryKey(point))
       .filter(Boolean),
   ), [allPoints]);
   const visitedCountryCount = visitedCountrySet.size + (hasChinaVisit ? 1 : 0);
   const chinaProvinceStyle = useCallback((feature) => {
     const provinceName = normalizeChinaProvinceName(feature?.properties?.name);
-    const isVisited = visitedProvinceSet.has(provinceName);
+    if (mergeModeReady && mergePairRegionState && provinceName) {
+      let edgeColor = '';
+      if (mergePairRegionState.overlapProvinceSet.has(provinceName)) {
+        edgeColor = mergeOverlapColor;
+      } else if (mergePairRegionState.leftOnlyProvinceSet.has(provinceName)) {
+        edgeColor = mergePairRegionState.leftRegionColor;
+      } else if (mergePairRegionState.rightOnlyProvinceSet.has(provinceName)) {
+        edgeColor = mergePairRegionState.rightRegionColor;
+      }
+
+      if (edgeColor) {
+        return {
+          color: edgeColor,
+          weight: 1.4,
+          fillColor: edgeColor,
+          fillOpacity: 0.22,
+          dashArray: null,
+        };
+      }
+      return {
+        color: 'rgba(15, 23, 42, 0.18)',
+        weight: 0.8,
+        fillColor: 'rgba(255, 255, 255, 0.02)',
+        fillOpacity: 0.08,
+        dashArray: '2 5',
+      };
+    }
+
+    const isVisited = overlayVisitedProvinceSet.has(provinceName);
     const edgeColor = provinceVisitColorMap.get(provinceName) || '#f97316';
     return {
       color: isVisited ? edgeColor : 'rgba(15, 23, 42, 0.18)',
@@ -2995,11 +3117,40 @@ function MapView({
       fillOpacity: isVisited ? 0.22 : 0.08,
       dashArray: isVisited ? null : '2 5',
     };
-  }, [provinceVisitColorMap, visitedProvinceSet]);
+  }, [mergeModeReady, mergeOverlapColor, mergePairRegionState, overlayVisitedProvinceSet, provinceVisitColorMap]);
   const worldCountryStyle = useCallback((feature) => {
     const countryCode = normalizeCountryCode(feature?.properties?.iso_a2);
-    const countryName = isNonEmpty(feature?.properties?.name) ? feature.properties.name.trim() : '';
-    const isVisited = visitedCountrySet.has(countryCode) || visitedCountrySet.has(countryName);
+    const countryName = normalizeMergeKeyText(feature?.properties?.name);
+
+    if (mergeModeReady && mergePairRegionState) {
+      let edgeColor = '';
+      if (setHasCountry(mergePairRegionState.overlapCountrySet, countryCode, countryName)) {
+        edgeColor = mergeOverlapColor;
+      } else if (setHasCountry(mergePairRegionState.leftOnlyCountrySet, countryCode, countryName)) {
+        edgeColor = mergePairRegionState.leftRegionColor;
+      } else if (setHasCountry(mergePairRegionState.rightOnlyCountrySet, countryCode, countryName)) {
+        edgeColor = mergePairRegionState.rightRegionColor;
+      }
+
+      if (edgeColor) {
+        return {
+          color: edgeColor,
+          weight: 1.2,
+          fillColor: edgeColor,
+          fillOpacity: 0.18,
+          dashArray: null,
+        };
+      }
+      return {
+        color: 'rgba(15, 23, 42, 0.14)',
+        weight: 0.6,
+        fillColor: 'rgba(255, 255, 255, 0.02)',
+        fillOpacity: 0.06,
+        dashArray: '2 5',
+      };
+    }
+
+    const isVisited = setHasCountry(overlayVisitedCountrySet, countryCode, countryName);
     const edgeColor = countryVisitColorMap.get(countryCode) || countryVisitColorMap.get(countryName) || '#0284c7';
     return {
       color: isVisited ? edgeColor : 'rgba(15, 23, 42, 0.14)',
@@ -3008,7 +3159,7 @@ function MapView({
       fillOpacity: isVisited ? 0.18 : 0.06,
       dashArray: isVisited ? null : '2 5',
     };
-  }, [countryVisitColorMap, visitedCountrySet]);
+  }, [countryVisitColorMap, mergeModeReady, mergeOverlapColor, mergePairRegionState, overlayVisitedCountrySet]);
   const uploadProcessedCount = uploadQueueStatus.completed + uploadQueueStatus.failed;
   const uploadProgressPercent = uploadQueueStatus.total > 0
     ? Math.round((uploadProcessedCount / uploadQueueStatus.total) * 100)
@@ -4597,13 +4748,17 @@ function MapView({
     }
     setMergePairUserIds((previous) => {
       const current = normalizeMergePairUserIds(previous)
-        .filter((id) => mergeCandidateUserIds.includes(id));
+        .filter((id) => mergeCandidateUserIds.includes(id))
+        .slice(0, MERGE_MIN_USER_COUNT);
       const hasCurrent = current.includes(userId);
       if (enabled) {
         if (hasCurrent) {
           return current;
         }
-        return normalizeMergePairUserIds([...current, userId]);
+        if (current.length < MERGE_MIN_USER_COUNT) {
+          return normalizeMergePairUserIds([...current, userId]).slice(0, MERGE_MIN_USER_COUNT);
+        }
+        return normalizeMergePairUserIds([current[0], userId]).slice(0, MERGE_MIN_USER_COUNT);
       }
       if (!hasCurrent) {
         return current;
@@ -4615,7 +4770,7 @@ function MapView({
           next.push(fallback);
         }
       }
-      return normalizeMergePairUserIds(next);
+      return normalizeMergePairUserIds(next).slice(0, MERGE_MIN_USER_COUNT);
     });
   }, [mergeCandidateUserIds]);
 

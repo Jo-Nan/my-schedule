@@ -1,6 +1,6 @@
 import { parseJsonBody, requireAuth } from './_lib/auth.js';
 import { sendAdminNotificationEmail } from './_lib/email.js';
-import { createMessageRecord, getMessages, saveMessages } from './_lib/store.js';
+import { createMessageRecord, saveMessages } from './_lib/store.js';
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
