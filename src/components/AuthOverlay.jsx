@@ -1,5 +1,25 @@
 import React, { useState } from 'react';
 
+const parseAuthResponse = async (response, t) => {
+  const raw = await response.text();
+  const trimmed = (raw || '').trim();
+
+  if (!trimmed) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+    const looksLikeHtml = contentType.includes('text/html') || trimmed.startsWith('<');
+    return {
+      status: 'error',
+      message: looksLikeHtml ? t.authApiUnavailable : t.authUnknownError,
+    };
+  }
+};
+
 const AuthOverlay = ({ onAuthenticated, t }) => {
   const [mode, setMode] = useState('login');
   const [form, setForm] = useState({ email: '', password: '', username: '', code: '', newPassword: '' });
@@ -31,9 +51,9 @@ const AuthOverlay = ({ onAuthenticated, t }) => {
           credentials: 'same-origin',
           body: JSON.stringify({ email: form.email.trim() }),
         });
-        const result = await response.json();
+        const result = await parseAuthResponse(response, t);
         if (!response.ok || result.status !== 'success') {
-          throw new Error(result.message || t.authUnknownError);
+          throw new Error(result?.message || t.authUnknownError);
         }
         setSuccess(t.resetCodeSent);
       } else if (mode === 'reset') {
@@ -47,9 +67,9 @@ const AuthOverlay = ({ onAuthenticated, t }) => {
             newPassword: form.newPassword,
           }),
         });
-        const result = await response.json();
+        const result = await parseAuthResponse(response, t);
         if (!response.ok || result.status !== 'success') {
-          throw new Error(result.message || t.authUnknownError);
+          throw new Error(result?.message || t.authUnknownError);
         }
         setSuccess(t.resetPasswordSuccess);
         setMode('login');
@@ -72,10 +92,10 @@ const AuthOverlay = ({ onAuthenticated, t }) => {
           body: JSON.stringify(payload),
         });
 
-        const result = await response.json();
+        const result = await parseAuthResponse(response, t);
 
         if (!response.ok || result.status !== 'success') {
-          throw new Error(result.message || t.authUnknownError);
+          throw new Error(result?.message || t.authUnknownError);
         }
 
         onAuthenticated(result.user);
