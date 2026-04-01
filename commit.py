@@ -12,7 +12,8 @@ import time
 
 DEFAULT_GIT_NAME = "Jo-Nan"
 DEFAULT_GIT_EMAIL = "nanqiao.ai@gmail.com"
-EXCLUDED_PATHSPECS = [":(exclude)backups/**"]
+BACKUP_DIR = "backups"
+EXCLUDED_PATHSPECS = [f":(exclude){BACKUP_DIR}", f":(exclude){BACKUP_DIR}/**"]
 
 def is_non_fast_forward_error(output):
     """判断是否为远端领先导致的 push 拒绝"""
@@ -57,7 +58,30 @@ def extract_status_paths(status_output):
 
 def is_backup_path(path):
     normalized = (path or "").replace("\\", "/").strip()
-    return normalized == "backups" or normalized.startswith("backups/")
+    return normalized == BACKUP_DIR or normalized.startswith(f"{BACKUP_DIR}/")
+
+def extract_staged_backup_paths():
+    """获取已暂存的 backups/ 目录下路径"""
+    staged_result = run_cmd(["git", "diff", "--cached", "--name-only"], check=False, capture_output=True)
+    staged_paths = []
+    for line in (staged_result.stdout or "").splitlines():
+        normalized = normalize_status_path(line.strip())
+        if normalized:
+            staged_paths.append(normalized)
+    return [path for path in staged_paths if is_backup_path(path)]
+
+def unstage_backup_changes_if_any():
+    """确保 backups/ 改动不会进入提交（即使之前被手动 git add）"""
+    staged_backup_paths = extract_staged_backup_paths()
+    if not staged_backup_paths:
+        return
+    print(f"ℹ️  检测到 {len(staged_backup_paths)} 项 backups/ 已暂存，正在自动移出暂存区...")
+    run_cmd(["git", "restore", "--staged", "--", BACKUP_DIR], check=False, capture_output=True)
+    remaining_backup_paths = extract_staged_backup_paths()
+    if remaining_backup_paths:
+        print("❌ 无法完全移除 backups/ 暂存改动，请手动执行：git restore --staged -- backups")
+        sys.exit(1)
+    print("✅ backups/ 暂存改动已移除")
 
 def run_cmd(cmd, check=True, capture_output=False):
     """执行命令"""
@@ -195,6 +219,7 @@ def main():
     # 3. 添加所有改动
     print("\n✅ 添加文件...")
     run_cmd(["git", "add", "-A", "--", ".", *EXCLUDED_PATHSPECS])
+    unstage_backup_changes_if_any()
     
     # 4. 提交
     print(f"\n✅ 提交: \"{message}\"...")
