@@ -1,0 +1,48 @@
+{
+  "backupVersion": 2,
+  "datasetType": "multi-user",
+  "createdAt": "2026-04-19T20:46:45.533Z",
+  "dateStamp": "20260419",
+  "source": {
+    "owner": "Jo-Nan",
+    "repo": "day-data",
+    "branch": "main"
+  },
+  "files": [
+    {
+      "key": "users",
+      "outputName": "users.json",
+      "sourcePath": "data/users.json",
+      "exists": true,
+      "entryCount": 8
+    },
+    {
+      "key": "plansByUser",
+      "outputName": "plans-by-user.json",
+      "sourcePath": "data/plans-by-user.json",
+      "exists": true,
+      "entryCount": 8
+    },
+    {
+      "key": "snapshotsByUser",
+      "outputName": "plan-snapshots.json",
+      "sourcePath": "data/plan-snapshots.json",
+      "exists": true,
+      "entryCount": 8
+    },
+    {
+      "key": "messages",
+      "outputName": "messages.json",
+      "sourcePath": "data/messages.json",
+      "exists": true,
+      "entryCount": 0
+    },
+    {
+      "key": "legacyPlans",
+      "outputName": "legacy-plans.json",
+      "sourcePath": "data/plans.json",
+      "exists": true,
+      "entryCount": 14
+    }
+  ]
+}
